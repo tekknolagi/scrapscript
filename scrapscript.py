@@ -12,22 +12,75 @@ def tokenize(x: str) -> list[str]:
     return re.split(r"[\s\n]+", stripped)
 
 
+@dataclass(frozen=True)
+class Prec:
+    pl: float
+    pr: float
+
+
+def lp(n: float) -> Prec:
+    # TODO(max): Rewrite
+    return Prec(n, n - 0.1)
+
+
+def rp(n: float) -> Prec:
+    # TODO(max): Rewrite
+    return Prec(n, n + 0.1)
+
+
+def np(n: float) -> Prec:
+    # TODO(max): Rewrite
+    return Prec(n, n)
+
+
+def xp(n: float) -> Prec:
+    # TODO(max): Rewrite
+    return Prec(n, 0)
+
+
+PS = {
+    "::": lp(2000),
+    "*": lp(12),
+    "/": lp(12),
+    "//": lp(12),
+    "%": lp(12),
+    "+": lp(11),
+    "-": lp(11),
+}
+
+
 class ParseError(Exception):
     pass
 
 
-def parse(tokens: list[str], p: int = 0) -> "Object":
+def parse(tokens: list[str], p: float = 0) -> "Object":
     if not tokens:
         raise ParseError("unexpected end of input")
-    token = tokens[0]
+    token = tokens.pop(0)
+    l: Object
     if token.isnumeric():
-        return Int(int(token))
+        l = Int(int(token))
     if token.isidentifier():
-        return Var(token)
+        l = Var(token)
     sha_prefix = "$sha1'"
     if token.startswith(sha_prefix) and token[len(sha_prefix) :].isidentifier():
-        return Var(token)
-    raise NotImplementedError(f"unexpected token {tokens[0]}")
+        l = Var(token)
+    while True:
+        if not tokens:
+            break
+        op = tokens[0]
+        if op == ")" or op == "]":
+            break
+        if op not in PS:
+            op = ""
+        prec = PS[op]
+        pl, pr = prec.pl, prec.pr
+        if pl < p:
+            break
+        if op != "":
+            tokens.pop(0)
+        l = Binop(BinopKind.from_str(op), l, parse(tokens, pr))
+    return l
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -56,6 +109,16 @@ class BinopKind(enum.Enum):
     SUB = auto()
     MUL = auto()
     DIV = auto()
+
+    @classmethod
+    def from_str(cls, x: str) -> "BinopKind":
+        return {
+            "+": cls.ADD,
+            "..": cls.CONCAT,
+            "-": cls.SUB,
+            "*": cls.MUL,
+            "/": cls.DIV,
+        }[x]
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -148,6 +211,15 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_sha_var_returns_var(self) -> None:
         self.assertEqual(parse(["$sha1'abc"]), Var("$sha1'abc"))
+
+    def test_parse_binary_add_returns_binop(self) -> None:
+        self.assertEqual(parse(["1", "+", "2"]), Binop(BinopKind.ADD, Int(1), Int(2)))
+
+    def test_parse_binary_add_right_returns_binop(self) -> None:
+        self.assertEqual(
+            parse(["1", "+", "2", "+", "3"]),
+            Binop(BinopKind.ADD, Int(1), Binop(BinopKind.ADD, Int(2), Int(3))),
+        )
 
 
 class EvalTests(unittest.TestCase):

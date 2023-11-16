@@ -1,6 +1,6 @@
 import enum
-import unittest
 import re
+import unittest
 from dataclasses import dataclass
 from enum import auto
 from typing import Mapping

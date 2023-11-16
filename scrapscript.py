@@ -53,6 +53,7 @@ PS = {
     ">*": rp(10),
     "++": rp(10),
     ">+": rp(10),
+    "=": rp(4),
     ",": xp(1),
     "]": xp(1),
 }
@@ -101,7 +102,10 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             break
         if op != "":
             tokens.pop(0)
-        l = Binop(BinopKind.from_str(op), l, parse(tokens, pr))
+        if op == "=":
+            l = Assign(l, parse(tokens, pr))
+        else:
+            l = Binop(BinopKind.from_str(op), l, parse(tokens, pr))
     return l
 
 
@@ -153,6 +157,12 @@ class Binop(Object):
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class List(Object):
     items: list[Object]
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Assign(Object):
+    name: Object
+    value: Object
 
 
 def eval_int(env: dict[str, Object], exp: Object) -> int:
@@ -288,6 +298,12 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(
             parse(["[", "1", ",", "2", "]"]),
             List([Int(1), Int(2)]),
+        )
+
+    def test_parse_assign(self) -> None:
+        self.assertEqual(
+            parse(["a", "=", "1"]),
+            Assign(Var("a"), Int(1)),
         )
 
 

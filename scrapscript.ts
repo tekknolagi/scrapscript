@@ -96,7 +96,7 @@ const ps = {
 }
 function parse(ts, p = 0) {
   const x = ts.shift();
-  if (x === undefined) throw new Error();
+  if (x === undefined) throw new Error("unexpected end of input");
   let l; if (false) {}
   else if (x === "|") { 
     const expr = parse(ts, 5); // TODO: make this work for larger arities

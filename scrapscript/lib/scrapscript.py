@@ -300,6 +300,19 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(ctx.exception.args[0], "expected String, got Int")
 
 
+class EndToEndTests(unittest.TestCase):
+    def _run(self, text: str, env: dict = None) -> Object:
+        tokens = tokenize(text)
+        ast = parse(tokens)
+        return eval(env or {}, ast)
+
+    def test_int_returns_int(self) -> None:
+        self.assertEqual(self._run("1"), Int(1))
+
+    def test_int_add_returns_int(self) -> None:
+        self.assertEqual(self._run("1 + 2"), Int(3))
+
+
 @click.group()
 def main() -> None:
     """Main CLI entrypoint."""
@@ -310,14 +323,16 @@ def main() -> None:
 def eval_command(program_file: click.File) -> None:
     program = program_file.read()  # type: ignore [attr-defined]
     tokens = tokenize(program)
-    parse(tokens)
+    ast = parse(tokens)
+    print(ast)
 
 
 @main.command(name="apply")
 @click.argument("program", type=str, required=True)
 def eval_apply_command(program: str) -> None:
     tokens = tokenize(program)
-    parse(tokens)
+    ast = parse(tokens)
+    print(ast)
 
 
 @main.command(name="test")

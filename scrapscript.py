@@ -103,6 +103,10 @@ class EvalTests(unittest.TestCase):
         exp = Binop(BinopKind.ADD, Int(1), Int(2))
         self.assertEqual(eval({}, exp), Int(3))
 
+    def test_eval_with_nested_binop(self) -> None:
+        exp = Binop(BinopKind.ADD, Binop(BinopKind.ADD, Int(1), Int(2)), Int(3))
+        self.assertEqual(eval({}, exp), Int(6))
+
     def test_eval_with_binop_add_with_int_string_raises_type_error(self) -> None:
         exp = Binop(BinopKind.ADD, Int(1), String("hello"))
         with self.assertRaises(TypeError) as ctx:

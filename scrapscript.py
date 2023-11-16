@@ -6,7 +6,7 @@ from enum import auto
 from typing import Mapping
 
 
-def tokenize(x):
+def tokenize(x: str) -> list[str]:
     # TODO: Make this a proper tokenizer that handles strings with blankspace.
     stripped = re.sub(r" *--[^\n]*", "", x).strip()
     return re.split(r"[\s\n]+", stripped)
@@ -16,7 +16,7 @@ class ParseError(Exception):
     pass
 
 
-def parse(tokens, p=0):
+def parse(tokens: list[str], p: int = 0) -> "Object":
     if not tokens:
         raise ParseError("unexpected end of input")
     token = tokens[0]
@@ -120,7 +120,7 @@ class TokenizerTests(unittest.TestCase):
     def test_ignore_line_comment(self) -> None:
         self.assertEqual(tokenize("-- 1\n2"), ["2"])
 
-    def test_tokenize_string(self):
+    def test_tokenize_string(self) -> None:
         self.assertEqual(tokenize('"hello"'), ['"hello"'])
 
 

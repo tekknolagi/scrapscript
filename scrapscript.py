@@ -25,22 +25,22 @@ def parse(tokens, p=0):
     raise NotImplementedError(f"unexpected token {tokens[0]}")
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True, repr=False)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Object:
     pass
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True, repr=False)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Int(Object):
     value: int
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True, repr=False)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class String(Object):
     value: str
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True, repr=False)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Var(Object):
     name: str
 
@@ -53,7 +53,7 @@ class BinopKind(enum.Enum):
     DIV = auto()
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True, repr=False)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Binop(Object):
     op: BinopKind
     left: Object

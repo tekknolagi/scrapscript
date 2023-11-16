@@ -309,14 +309,16 @@ def main() -> None:
 def eval_command(program_file: click.File) -> None:
     program = program_file.read()  # type: ignore [attr-defined]
     tokens = tokenize(program)
-    parse(tokens)
+    ast = parse(tokens)
+    print(ast)
 
 
 @main.command(name="apply")
 @click.argument("program", type=str, required=True)
 def eval_apply_command(program: str) -> None:
     tokens = tokenize(program)
-    parse(tokens)
+    ast = parse(tokens)
+    print(ast)
 
 
 @main.command(name="test")

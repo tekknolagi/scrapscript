@@ -4,6 +4,7 @@
 
 ```bash
 poetry install
+poetry shell
 ```
 
 ## Usage

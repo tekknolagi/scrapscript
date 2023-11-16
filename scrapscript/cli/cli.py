@@ -4,7 +4,7 @@ import sys
 import click
 from click import File
 
-from scrapscript.lib.parser import parse
+from scrapscript.lib.scrapscript import parse, tokenize
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,9 @@ def eval_command(
     program_file: File,
 ) -> None:
     program = program_file.read()  # type: ignore [attr-defined]
-    parse(program)
+    tokens = tokenize(program)
+    print(tokens)
+    parse(tokens)
 
 
 @main.command(name="apply")
@@ -28,4 +30,6 @@ def eval_command(
 def apply_command(
     program: str,
 ) -> None:
-    parse(program)
+    tokens = tokenize(program)
+    print(tokens)
+    parse(tokens)

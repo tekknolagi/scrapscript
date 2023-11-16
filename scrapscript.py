@@ -22,6 +22,8 @@ def parse(tokens, p=0):
     token = tokens[0]
     if token.isnumeric():
         return Int(int(token))
+    if token.isidentifier():
+        return Var(token)
     raise NotImplementedError(f"unexpected token {tokens[0]}")
 
 
@@ -133,6 +135,13 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_digits_returns_int(self) -> None:
         self.assertEqual(parse(["123"]), Int(123))
+
+    @unittest.skip("TODO(max): negatives")
+    def test_parse_negative_int_returns_int(self) -> None:
+        self.assertEqual(parse(["-123"]), Int(123))
+
+    def test_parse_var_returns_var(self) -> None:
+        self.assertEqual(parse(["abc_123"]), Var("abc_123"))
 
 
 class EvalTests(unittest.TestCase):

@@ -53,6 +53,8 @@ PS = {
     ">*": rp(10),
     "++": rp(10),
     ">+": rp(10),
+    ",": xp(1),
+    "]": xp(1),
 }
 
 
@@ -74,6 +76,15 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
         l = Var(token)
     elif token.startswith('"') and token.endswith('"'):
         l = String(token[1:-1])
+    elif token == "[":
+        l = List([])
+        token = tokens[0]
+        if token == "]":
+            tokens.pop(0)
+        else:
+            l.items.append(parse(tokens, 2))
+            while tokens.pop(0) != "]":
+                l.items.append(parse(tokens, 2))
     else:
         raise ParseError(f"unexpected token '{token}'")
     while True:
@@ -137,6 +148,11 @@ class Binop(Object):
     op: BinopKind
     left: Object
     right: Object
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class List(Object):
+    items: list[Object]
 
 
 def eval_int(env: dict[str, Object], exp: Object) -> int:
@@ -204,6 +220,12 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_string_with_spaces(self) -> None:
         self.assertEqual(tokenize('"hello world"'), ['"hello world"'])
 
+    def test_tokenize_empty_list(self) -> None:
+        self.assertEqual(tokenize("[ ] "), ["[", "]"])
+
+    def test_tokenize_list_with_items(self) -> None:
+        self.assertEqual(tokenize("[ 1 , 2 ] "), ["[", "1", ",", "2", "]"])
+
 
 class ParserTests(unittest.TestCase):
     def test_parse_with_empty_tokens_raises_parse_error(self) -> None:
@@ -252,6 +274,18 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(
             parse(['"abc"', "++", '"def"']),
             Binop(BinopKind.CONCAT, String("abc"), String("def")),
+        )
+
+    def test_parse_empty_list(self) -> None:
+        self.assertEqual(
+            parse(["[", "]"]),
+            List([]),
+        )
+
+    def test_parse_list_of_ints_returns_list(self) -> None:
+        self.assertEqual(
+            parse(["[", "1", ",", "2", "]"]),
+            List([Int(1), Int(2)]),
         )
 
 

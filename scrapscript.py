@@ -317,7 +317,7 @@ class EvalTests(unittest.TestCase):
 
 
 class EndToEndTests(unittest.TestCase):
-    def _run(self, text: str, env: dict = None) -> Object:
+    def _run(self, text: str, env: dict[str, Object] = None) -> Object:
         tokens = tokenize(text)
         ast = parse(tokens)
         return eval(env or {}, ast)

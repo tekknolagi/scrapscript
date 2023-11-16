@@ -191,6 +191,8 @@ def eval(env: Mapping[str, Object], exp: Object) -> Object:
         if handler is None:
             raise NotImplementedError(f"no handler for {exp.op}")
         return handler(env, exp.left, exp.right)
+    if isinstance(exp, List):
+        return List([eval(env, item) for item in exp.items])
     raise NotImplementedError(f"eval not implemented for {exp}")
 
 
@@ -351,6 +353,15 @@ class EvalTests(unittest.TestCase):
             eval({}, exp)
         self.assertEqual(ctx.exception.args[0], "expected String, got Int")
 
+    def test_eval_with_list_evaluates_elements(self) -> None:
+        exp = List(
+            [
+                Binop(BinopKind.ADD, Int(1), Int(2)),
+                Binop(BinopKind.ADD, Int(3), Int(4)),
+            ]
+        )
+        self.assertEqual(eval({}, exp), List([Int(3), Int(7)]))
+
 
 class EndToEndTests(unittest.TestCase):
     def _run(self, text: str, env: dict[str, Object] = None) -> Object:
@@ -366,6 +377,18 @@ class EndToEndTests(unittest.TestCase):
 
     def test_string_concat_returns_string(self) -> None:
         self.assertEqual(self._run('"abc" ++ "def"'), String("abcdef"))
+
+    def test_empty_list(self) -> None:
+        self.assertEqual(self._run("[ ]"), List([]))
+
+    def test_list_of_ints(self) -> None:
+        self.assertEqual(self._run("[ 1 , 2 ]"), List([Int(1), Int(2)]))
+
+    def test_list_of_exprs(self) -> None:
+        self.assertEqual(
+            self._run("[ 1 + 2 , 3 + 4 ]"),
+            List([Int(3), Int(7)]),
+        )
 
 
 @click.group()

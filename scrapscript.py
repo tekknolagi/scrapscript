@@ -24,6 +24,9 @@ def parse(tokens: list[str], p: int = 0) -> "Object":
         return Int(int(token))
     if token.isidentifier():
         return Var(token)
+    sha_prefix = "$sha1'"
+    if token.startswith(sha_prefix) and token[len(sha_prefix) :].isidentifier():
+        return Var(token)
     raise NotImplementedError(f"unexpected token {tokens[0]}")
 
 
@@ -142,6 +145,9 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_var_returns_var(self) -> None:
         self.assertEqual(parse(["abc_123"]), Var("abc_123"))
+
+    def test_parse_sha_var_returns_var(self) -> None:
+        self.assertEqual(parse(["$sha1'abc"]), Var("$sha1'abc"))
 
 
 class EvalTests(unittest.TestCase):

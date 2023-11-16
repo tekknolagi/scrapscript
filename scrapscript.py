@@ -2,6 +2,7 @@ import enum
 import unittest
 from dataclasses import dataclass
 from enum import auto
+from typing import Mapping
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True, repr=False)
@@ -62,7 +63,7 @@ BINOP_HANDLERS = {
 }
 
 
-def eval(env: dict[str, Object], exp: Object) -> Object:
+def eval(env: Mapping[str, Object], exp: Object) -> Object:
     if isinstance(exp, (Int, String)):
         return exp
     if isinstance(exp, Var):

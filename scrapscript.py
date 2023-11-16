@@ -65,15 +65,17 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
         raise ParseError("unexpected end of input")
     token = tokens.pop(0)
     l: Object
+    sha_prefix = "$sha1'"
     if token.isnumeric():
         l = Int(int(token))
-    if token.isidentifier():
+    elif token.isidentifier():
         l = Var(token)
-    sha_prefix = "$sha1'"
-    if token.startswith(sha_prefix) and token[len(sha_prefix) :].isidentifier():
+    elif token.startswith(sha_prefix) and token[len(sha_prefix) :].isidentifier():
         l = Var(token)
-    if token.startswith('"') and token.endswith('"'):
+    elif token.startswith('"') and token.endswith('"'):
         l = String(token[1:-1])
+    else:
+        raise ParseError(f"unexpected token '{token}'")
     while True:
         if not tokens:
             break

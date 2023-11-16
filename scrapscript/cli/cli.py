@@ -25,7 +25,7 @@ def eval_command(
 
 @main.command(name="apply")
 @click.argument("program", type=str, required=True)
-def eval_apply_command(
+def apply_command(
     program: str,
 ) -> None:
     parse(program)

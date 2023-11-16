@@ -2,20 +2,17 @@ import unittest
 from dataclasses import dataclass
 
 
-obj = dataclass(eq=True, frozen=True, unsafe_hash=True, repr=False)
-
-
-@obj
+@dataclass(eq=True, frozen=True, unsafe_hash=True, repr=False)
 class Object:
     pass
 
 
-@obj
+@dataclass(eq=True, frozen=True, unsafe_hash=True, repr=False)
 class Int(Object):
     value: int
 
 
-@obj
+@dataclass(eq=True, frozen=True, unsafe_hash=True, repr=False)
 class Var(Object):
     name: str
 

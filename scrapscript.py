@@ -42,12 +42,17 @@ def xp(n: float) -> Prec:
 
 PS = {
     "::": lp(2000),
+    "": rp(1000),
     "*": lp(12),
     "/": lp(12),
     "//": lp(12),
     "%": lp(12),
     "+": lp(11),
     "-": lp(11),
+    "**": rp(10),
+    ">*": rp(10),
+    "++": rp(10),
+    ">+": rp(10),
 }
 
 
@@ -67,6 +72,8 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
     sha_prefix = "$sha1'"
     if token.startswith(sha_prefix) and token[len(sha_prefix) :].isidentifier():
         l = Var(token)
+    if token.startswith('"') and token.endswith('"'):
+        l = String(token[1:-1])
     while True:
         if not tokens:
             break
@@ -116,7 +123,7 @@ class BinopKind(enum.Enum):
     def from_str(cls, x: str) -> "BinopKind":
         return {
             "+": cls.ADD,
-            "..": cls.CONCAT,
+            "++": cls.CONCAT,
             "-": cls.SUB,
             "*": cls.MUL,
             "/": cls.DIV,
@@ -191,6 +198,10 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_string(self) -> None:
         self.assertEqual(tokenize('"hello"'), ['"hello"'])
 
+    @unittest.skip("TODO(max): Support spaces in strings")
+    def test_tokenize_string_with_spaces(self) -> None:
+        self.assertEqual(tokenize('"hello world"'), ['"hello world"'])
+
 
 class ParserTests(unittest.TestCase):
     def test_parse_with_empty_tokens_raises_parse_error(self) -> None:
@@ -233,6 +244,12 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(
             parse(["1", "*", "2", "+", "3"]),
             Binop(BinopKind.ADD, Binop(BinopKind.MUL, Int(1), Int(2)), Int(3)),
+        )
+
+    def test_parse_binary_concat_returns_binop(self) -> None:
+        self.assertEqual(
+            parse(['"abc"', "++", '"def"']),
+            Binop(BinopKind.CONCAT, String("abc"), String("def")),
         )
 
 
@@ -310,6 +327,9 @@ class EndToEndTests(unittest.TestCase):
 
     def test_int_add_returns_int(self) -> None:
         self.assertEqual(self._run("1 + 2"), Int(3))
+
+    def test_string_concat_returns_string(self) -> None:
+        self.assertEqual(self._run('"abc" ++ "def"'), String("abcdef"))
 
 
 @click.group()

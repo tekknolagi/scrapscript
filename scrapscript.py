@@ -1,5 +1,7 @@
+import click
 import enum
 import re
+import sys
 import unittest
 from dataclasses import dataclass
 from enum import auto
@@ -297,5 +299,30 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(ctx.exception.args[0], "expected String, got Int")
 
 
+@click.group()
+def main() -> None:
+    """Main CLI entrypoint."""
+
+
+@main.command(name="eval")
+@click.argument("program-file", type=click.File(), default=sys.stdin)
+def eval_command(program_file: click.File) -> None:
+    program = program_file.read()  # type: ignore [attr-defined]
+    tokens = tokenize(program)
+    parse(tokens)
+
+
+@main.command(name="apply")
+@click.argument("program", type=str, required=True)
+def eval_apply_command(program: str) -> None:
+    tokens = tokenize(program)
+    parse(tokens)
+
+
+@main.command(name="test")
+def eval_test_command() -> None:
+    unittest.main(argv=[__file__])
+
+
 if __name__ == "__main__":
-    unittest.main()
+    main()

@@ -20,7 +20,7 @@ def parse(tokens, p=0):
     if not tokens:
         raise ParseError("unexpected end of input")
     token = tokens[0]
-    if all(c.isdigit() for c in token):
+    if token.isnumeric():
         return Int(int(token))
     raise NotImplementedError(f"unexpected token {tokens[0]}")
 

@@ -403,6 +403,7 @@ def eval_command(program_file: click.File) -> None:
     tokens = tokenize(program)
     ast = parse(tokens)
     print(ast)
+    print(eval({}, ast))
 
 
 @main.command(name="apply")
@@ -411,6 +412,7 @@ def eval_apply_command(program: str) -> None:
     tokens = tokenize(program)
     ast = parse(tokens)
     print(ast)
+    print(eval({}, ast))
 
 
 @main.command(name="test")

@@ -221,6 +221,18 @@ class ParserTests(unittest.TestCase):
             Binop(BinopKind.ADD, Int(1), Binop(BinopKind.ADD, Int(2), Int(3))),
         )
 
+    def test_mul_binds_tighter_than_add_right(self) -> None:
+        self.assertEqual(
+            parse(["1", "+", "2", "*", "3"]),
+            Binop(BinopKind.ADD, Int(1), Binop(BinopKind.MUL, Int(2), Int(3))),
+        )
+
+    def test_mul_binds_tighter_than_add_left(self) -> None:
+        self.assertEqual(
+            parse(["1", "*", "2", "+", "3"]),
+            Binop(BinopKind.ADD, Binop(BinopKind.MUL, Int(1), Int(2)), Int(3)),
+        )
+
 
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:

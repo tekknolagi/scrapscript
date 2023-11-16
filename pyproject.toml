@@ -1,5 +1,8 @@
 [tool.poetry]
-authors = []
+authors = [
+    "Max Bernstein <maxmaxmax>",
+    "Chris Gregory <christopher.b.gregory@gmail.com>",
+]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
@@ -10,8 +13,8 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
 ]
-description = ""
-keywords = []
+description = "Scrapscript interpreter"
+keywords = ["scrapscript", "interpreter"]
 license = "Apache Software License"
 name = "scrapscript"
 readme = "README.md"

@@ -1,4 +1,4 @@
-# scrapscript interpreter
+# Scrapscript Interpreter
 
 ## Install
 

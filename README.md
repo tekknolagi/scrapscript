@@ -10,9 +10,10 @@ poetry shell
 ## Usage
 
 ```bash
-scrap apply "1 + 4"
-
+# Evaluate a scrapscript file
 scrap eval < examples/0_home/a_example.scrap
 
+# Evaluate a scrapscript program literal
 echo "1 + 2" | scrap eval
+scrap apply "1 + 4"
 ```

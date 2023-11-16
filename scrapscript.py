@@ -1,8 +1,15 @@
 import enum
 import unittest
+import re
 from dataclasses import dataclass
 from enum import auto
 from typing import Mapping
+
+
+def tokenize(x):
+    # TODO: Make this a proper tokenizer that handles strings with blankspace.
+    stripped = re.sub(r" *--[^\n]*", "", x).strip()
+    return re.split(r"[\s\n]+", stripped)
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True, repr=False)
@@ -77,6 +84,29 @@ def eval(env: Mapping[str, Object], exp: Object) -> Object:
             raise NotImplementedError(f"no handler for {exp.op}")
         return handler(env, exp.left, exp.right)
     raise NotImplementedError(f"eval not implemented for {exp}")
+
+
+class TokenizerTests(unittest.TestCase):
+    def test_tokenize_digit(self) -> None:
+        self.assertEqual(tokenize("1"), ["1"])
+
+    def test_tokenize_multiple_digits(self) -> None:
+        self.assertEqual(tokenize("123"), ["123"])
+
+    def test_tokenize_negative_int(self) -> None:
+        self.assertEqual(tokenize("-123"), ["-123"])
+
+    def test_tokenize_binop(self) -> None:
+        self.assertEqual(tokenize("1 + 2"), ["1", "+", "2"])
+
+    def test_ignore_whitespace(self) -> None:
+        self.assertEqual(tokenize("1\n+\t2"), ["1", "+", "2"])
+
+    def test_ignore_line_comment(self) -> None:
+        self.assertEqual(tokenize("-- 1\n2"), ["2"])
+
+    def test_tokenize_string(self):
+        self.assertEqual(tokenize('"hello"'), ['"hello"'])
 
 
 class EvalTests(unittest.TestCase):

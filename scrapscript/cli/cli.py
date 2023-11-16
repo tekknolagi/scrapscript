@@ -22,7 +22,8 @@ def eval_command(
     program = program_file.read()  # type: ignore [attr-defined]
     tokens = tokenize(program)
     print(tokens)
-    parse(tokens)
+    ast = parse(tokens)
+    print(ast)
 
 
 @main.command(name="apply")
@@ -32,4 +33,5 @@ def apply_command(
 ) -> None:
     tokens = tokenize(program)
     print(tokens)
-    parse(tokens)
+    ast = parse(tokens)
+    print(ast)

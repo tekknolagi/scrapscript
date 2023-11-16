@@ -12,6 +12,19 @@ def tokenize(x):
     return re.split(r"[\s\n]+", stripped)
 
 
+class ParseError(Exception):
+    pass
+
+
+def parse(tokens, p=0):
+    if not tokens:
+        raise ParseError("unexpected end of input")
+    token = tokens[0]
+    if all(c.isdigit() for c in token):
+        return Int(int(token))
+    raise NotImplementedError(f"unexpected token {tokens[0]}")
+
+
 @dataclass(eq=True, frozen=True, unsafe_hash=True, repr=False)
 class Object:
     pass
@@ -107,6 +120,19 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_string(self):
         self.assertEqual(tokenize('"hello"'), ['"hello"'])
+
+
+class ParserTests(unittest.TestCase):
+    def test_parse_with_empty_tokens_raises_parse_error(self) -> None:
+        with self.assertRaises(ParseError) as ctx:
+            parse([])
+        self.assertEqual(ctx.exception.args[0], "unexpected end of input")
+
+    def test_parse_digit_returns_int(self) -> None:
+        self.assertEqual(parse(["1"]), Int(1))
+
+    def test_parse_digits_returns_int(self) -> None:
+        self.assertEqual(parse(["123"]), Int(123))
 
 
 class EvalTests(unittest.TestCase):

@@ -17,3 +17,9 @@ scrap eval < examples/0_home/a_example.scrap
 echo "1 + 2" | scrap eval
 scrap apply "1 + 4"
 ```
+
+## Run Tests
+
+```bash
+pytest tests
+```

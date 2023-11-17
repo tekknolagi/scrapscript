@@ -1,11 +1,12 @@
-import click
 import enum
 import re
 import sys
 import unittest
 from dataclasses import dataclass
 from enum import auto
-from typing import Mapping
+from typing import Callable, Mapping, Optional
+
+import click
 
 
 def tokenize(x: str) -> list[str]:
@@ -129,6 +130,9 @@ class Var(Object):
     name: str
 
 
+Env = Mapping[str, Object]
+
+
 class BinopKind(enum.Enum):
     ADD = auto()
     CONCAT = auto()
@@ -165,21 +169,21 @@ class Assign(Object):
     value: Object
 
 
-def eval_int(env: dict[str, Object], exp: Object) -> int:
+def eval_int(env: Env, exp: Object) -> int:
     result = eval(env, exp)
     if not isinstance(result, Int):
         raise TypeError(f"expected Int, got {type(result).__name__}")
     return result.value
 
 
-def eval_str(env: dict[str, Object], exp: Object) -> str:
+def eval_str(env: Env, exp: Object) -> str:
     result = eval(env, exp)
     if not isinstance(result, String):
         raise TypeError(f"expected String, got {type(result).__name__}")
     return result.value
 
 
-BINOP_HANDLERS = {
+BINOP_HANDLERS: dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.ADD: lambda env, x, y: Int(eval_int(env, x) + eval_int(env, y)),
     BinopKind.CONCAT: lambda env, x, y: String(eval_str(env, x) + eval_str(env, y)),
     BinopKind.SUB: lambda env, x, y: Int(eval_int(env, x) - eval_int(env, y)),
@@ -188,7 +192,8 @@ BINOP_HANDLERS = {
 }
 
 
-def eval(env: Mapping[str, Object], exp: Object) -> Object:
+# pylint: disable=redefined-builtin
+def eval(env: Env, exp: Object) -> Object:
     if isinstance(exp, (Int, String)):
         return exp
     if isinstance(exp, Var):
@@ -380,7 +385,7 @@ class EvalTests(unittest.TestCase):
 
 
 class EndToEndTests(unittest.TestCase):
-    def _run(self, text: str, env: dict[str, Object] = None) -> Object:
+    def _run(self, text: str, env: Optional[Env] = None) -> Object:
         tokens = tokenize(text)
         ast = parse(tokens)
         return eval(env or {}, ast)

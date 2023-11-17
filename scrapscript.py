@@ -348,7 +348,7 @@ BINOP_HANDLERS: dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
 
 # pylint: disable=redefined-builtin
 def eval(env: Env, exp: Object) -> Object:
-    if isinstance(exp, (Int, String, Function)):
+    if isinstance(exp, (Int, Bool, String, Function)):
         return exp
     if isinstance(exp, Var):
         value = env.get(exp.name)
@@ -583,6 +583,12 @@ class EvalTests(unittest.TestCase):
     def test_eval_str_returns_str(self) -> None:
         exp = String("xyz")
         self.assertEqual(eval({}, exp), String("xyz"))
+
+    def test_eval_true_returns_true(self) -> None:
+        self.assertEqual(eval({}, Bool(True)), Bool(True))
+
+    def test_eval_false_returns_false(self) -> None:
+        self.assertEqual(eval({}, Bool(False)), Bool(False))
 
     def test_eval_with_non_existent_var_raises_name_error(self) -> None:
         exp = Var("no")

@@ -98,6 +98,7 @@ PS = {
     ">*": rp(10),
     "++": rp(10),
     ">+": rp(10),
+    "->": lp(5),
     "=": rp(4),
     ",": xp(1),
     "]": xp(1),
@@ -149,6 +150,8 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             tokens.pop(0)
         if op == "=":
             l = Assign(l, parse(tokens, pr))
+        elif op == "->":
+            l = Function(l, parse(tokens, pr))
         else:
             l = Binop(BinopKind.from_str(op), l, parse(tokens, pr))
     return l
@@ -211,6 +214,12 @@ class List(Object):
 class Assign(Object):
     name: Object
     value: Object
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Function(Object):
+    arg: Object
+    body: Object
 
 
 def eval_int(env: Env, exp: Object) -> int:
@@ -286,6 +295,9 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_list_with_items(self) -> None:
         self.assertEqual(tokenize("[ 1 , 2 ] "), ["[", "1", ",", "2", "]"])
 
+    def test_tokenize_function(self) -> None:
+        self.assertEqual(tokenize("a -> b -> a + b"), ["a", "->", "b", "->", "a", "+", "b"])
+
 
 class ParserTests(unittest.TestCase):
     def test_parse_with_empty_tokens_raises_parse_error(self) -> None:
@@ -352,6 +364,18 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(
             parse(["a", "=", "1"]),
             Assign(Var("a"), Int(1)),
+        )
+
+    def test_parse_function_one_arg_returns_function(self) -> None:
+        self.assertEqual(
+            parse(["a", "->", "a", "+", "1"]),
+            Function(Var("a"), Binop(BinopKind.ADD, Var("a"), Int(1))),
+        )
+
+    def test_parse_function_two_args_returns_functions(self) -> None:
+        self.assertEqual(
+            parse(["a", "->", "b", "->", "a", "+", "b"]),
+            Function(Var("a"), Function(Var("b"), Binop(BinopKind.ADD, Var("a"), Var("b")))),
         )
 
 

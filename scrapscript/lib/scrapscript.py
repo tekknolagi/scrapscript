@@ -1,14 +1,58 @@
+#!/usr/bin/env python3.10
 import enum
-import re
 from dataclasses import dataclass
 from enum import auto
 from typing import Callable, Mapping
 
 
+class Lexer:
+    def __init__(self, text: str):
+        self.text: str = text
+        self.idx: int = 0
+
+    def has_input(self) -> bool:
+        return self.idx < len(self.text)
+
+    def read_char(self) -> str:
+        c = self.peek_char()
+        self.idx += 1
+        return c
+
+    def peek_char(self) -> str:
+        if not self.has_input():
+            raise ParseError("unexpected EOF while reading token")
+        return self.text[self.idx]
+
+    def read_one(self) -> str:
+        while (c := self.read_char()).isspace():
+            pass
+        if c == '"':
+            return self.read_string()
+        if c == "-" and self.peek_char() == "-":
+            self.read_comment()
+            return self.read_one()
+        tok = c
+        while self.has_input() and not (c := self.read_char()).isspace():
+            tok += c
+        return tok
+
+    def read_string(self) -> str:
+        buf = ""
+        while self.has_input() and (c := self.read_char()) != '"':
+            buf += c
+        return '"' + buf + '"'
+
+    def read_comment(self) -> None:
+        while self.has_input() and self.read_char() != "\n":
+            pass
+
+
 def tokenize(x: str) -> list[str]:
-    # TODO: Make this a proper tokenizer that handles strings with blankspace.
-    stripped = re.sub(r" *--[^\n]*", "", x).strip()
-    return re.split(r"[\s\n]+", stripped)
+    lexer = Lexer(x)
+    tokens = []
+    while lexer.has_input():
+        tokens.append(lexer.read_one())
+    return tokens
 
 
 @dataclass(frozen=True)

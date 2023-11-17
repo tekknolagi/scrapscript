@@ -1,6 +1,5 @@
 #!/usr/bin/env python3.10
 import enum
-import re
 import sys
 import unittest
 from dataclasses import dataclass
@@ -48,7 +47,7 @@ class Lexer:
         return '"' + buf + '"'
 
     def read_comment(self) -> None:
-        while self.has_input() and (c := self.read_char()) != "\n":
+        while self.has_input() and self.read_char() != "\n":
             pass
 
 

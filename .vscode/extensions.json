@@ -1,10 +1,8 @@
 {
   "recommendations": [
     "be5invis.toml",
+    "charliermarsh.ruff",
     "esbenp.prettier-vscode",
-    "ms-python.black-formatter",
-    "ms-python.flake8",
-    "ms-python.isort",
     "ms-python.mypy-type-checker",
     "ms-python.pylint",
     "ms-python.python",

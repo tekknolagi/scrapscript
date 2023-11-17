@@ -349,11 +349,14 @@ class TokenizerTests(unittest.TestCase):
         with self.assertRaisesRegex(ParseError, "unexpected EOF while reading string"):
             tokenize('"hello')
 
+    @unittest.skip("TODO: Handle trailing whitespace")
     def test_tokenize_with_trailing_whitespace(self) -> None:
+        self.assertEqual(tokenize("- "), ["-"])
+        self.assertEqual(tokenize("-- "), [])
+        self.assertEqual(tokenize("+ "), ["+"])
+        self.assertEqual(tokenize("123 "), ["123"])
         self.assertEqual(tokenize("abc "), ["abc"])
-
-    @unittest.skip("TODO: Handle trailing whitespace after right bracket")
-    def test_tokenize_with_trailing_whitespace_after_operator(self) -> None:
+        self.assertEqual(tokenize("[ "), ["["])
         self.assertEqual(tokenize("] "), ["]"])
 
     def test_tokenize_empty_list(self) -> None:

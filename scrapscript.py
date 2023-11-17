@@ -27,9 +27,13 @@ class Lexer:
             raise ParseError("unexpected EOF while reading token")
         return self.text[self.idx]
 
-    def read_one(self) -> str:
-        while (c := self.read_char()).isspace():
-            pass
+    def read_one(self) -> Optional[str]:
+        while self.has_input():
+            c = self.read_char()
+            if not c.isspace():
+                break
+        else:
+            return None
         if c == '"':
             return self.read_string()
         if c == "-":
@@ -89,7 +93,11 @@ def tokenize(x: str) -> list[str]:
     lexer = Lexer(x)
     tokens = []
     while lexer.has_input():
-        tokens.append(lexer.read_one())
+        token = lexer.read_one()
+        if token is None:
+            # EOF
+            break
+        tokens.append(token)
     return tokens
 
 
@@ -349,7 +357,6 @@ class TokenizerTests(unittest.TestCase):
         with self.assertRaisesRegex(ParseError, "unexpected EOF while reading string"):
             tokenize('"hello')
 
-    @unittest.skip("TODO: Handle trailing whitespace")
     def test_tokenize_with_trailing_whitespace(self) -> None:
         self.assertEqual(tokenize("- "), ["-"])
         self.assertEqual(tokenize("-- "), [])

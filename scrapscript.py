@@ -140,6 +140,12 @@ PS = {
     "+": lp(11),
     "-": lp(11),
     "**": rp(10),
+    "==": np(9),
+    "/=": np(9),
+    "<": np(9),
+    ">": np(9),
+    "<=": np(9),
+    ">=": np(9),
     ">*": rp(10),
     "++": rp(10),
     ">+": rp(10),
@@ -238,6 +244,12 @@ class BinopKind(enum.Enum):
     SUB = auto()
     MUL = auto()
     DIV = auto()
+    EQUAL = auto()
+    NOT_EQUAL = auto()
+    LESS = auto()
+    GREATER = auto()
+    LESS_EQUAL = auto()
+    GREATER_EQUAL = auto()
 
     @classmethod
     def from_str(cls, x: str) -> "BinopKind":
@@ -247,6 +259,12 @@ class BinopKind(enum.Enum):
             "-": cls.SUB,
             "*": cls.MUL,
             "/": cls.DIV,
+            "==": cls.EQUAL,
+            "/=": cls.NOT_EQUAL,
+            "<": cls.LESS,
+            ">": cls.GREATER,
+            "<=": cls.LESS_EQUAL,
+            ">=": cls.GREATER_EQUAL,
         }[x]
 
 
@@ -332,8 +350,12 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_binop_no_spaces(self) -> None:
         self.assertEqual(tokenize("1+2"), ["1", "+", "2"])
 
-    def test_tokenize_binop_var_no_spaces(self) -> None:
-        self.assertEqual(tokenize("a+b"), ["a", "+", "b"])
+    def test_tokenize_binop_var(self) -> None:
+        ops = ["+", "-", "*", "/", "==", "/=", "<", ">", "<=", ">=", "++"]
+        for op in ops:
+            with self.subTest(op=op):
+                self.assertEqual(tokenize(f"a {op} b"), ["a", op, "b"])
+                self.assertEqual(tokenize(f"a{op}b"), ["a", op, "b"])
 
     def test_tokenize_var(self) -> None:
         self.assertEqual(tokenize("abc"), ["abc"])
@@ -451,6 +473,13 @@ class ParserTests(unittest.TestCase):
             parse(['"abc"', "++", '"def"']),
             Binop(BinopKind.CONCAT, String("abc"), String("def")),
         )
+
+    def test_parse_binary_op_returns_binop(self) -> None:
+        ops = ["+", "-", "*", "/", "==", "/=", "<", ">", "<=", ">=", "++"]
+        for op in ops:
+            with self.subTest(op=op):
+                kind = BinopKind.from_str(op)
+                self.assertEqual(parse(["a", op, "b"]), Binop(kind, Var("a"), Var("b")))
 
     def test_parse_empty_list(self) -> None:
         self.assertEqual(

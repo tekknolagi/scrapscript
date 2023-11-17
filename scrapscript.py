@@ -770,11 +770,11 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(self._run("a + 1 ? a == 1 . a = 1"), Int(2))
 
     def test_assert_with_falsey_cond_raises_assertion_error(self) -> None:
-        self.assertEqual(self._run("a + 1 ? a == 1 . a = 1"), Int(2))
-
-    def test_nested_assert(self) -> None:
         with self.assertRaisesRegex(AssertionError, "condition Binop"):
             self._run("a + 1 ? a == 2 . a = 1")
+
+    def test_nested_assert(self) -> None:
+        self.assertEqual(self._run("a + b ? a == 1 ? b == 2 . a = 1 . b = 2"), Int(3))
 
 
 @click.group()

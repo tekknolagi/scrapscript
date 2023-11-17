@@ -139,7 +139,7 @@ PS = {
 }
 
 
-OPER_CHARS = set("["+"".join(PS.keys()))
+OPER_CHARS = set("[" + "".join(PS.keys()))
 assert " " not in OPER_CHARS
 
 

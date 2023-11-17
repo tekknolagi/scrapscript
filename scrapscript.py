@@ -676,6 +676,18 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(eval(env, exp), Int(3))
         self.assertEqual(env, {})
 
+    def test_eval_nested_where(self) -> None:
+        exp = Where(
+            Where(
+                Binop(BinopKind.ADD, Var("a"), Var("b")),
+                Assign(Var("a"), Int(1)),
+            ),
+            Assign(Var("b"), Int(2)),
+        )
+        env: Env = {}
+        self.assertEqual(eval(env, exp), Int(3))
+        self.assertEqual(env, {})
+
 
 class EndToEndTests(unittest.TestCase):
     def _run(self, text: str, env: Optional[Env] = None) -> Object:
@@ -706,6 +718,9 @@ class EndToEndTests(unittest.TestCase):
 
     def test_where(self) -> None:
         self.assertEqual(self._run("a + 2 . a = 1"), Int(3))
+
+    def test_nested_where(self) -> None:
+        self.assertEqual(self._run("a + b . a = 1 . b = 2"), Int(3))
 
 
 @click.group()

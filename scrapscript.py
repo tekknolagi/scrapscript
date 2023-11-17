@@ -176,6 +176,8 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
     l: Object
     sha_prefix = "$sha1'"
     dollar_dollar_prefix = "$$"
+    # TODO(max): Tag tokens out of the lexer so we don't have to re-interpret
+    # them here.
     if token.isnumeric() or (token[0] == "-" and token[1:].isnumeric()):
         l = Int(int(token))
     elif token.isidentifier():

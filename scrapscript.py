@@ -305,6 +305,11 @@ class Apply(Object):
     arg: Object
 
 
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class EnvObject(Object):
+    env: Env
+
+
 def eval_int(env: Env, exp: Object) -> int:
     result = eval(env, exp)
     if not isinstance(result, Int):
@@ -346,6 +351,12 @@ def eval(env: Env, exp: Object) -> Object:
         return handler(env, exp.left, exp.right)
     if isinstance(exp, List):
         return List([eval(env, item) for item in exp.items])
+    if isinstance(exp, Assign):
+        # TODO(max): Rework this. There's something about matching that we need
+        # to figure out and implement.
+        assert isinstance(exp.name, Var)
+        value = eval(env, exp.value)
+        return EnvObject({**env, exp.name.name: value})
     raise NotImplementedError(f"eval not implemented for {exp}")
 
 
@@ -621,6 +632,18 @@ class EvalTests(unittest.TestCase):
     def test_eval_with_function_returns_function(self) -> None:
         exp = Function(Var("x"), Var("x"))
         self.assertEqual(eval({}, exp), exp)
+
+    def test_eval_assign_returns_env_object(self) -> None:
+        exp = Assign(Var("a"), Int(1))
+        env: Env = {}
+        result = eval(env, exp)
+        self.assertEqual(result, EnvObject({"a": Int(1)}))
+
+    def test_eval_assign_does_not_modify_env(self) -> None:
+        exp = Assign(Var("a"), Int(1))
+        env: Env = {}
+        eval(env, exp)
+        self.assertEqual(env, {})
 
 
 class EndToEndTests(unittest.TestCase):

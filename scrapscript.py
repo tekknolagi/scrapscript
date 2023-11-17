@@ -42,6 +42,8 @@ class Lexer:
             return self.read_number(c)
         if c in OPER_CHARS:
             return self.read_op(c)
+        if c.isidentifier():
+            return self.read_var(c)
         tok = c
         while self.has_input() and not (c := self.read_char()).isspace():
             tok += c
@@ -67,6 +69,13 @@ class Lexer:
     def read_op(self, first_char: str) -> str:
         buf = first_char
         while self.has_input() and (c := self.peek_char()) in OPER_CHARS:
+            self.read_char()
+            buf += c
+        return buf
+
+    def read_var(self, first_char: str) -> str:
+        buf = first_char
+        while self.has_input() and (c := self.peek_char()).isidentifier():
             self.read_char()
             buf += c
         return buf
@@ -308,6 +317,9 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_binop_no_spaces(self) -> None:
         self.assertEqual(tokenize("1+2"), ["1", "+", "2"])
 
+    def test_tokenize_binop_var_no_spaces(self) -> None:
+        self.assertEqual(tokenize("a+b"), ["a", "+", "b"])
+
     def test_tokenize_var(self) -> None:
         self.assertEqual(tokenize("abc"), ["abc"])
 
@@ -347,6 +359,9 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_function(self) -> None:
         self.assertEqual(tokenize("a -> b -> a + b"), ["a", "->", "b", "->", "a", "+", "b"])
+
+    def test_tokenize_function_with_no_spaces(self) -> None:
+        self.assertEqual(tokenize("a->b->a+b"), ["a", "->", "b", "->", "a", "+", "b"])
 
 
 class ParserTests(unittest.TestCase):

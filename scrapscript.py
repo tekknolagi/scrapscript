@@ -210,6 +210,8 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             l = Assign(l, parse(tokens, pr))
         elif op == "->":
             l = Function(l, parse(tokens, pr))
+        elif op == "":
+            l = Apply(l, parse(tokens, pr))
         else:
             l = Binop(BinopKind.from_str(op), l, parse(tokens, pr))
     return l
@@ -295,6 +297,12 @@ class Assign(Object):
 class Function(Object):
     arg: Object
     body: Object
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Apply(Object):
+    func: Object
+    arg: Object
 
 
 def eval_int(env: Env, exp: Object) -> int:
@@ -522,6 +530,12 @@ class ParserTests(unittest.TestCase):
             parse(["id", "=", "x", "->", "x"]),
             Assign(Var("id"), Function(Var("x"), Var("x"))),
         )
+
+    def test_parse_function_application_one_arg(self) -> None:
+        self.assertEqual(parse(["f", "a"]), Apply(Var("f"), Var("a")))
+
+    def test_parse_function_application_two_args(self) -> None:
+        self.assertEqual(parse(["f", "a", "b"]), Apply(Apply(Var("f"), Var("a")), Var("b")))
 
 
 class EvalTests(unittest.TestCase):

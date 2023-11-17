@@ -331,7 +331,7 @@ BINOP_HANDLERS: dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
 
 # pylint: disable=redefined-builtin
 def eval(env: Env, exp: Object) -> Object:
-    if isinstance(exp, (Int, String)):
+    if isinstance(exp, (Int, String, Function)):
         return exp
     if isinstance(exp, Var):
         value = env.get(exp.name)
@@ -616,6 +616,10 @@ class EvalTests(unittest.TestCase):
             ]
         )
         self.assertEqual(eval({}, exp), List([Int(3), Int(7)]))
+
+    def test_eval_with_function_returns_function(self) -> None:
+        exp = Function(Var("x"), Var("x"))
+        self.assertEqual(eval({}, exp), exp)
 
 
 class EndToEndTests(unittest.TestCase):

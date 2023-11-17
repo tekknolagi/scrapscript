@@ -20,6 +20,7 @@ def main() -> None:
 def eval_command(program_file: File) -> None:
     program = program_file.read()  # type: ignore [attr-defined]
     tokens = tokenize(program)
+    print(tokens)
     ast = parse(tokens)
     print(ast)
     print(eval({}, ast))
@@ -29,6 +30,7 @@ def eval_command(program_file: File) -> None:
 @click.argument("program", type=str, required=True)
 def eval_apply_command(program: str) -> None:
     tokens = tokenize(program)
+    print(tokens)
     ast = parse(tokens)
     print(ast)
     print(eval({}, ast))

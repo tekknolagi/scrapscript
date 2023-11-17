@@ -51,8 +51,12 @@ class Lexer:
 
     def read_string(self) -> str:
         buf = ""
-        while self.has_input() and (c := self.read_char()) != '"':
+        while self.has_input():
+            if (c := self.read_char()) == '"':
+                break
             buf += c
+        else:
+            raise ParseError("unexpected EOF while reading string")
         return '"' + buf + '"'
 
     def read_comment(self) -> None:
@@ -340,6 +344,10 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_string_with_spaces(self) -> None:
         self.assertEqual(tokenize('"hello world"'), ['"hello world"'])
+
+    def test_tokenize_string_missing_end_quote_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, "unexpected EOF while reading string"):
+            tokenize('"hello')
 
     def test_tokenize_with_trailing_whitespace(self) -> None:
         self.assertEqual(tokenize("abc "), ["abc"])

@@ -235,6 +235,11 @@ class Var(Object):
     name: str
 
 
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Bool(Object):
+    value: bool
+
+
 Env = Mapping[str, Object]
 
 
@@ -312,6 +317,7 @@ BINOP_HANDLERS: dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.SUB: lambda env, x, y: Int(eval_int(env, x) - eval_int(env, y)),
     BinopKind.MUL: lambda env, x, y: Int(eval_int(env, x) * eval_int(env, y)),
     BinopKind.DIV: lambda env, x, y: Int(eval_int(env, x) // eval_int(env, y)),
+    BinopKind.EQUAL: lambda env, x, y: Bool(eval(env, x) == eval(env, y)),
 }
 
 
@@ -557,6 +563,14 @@ class EvalTests(unittest.TestCase):
     def test_eval_with_binop_div(self) -> None:
         exp = Binop(BinopKind.DIV, Int(2), Int(3))
         self.assertEqual(eval({}, exp), Int(0))
+
+    def test_eval_with_binop_equal_with_equal_returns_true(self) -> None:
+        exp = Binop(BinopKind.EQUAL, Int(1), Int(1))
+        self.assertEqual(eval({}, exp), Bool(True))
+
+    def test_eval_with_binop_equal_with_inequal_returns_false(self) -> None:
+        exp = Binop(BinopKind.EQUAL, Int(1), Int(2))
+        self.assertEqual(eval({}, exp), Bool(False))
 
     def test_eval_with_binop_concat_with_strings_returns_string(self) -> None:
         exp = Binop(BinopKind.CONCAT, String("hello"), String(" world"))

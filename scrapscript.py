@@ -41,10 +41,10 @@ class Lexer:
         if c == '"':
             return self.read_string()
         if c == "-":
-            if self.peek_char() == "-":
+            if self.has_input() and self.peek_char() == "-":
                 self.read_comment()
                 return self.read_one()
-            if self.peek_char().isdigit():
+            if self.has_input() and self.peek_char().isdigit():
                 return self.read_number(c)
             return self.read_op(c)
         if c.isdigit():
@@ -477,6 +477,9 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_hastype(self) -> None:
         self.assertEqual(tokenize("a : b"), ["a", ":", "b"])
+
+    def test_tokenize_minus_returns_minus(self) -> None:
+        self.assertEqual(tokenize("-"), ["-"])
 
 
 class ParserTests(unittest.TestCase):

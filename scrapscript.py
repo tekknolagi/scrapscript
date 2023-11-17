@@ -517,6 +517,12 @@ class ParserTests(unittest.TestCase):
             Function(Var("a"), Function(Var("b"), Binop(BinopKind.ADD, Var("a"), Var("b")))),
         )
 
+    def test_parse_assign_function(self) -> None:
+        self.assertEqual(
+            parse(["id", "=", "x", "->", "x"]),
+            Assign(Var("id"), Function(Var("x"), Var("x"))),
+        )
+
 
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:

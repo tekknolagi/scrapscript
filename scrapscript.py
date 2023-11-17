@@ -126,7 +126,8 @@ PS = {
 }
 
 
-OPER_CHARS = set("".join(PS.keys()))
+OPER_CHARS = set("["+"".join(PS.keys()))
+assert " " not in OPER_CHARS
 
 
 class ParseError(Exception):
@@ -328,15 +329,21 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_string_with_spaces(self) -> None:
         self.assertEqual(tokenize('"hello world"'), ['"hello world"'])
 
-    @unittest.skip("TODO(max): Handle trailing whitespace")
     def test_tokenize_with_trailing_whitespace(self) -> None:
         self.assertEqual(tokenize("abc "), ["abc"])
+
+    @unittest.skip("TODO: Handle trailing whitespace after right bracket")
+    def test_tokenize_with_trailing_whitespace_after_operator(self) -> None:
+        self.assertEqual(tokenize("] "), ["]"])
 
     def test_tokenize_empty_list(self) -> None:
         self.assertEqual(tokenize("[ ]"), ["[", "]"])
 
     def test_tokenize_list_with_items(self) -> None:
         self.assertEqual(tokenize("[ 1 , 2 ]"), ["[", "1", ",", "2", "]"])
+
+    def test_tokenize_list_with_no_spaces(self) -> None:
+        self.assertEqual(tokenize("[1,2]"), ["[", "1", ",", "2", "]"])
 
     def test_tokenize_function(self) -> None:
         self.assertEqual(tokenize("a -> b -> a + b"), ["a", "->", "b", "->", "a", "+", "b"])

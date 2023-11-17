@@ -217,6 +217,8 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             l = Apply(l, parse(tokens, pr))
         elif op == ".":
             l = Where(l, parse(tokens, pr))
+        elif op == "?":
+            l = Assert(l, parse(tokens, pr))
         else:
             l = Binop(BinopKind.from_str(op), l, parse(tokens, pr))
     return l
@@ -317,6 +319,12 @@ class Where(Object):
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Assert(Object):
+    value: Object
+    cond: Object
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class EnvObject(Object):
     env: Env
 
@@ -373,6 +381,11 @@ def eval(env: Env, exp: Object) -> Object:
         assert isinstance(res_env, EnvObject)
         new_env = {**env, **res_env.env}
         return eval(new_env, exp.first)
+    if isinstance(exp, Assert):
+        cond = eval(env, exp.cond)
+        if cond != Bool(True):
+            raise AssertionError(f"condition {exp.cond} failed")
+        return eval(env, exp.value)
     raise NotImplementedError(f"eval not implemented for {exp}")
 
 
@@ -450,6 +463,9 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_where(self) -> None:
         self.assertEqual(tokenize("a . b"), ["a", ".", "b"])
+
+    def test_tokenize_assert(self) -> None:
+        self.assertEqual(tokenize("a ? b"), ["a", "?", "b"])
 
 
 class ParserTests(unittest.TestCase):
@@ -574,6 +590,15 @@ class ParserTests(unittest.TestCase):
     def test_parse_nested_where(self) -> None:
         self.assertEqual(parse(["a", ".", "b", ".", "c"]), Where(Where(Var("a"), Var("b")), Var("c")))
 
+    def test_parse_assert(self) -> None:
+        self.assertEqual(parse(["a", "?", "b"]), Assert(Var("a"), Var("b")))
+
+    def test_parse_nested_assert(self) -> None:
+        self.assertEqual(parse(["a", "?", "b", "?", "c"]), Assert(Assert(Var("a"), Var("b")), Var("c")))
+
+    def test_parse_mixed_assert_where(self) -> None:
+        self.assertEqual(parse(["a", "?", "b", ".", "c"]), Where(Assert(Var("a"), Var("b")), Var("c")))
+
 
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:
@@ -694,6 +719,19 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(eval(env, exp), Int(3))
         self.assertEqual(env, {})
 
+    def test_eval_assert_with_truthy_cond_returns_value(self) -> None:
+        exp = Assert(Int(123), Bool(True))
+        self.assertEqual(eval({}, exp), Int(123))
+
+    def test_eval_assert_with_falsey_cond_raises_assertion_error(self) -> None:
+        exp = Assert(Int(123), Bool(False))
+        with self.assertRaisesRegex(AssertionError, r"condition Bool\(value=False\) failed"):
+            eval({}, exp)
+
+    def test_eval_nested_assert(self) -> None:
+        exp = Assert(Assert(Int(123), Bool(True)), Bool(True))
+        self.assertEqual(eval({}, exp), Int(123))
+
 
 class EndToEndTests(unittest.TestCase):
     def _run(self, text: str, env: Optional[Env] = None) -> Object:
@@ -727,6 +765,16 @@ class EndToEndTests(unittest.TestCase):
 
     def test_nested_where(self) -> None:
         self.assertEqual(self._run("a + b . a = 1 . b = 2"), Int(3))
+
+    def test_assert_with_truthy_cond_returns_value(self) -> None:
+        self.assertEqual(self._run("a + 1 ? a == 1 . a = 1"), Int(2))
+
+    def test_assert_with_falsey_cond_raises_assertion_error(self) -> None:
+        self.assertEqual(self._run("a + 1 ? a == 1 . a = 1"), Int(2))
+
+    def test_nested_assert(self) -> None:
+        with self.assertRaisesRegex(AssertionError, "condition Binop"):
+            self._run("a + 1 ? a == 2 . a = 1")
 
 
 @click.group()

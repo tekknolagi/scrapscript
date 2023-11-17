@@ -115,11 +115,14 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
     token = tokens.pop(0)
     l: Object
     sha_prefix = "$sha1'"
+    dollar_dollar_prefix = "$$"
     if token.isnumeric():
         l = Int(int(token))
     elif token.isidentifier():
         l = Var(token)
     elif token.startswith(sha_prefix) and token[len(sha_prefix) :].isidentifier():
+        l = Var(token)
+    elif token.startswith(dollar_dollar_prefix) and token[len(dollar_dollar_prefix) :].isidentifier():
         l = Var(token)
     elif token.startswith('"') and token.endswith('"'):
         l = String(token[1:-1])
@@ -277,6 +280,15 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_binop(self) -> None:
         self.assertEqual(tokenize("1 + 2"), ["1", "+", "2"])
 
+    def test_tokenize_var(self) -> None:
+        self.assertEqual(tokenize("abc"), ["abc"])
+
+    def test_tokenize_dollar_sha1_var(self) -> None:
+        self.assertEqual(tokenize("$sha1'foo"), ["$sha1'foo"])
+
+    def test_tokenize_dollar_dollar_var(self) -> None:
+        self.assertEqual(tokenize("$$bills"), ["$$bills"])
+
     def test_ignore_whitespace(self) -> None:
         self.assertEqual(tokenize("1\n+\t2"), ["1", "+", "2"])
 
@@ -320,6 +332,25 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_sha_var_returns_var(self) -> None:
         self.assertEqual(parse(["$sha1'abc"]), Var("$sha1'abc"))
+
+    def test_parse_sha_var_without_quote_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, "unexpected token"):
+            parse(["$sha1abc"])
+
+    def test_parse_dollar_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, "unexpected token"):
+            parse(["$"])
+
+    def test_parse_dollar_dollar_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, "unexpected token"):
+            parse(["$$"])
+
+    def test_parse_sha_var_without_dollar_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, "unexpected token"):
+            parse(["sha1'abc"])
+
+    def test_parse_dollar_dollar_var_returns_var(self) -> None:
+        self.assertEqual(parse(["$$bills"]), Var("$$bills"))
 
     def test_parse_binary_add_returns_binop(self) -> None:
         self.assertEqual(parse(["1", "+", "2"]), Binop(BinopKind.ADD, Int(1), Int(2)))

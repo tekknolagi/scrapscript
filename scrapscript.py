@@ -162,7 +162,7 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
     l: Object
     sha_prefix = "$sha1'"
     dollar_dollar_prefix = "$$"
-    if token.isnumeric():
+    if token.isnumeric() or (token[0] == "-" and token[1:].isnumeric()):
         l = Int(int(token))
     elif token.isidentifier():
         l = Var(token)
@@ -394,9 +394,8 @@ class ParserTests(unittest.TestCase):
     def test_parse_digits_returns_int(self) -> None:
         self.assertEqual(parse(["123"]), Int(123))
 
-    @unittest.skip("TODO(max): negatives")
     def test_parse_negative_int_returns_int(self) -> None:
-        self.assertEqual(parse(["-123"]), Int(123))
+        self.assertEqual(parse(["-123"]), Int(-123))
 
     def test_parse_var_returns_var(self) -> None:
         self.assertEqual(parse(["abc_123"]), Var("abc_123"))

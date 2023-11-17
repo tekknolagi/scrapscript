@@ -9,6 +9,10 @@ from typing import Callable, Mapping, Optional
 import click
 
 
+def is_identifier_char(c: str) -> bool:
+    return c.isalnum() or c in ("$", "'", "_")
+
+
 class Lexer:
     def __init__(self, text: str):
         self.text: str = text
@@ -42,16 +46,14 @@ class Lexer:
                 return self.read_one()
             if self.peek_char().isdigit():
                 return self.read_number(c)
+            return self.read_op(c)
         if c.isdigit():
             return self.read_number(c)
         if c in OPER_CHARS:
             return self.read_op(c)
-        if c.isidentifier():
+        if is_identifier_char(c):
             return self.read_var(c)
-        tok = c
-        while self.has_input() and not (c := self.read_char()).isspace():
-            tok += c
-        return tok
+        raise ParseError(f"unexpected token {c!r}")
 
     def read_string(self) -> str:
         buf = ""
@@ -86,7 +88,7 @@ class Lexer:
 
     def read_var(self, first_char: str) -> str:
         buf = first_char
-        while self.has_input() and (c := self.peek_char()).isidentifier():
+        while self.has_input() and is_identifier_char(c := self.peek_char()):
             self.read_char()
             buf += c
         return buf
@@ -194,7 +196,7 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             while tokens.pop(0) != "]":
                 l.items.append(parse(tokens, 2))
     else:
-        raise ParseError(f"unexpected token '{token}'")
+        raise ParseError(f"unexpected token {token!r}")
     while True:
         if not tokens:
             break

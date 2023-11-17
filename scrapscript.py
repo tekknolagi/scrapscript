@@ -1,4 +1,5 @@
 #!/usr/bin/env python3.10
+import base64
 import enum
 import sys
 import unittest
@@ -47,6 +48,11 @@ class Lexer:
             if self.has_input() and self.peek_char().isdigit():
                 return self.read_number(c)
             return self.read_op(c)
+        if c == "~":
+            if self.has_input() and self.peek_char() == "~":
+                self.read_char()
+                return self.read_bytes()
+            raise ParseError(f"unexpected token {c!r}")
         if c.isdigit():
             return self.read_number(c)
         if c in OPER_CHARS:
@@ -91,6 +97,16 @@ class Lexer:
         while self.has_input() and is_identifier_char(c := self.peek_char()):
             self.read_char()
             buf += c
+        return buf
+
+    def read_bytes(self) -> str:
+        buf = "~~"
+        while self.has_input():
+            if (c := self.read_char()) == "=":
+                break
+            buf += c
+        else:
+            raise ParseError("unexpected EOF while reading bytes")
         return buf
 
 
@@ -178,6 +194,7 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
     l: Object
     sha_prefix = "$sha1'"
     dollar_dollar_prefix = "$$"
+    tilde_tilde_prefix = "~~"
     # TODO(max): Tag tokens out of the lexer so we don't have to re-interpret
     # them here.
     if token.isnumeric() or (token[0] == "-" and token[1:].isnumeric()):
@@ -188,6 +205,8 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
         l = Var(token)
     elif token.startswith(dollar_dollar_prefix) and token[len(dollar_dollar_prefix) :].isidentifier():
         l = Var(token)
+    elif token.startswith(tilde_tilde_prefix):
+        l = Bytes(base64.b64decode(token[len(tilde_tilde_prefix) :]))
     elif token.startswith('"') and token.endswith('"'):
         l = String(token[1:-1])
     elif token == "[":
@@ -243,6 +262,11 @@ class Int(Object):
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class String(Object):
     value: str
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Bytes(Object):
+    value: bytes
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -364,7 +388,7 @@ BINOP_HANDLERS: dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
 
 # pylint: disable=redefined-builtin
 def eval(env: Env, exp: Object) -> Object:
-    if isinstance(exp, (Int, Bool, String, Function)):
+    if isinstance(exp, (Int, Bool, String, Bytes, Function)):
         return exp
     if isinstance(exp, Var):
         value = env.get(exp.name)
@@ -481,6 +505,24 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_minus_returns_minus(self) -> None:
         self.assertEqual(tokenize("-"), ["-"])
 
+    def test_tokenize_tilde_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, "unexpected token '~'"):
+            tokenize("~")
+
+    def test_tokenize_tilde_tilde_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, "unexpected EOF while reading bytes"):
+            tokenize("~~")
+
+    def test_tokenize_tilde_equals_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, "unexpected token '~'"):
+            tokenize("~=")
+
+    def test_tokenize_tilde_tilde_equals_returns_empty_bytes(self) -> None:
+        self.assertEqual(tokenize("~~="), ["~~"])
+
+    def test_tokenize_bytes_returns_bytes(self) -> None:
+        self.assertEqual(tokenize("~~QUJD="), ["~~QUJD"])
+
 
 class ParserTests(unittest.TestCase):
     def test_parse_with_empty_tokens_raises_parse_error(self) -> None:
@@ -521,6 +563,9 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_dollar_dollar_var_returns_var(self) -> None:
         self.assertEqual(parse(["$$bills"]), Var("$$bills"))
+
+    def test_parse_bytes_returns_bytes(self) -> None:
+        self.assertEqual(parse(["~~QUJD"]), Bytes(b"ABC"))
 
     def test_parse_binary_add_returns_binop(self) -> None:
         self.assertEqual(parse(["1", "+", "2"]), Binop(BinopKind.ADD, Int(1), Int(2)))
@@ -625,6 +670,10 @@ class EvalTests(unittest.TestCase):
     def test_eval_str_returns_str(self) -> None:
         exp = String("xyz")
         self.assertEqual(eval({}, exp), String("xyz"))
+
+    def test_eval_bytes_returns_bytes(self) -> None:
+        exp = Bytes(b"xyz")
+        self.assertEqual(eval({}, exp), Bytes(b"xyz"))
 
     def test_eval_true_returns_true(self) -> None:
         self.assertEqual(eval({}, Bool(True)), Bool(True))
@@ -758,6 +807,9 @@ class EndToEndTests(unittest.TestCase):
 
     def test_int_returns_int(self) -> None:
         self.assertEqual(self._run("1"), Int(1))
+
+    def test_bytes_returns_bytes(self) -> None:
+        self.assertEqual(self._run("~~QUJD="), Bytes(b"ABC"))
 
     def test_int_add_returns_int(self) -> None:
         self.assertEqual(self._run("1 + 2"), Int(3))

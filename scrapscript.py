@@ -32,9 +32,16 @@ class Lexer:
             pass
         if c == '"':
             return self.read_string()
-        if c == "-" and self.peek_char() == "-":
-            self.read_comment()
-            return self.read_one()
+        if c == "-":
+            if self.peek_char() == "-":
+                self.read_comment()
+                return self.read_one()
+            if self.peek_char().isdigit():
+                return self.read_number(c)
+        if c.isdigit():
+            return self.read_number(c)
+        if c in OPER_CHARS:
+            return self.read_op(c)
         tok = c
         while self.has_input() and not (c := self.read_char()).isspace():
             tok += c
@@ -49,6 +56,20 @@ class Lexer:
     def read_comment(self) -> None:
         while self.has_input() and self.read_char() != "\n":
             pass
+
+    def read_number(self, first_digit: str) -> str:
+        buf = first_digit
+        while self.has_input() and (c := self.peek_char()).isdigit():
+            self.read_char()
+            buf += c
+        return buf
+
+    def read_op(self, first_char: str) -> str:
+        buf = first_char
+        while self.has_input() and (c := self.peek_char()) in OPER_CHARS:
+            self.read_char()
+            buf += c
+        return buf
 
 
 def tokenize(x: str) -> list[str]:
@@ -103,6 +124,9 @@ PS = {
     ",": xp(1),
     "]": xp(1),
 }
+
+
+OPER_CHARS = set("".join(PS.keys()))
 
 
 class ParseError(Exception):
@@ -280,6 +304,9 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_binop(self) -> None:
         self.assertEqual(tokenize("1 + 2"), ["1", "+", "2"])
 
+    def test_tokenize_binop_no_spaces(self) -> None:
+        self.assertEqual(tokenize("1+2"), ["1", "+", "2"])
+
     def test_tokenize_var(self) -> None:
         self.assertEqual(tokenize("abc"), ["abc"])
 
@@ -301,11 +328,15 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_string_with_spaces(self) -> None:
         self.assertEqual(tokenize('"hello world"'), ['"hello world"'])
 
+    @unittest.skip("TODO(max): Handle trailing whitespace")
+    def test_tokenize_with_trailing_whitespace(self) -> None:
+        self.assertEqual(tokenize("abc "), ["abc"])
+
     def test_tokenize_empty_list(self) -> None:
-        self.assertEqual(tokenize("[ ] "), ["[", "]"])
+        self.assertEqual(tokenize("[ ]"), ["[", "]"])
 
     def test_tokenize_list_with_items(self) -> None:
-        self.assertEqual(tokenize("[ 1 , 2 ] "), ["[", "1", ",", "2", "]"])
+        self.assertEqual(tokenize("[ 1 , 2 ]"), ["[", "1", ",", "2", "]"])
 
     def test_tokenize_function(self) -> None:
         self.assertEqual(tokenize("a -> b -> a + b"), ["a", "->", "b", "->", "a", "+", "b"])

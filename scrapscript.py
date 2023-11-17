@@ -152,6 +152,8 @@ PS = {
     "++": rp(10),
     ">+": rp(10),
     "->": lp(5),
+    "|": rp(4.5),
+    ":": lp(4.5),
     "=": rp(4),
     "!": lp(3),
     ".": rp(3),
@@ -268,6 +270,7 @@ class BinopKind(enum.Enum):
     GREATER = auto()
     LESS_EQUAL = auto()
     GREATER_EQUAL = auto()
+    HASTYPE = auto()
 
     @classmethod
     def from_str(cls, x: str) -> "BinopKind":
@@ -283,6 +286,7 @@ class BinopKind(enum.Enum):
             ">": cls.GREATER,
             "<=": cls.LESS_EQUAL,
             ">=": cls.GREATER_EQUAL,
+            ":": cls.HASTYPE,
         }[x]
 
 
@@ -471,6 +475,9 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_assert(self) -> None:
         self.assertEqual(tokenize("a ? b"), ["a", "?", "b"])
 
+    def test_tokenize_hastype(self) -> None:
+        self.assertEqual(tokenize("a : b"), ["a", ":", "b"])
+
 
 class ParserTests(unittest.TestCase):
     def test_parse_with_empty_tokens_raises_parse_error(self) -> None:
@@ -602,6 +609,9 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_mixed_assert_where(self) -> None:
         self.assertEqual(parse(["a", "?", "b", ".", "c"]), Where(Assert(Var("a"), Var("b")), Var("c")))
+
+    def test_parse_hastype(self) -> None:
+        self.assertEqual(parse(["a", ":", "b"]), Binop(BinopKind.HASTYPE, Var("a"), Var("b")))
 
 
 class EvalTests(unittest.TestCase):

@@ -76,6 +76,9 @@ class Lexer:
 
     def read_op(self, first_char: str) -> str:
         buf = first_char
+        # TODO(max): To catch ill-formed operators earlier and to avoid merging
+        # operators by accident, we could make a trie and do longest trie
+        # match.
         while self.has_input() and (c := self.peek_char()) in OPER_CHARS:
             self.read_char()
             buf += c

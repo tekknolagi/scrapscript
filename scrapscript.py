@@ -151,6 +151,9 @@ PS = {
     ">+": rp(10),
     "->": lp(5),
     "=": rp(4),
+    "!": lp(3),
+    ".": rp(3),
+    "?": rp(3),
     ",": xp(1),
     "]": xp(1),
 }
@@ -212,6 +215,8 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             l = Function(l, parse(tokens, pr))
         elif op == "":
             l = Apply(l, parse(tokens, pr))
+        elif op == ".":
+            l = Where(l, parse(tokens, pr))
         else:
             l = Binop(BinopKind.from_str(op), l, parse(tokens, pr))
     return l
@@ -306,6 +311,12 @@ class Apply(Object):
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Where(Object):
+    first: Object
+    second: Object
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class EnvObject(Object):
     env: Env
 
@@ -357,6 +368,11 @@ def eval(env: Env, exp: Object) -> Object:
         assert isinstance(exp.name, Var)
         value = eval(env, exp.value)
         return EnvObject({**env, exp.name.name: value})
+    if isinstance(exp, Where):
+        res_env = eval(env, exp.second)
+        assert isinstance(res_env, EnvObject)
+        new_env = {**env, **res_env.env}
+        return eval(new_env, exp.first)
     raise NotImplementedError(f"eval not implemented for {exp}")
 
 
@@ -431,6 +447,9 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_function_with_no_spaces(self) -> None:
         self.assertEqual(tokenize("a->b->a+b"), ["a", "->", "b", "->", "a", "+", "b"])
+
+    def test_tokenize_where(self) -> None:
+        self.assertEqual(tokenize("a . b"), ["a", ".", "b"])
 
 
 class ParserTests(unittest.TestCase):
@@ -549,6 +568,12 @@ class ParserTests(unittest.TestCase):
     def test_parse_function_application_two_args(self) -> None:
         self.assertEqual(parse(["f", "a", "b"]), Apply(Apply(Var("f"), Var("a")), Var("b")))
 
+    def test_parse_where(self) -> None:
+        self.assertEqual(parse(["a", ".", "b"]), Where(Var("a"), Var("b")))
+
+    def test_parse_nested_where(self) -> None:
+        self.assertEqual(parse(["a", ".", "b", ".", "c"]), Where(Where(Var("a"), Var("b")), Var("c")))
+
 
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:
@@ -645,6 +670,12 @@ class EvalTests(unittest.TestCase):
         eval(env, exp)
         self.assertEqual(env, {})
 
+    def test_eval_where_evaluates_in_order(self) -> None:
+        exp = Where(Binop(BinopKind.ADD, Var("a"), Int(2)), Assign(Var("a"), Int(1)))
+        env: Env = {}
+        self.assertEqual(eval(env, exp), Int(3))
+        self.assertEqual(env, {})
+
 
 class EndToEndTests(unittest.TestCase):
     def _run(self, text: str, env: Optional[Env] = None) -> Object:
@@ -672,6 +703,9 @@ class EndToEndTests(unittest.TestCase):
             self._run("[ 1 + 2 , 3 + 4 ]"),
             List([Int(3), Int(7)]),
         )
+
+    def test_where(self) -> None:
+        self.assertEqual(self._run("a + 2 . a = 1"), Int(3))
 
 
 @click.group()

@@ -54,6 +54,10 @@ class Lexer:
                 self.read_char()
                 return self.read_bytes()
             raise ParseError(f"unexpected token {c!r}")
+        if c == "(":
+            if self.has_input() and self.peek_char() == ")":
+                self.read_char()
+                return "()"
         if c.isdigit():
             return self.read_number(c)
         if c in OPER_CHARS:
@@ -210,6 +214,8 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
         l = Bytes(base64.b64decode(token[len(tilde_tilde_prefix) :]))
     elif token.startswith('"') and token.endswith('"'):
         l = String(token[1:-1])
+    elif token == "()":
+        l = Hole()
     elif token == "[":
         l = List([])
         token = tokens[0]
@@ -278,6 +284,11 @@ class Var(Object):
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Bool(Object):
     value: bool
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Hole(Object):
+    pass
 
 
 Env = Mapping[str, Object]
@@ -389,7 +400,7 @@ BINOP_HANDLERS: dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
 
 # pylint: disable=redefined-builtin
 def eval(env: Env, exp: Object) -> Object:
-    if isinstance(exp, (Int, Bool, String, Bytes, Function)):
+    if isinstance(exp, (Int, Bool, String, Bytes, Function, Hole)):
         return exp
     if isinstance(exp, Var):
         value = env.get(exp.name)
@@ -523,6 +534,9 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_bytes_returns_bytes(self) -> None:
         self.assertEqual(tokenize("~~QUJD="), ["~~QUJD"])
+
+    def test_tokenize_hole(self) -> None:
+        self.assertEqual(tokenize("()"), ["()"])
 
 
 class ParserTests(unittest.TestCase):
@@ -662,6 +676,9 @@ class ParserTests(unittest.TestCase):
     def test_parse_hastype(self) -> None:
         self.assertEqual(parse(["a", ":", "b"]), Binop(BinopKind.HASTYPE, Var("a"), Var("b")))
 
+    def test_parse_hole(self) -> None:
+        self.assertEqual(parse(["()"]), Hole())
+
 
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:
@@ -799,6 +816,10 @@ class EvalTests(unittest.TestCase):
         exp = Assert(Assert(Int(123), Bool(True)), Bool(True))
         self.assertEqual(eval({}, exp), Int(123))
 
+    def test_eval_hole(self) -> None:
+        exp = Hole()
+        self.assertEqual(eval({}, exp), Hole())
+
 
 class EndToEndTests(unittest.TestCase):
     def _run(self, text: str, env: Optional[Env] = None) -> Object:
@@ -845,6 +866,9 @@ class EndToEndTests(unittest.TestCase):
 
     def test_nested_assert(self) -> None:
         self.assertEqual(self._run("a + b ? a == 1 ? b == 2 . a = 1 . b = 2"), Int(3))
+
+    def test_hole(self) -> None:
+        self.assertEqual(self._run("()"), Hole())
 
 
 @click.group()

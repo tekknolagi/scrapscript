@@ -17,7 +17,11 @@ def main() -> None:
 
 @main.command(name="eval")
 @click.argument("program-file", type=File(), default=sys.stdin)
-def eval_command(program_file: File) -> None:
+@click.option("--debug", is_flag=True)
+def eval_command(program_file: File, debug: bool) -> None:
+    if debug:
+        logging.basicConfig(level=logging.DEBUG)
+
     program = program_file.read()  # type: ignore [attr-defined]
     tokens = tokenize(program)
     print(tokens)
@@ -28,7 +32,11 @@ def eval_command(program_file: File) -> None:
 
 @main.command(name="apply")
 @click.argument("program", type=str, required=True)
-def eval_apply_command(program: str) -> None:
+@click.option("--debug", is_flag=True)
+def eval_apply_command(program: str, debug: bool) -> None:
+    if debug:
+        logging.basicConfig(level=logging.DEBUG)
+
     tokens = tokenize(program)
     print(tokens)
     ast = parse(tokens)

@@ -185,7 +185,7 @@ PS = {
     "->": lp(5),
     "|": rp(4.5),
     ":": lp(4.5),
-    "|>": lp(4.11),
+    "|>": rp(4.11),
     "=": rp(4),
     "!": lp(3),
     ".": rp(3),
@@ -702,14 +702,24 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_pipe(self) -> None:
         self.assertEqual(
-            parse(["1", "|>", "f", ".", "f", "=", "a", "->", "a", "+", "1"]),
-            Where(
-                first=Apply(func=Var(name="f"), arg=Int(value=1)),
-                second=Assign(
-                    name=Var(name="f"),
-                    value=Function(
-                        arg=Var(name="a"), body=Binop(op=BinopKind.ADD, left=Var(name="a"), right=Int(value=1))
-                    ),
+            parse(["x", "|>", "f"]),
+            Apply(Var("f"), Var("x")),
+        )
+
+    def test_parse_pipe_nested(self) -> None:
+        self.assertEqual(
+            parse(["x", "|>", "f", "|>", "g"]),
+            Apply(Var("g"), Apply(Var("f"), Var("x"))),
+        )
+
+    def test_parse_pipe_nested_mixed_with_normal_application(self) -> None:
+        self.assertEqual(
+            parse(["f", "x", "|>", "g", "y", "|>", "h", "z"]),
+            Apply(
+                Apply(Var("h"), Var("z")),
+                Apply(
+                    Apply(Var("g"), Var("y")),
+                    Apply(Var("f"), Var("x")),
                 ),
             ),
         )

@@ -724,6 +724,18 @@ class ParserTests(unittest.TestCase):
             ),
         )
 
+    def test_parse_pipe_and_defs(self) -> None:
+        self.assertEqual(
+            parse(["1", "|>", "f", ".", "f", "=", "a", "->", "a", "+", "1"]),
+            Where(
+                Apply(Var("f"), Int(1)),
+                Assign(
+                    Var("f"),
+                    Function(Var("a"), Binop(BinopKind.ADD, Var("a"), Int(1))),
+                ),
+            ),
+        )
+
 
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:

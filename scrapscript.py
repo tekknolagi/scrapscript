@@ -14,6 +14,13 @@ from click import File
 logger = logging.getLogger(__name__)
 
 
+FULL_TEST_OUTPUT = False
+
+
+if FULL_TEST_OUTPUT:
+    __import__("sys").modules["unittest.util"]._MAX_LENGTH = 999999999
+
+
 def is_identifier_char(c: str) -> bool:
     return c.isalnum() or c in ("$", "'", "_")
 

@@ -134,7 +134,7 @@ class TestTokenizer:
         assert tokenize("~~QUJD=") == ["~~QUJD"]
 
     def test_tokenize_hole(self) -> None:
-        assert tokenize("()") == ["()"]
+        assert tokenize("()") == ["(", ")"]
 
     def test_tokenize_pipe(self) -> None:
         assert tokenize("1 |> f . f = a -> a + 1") == ["1", "|>", "f", ".", "f", "=", "a", "->", "a", "+", "1"]
@@ -247,7 +247,7 @@ class TestParser:
         assert parse(["a", ":", "b"]) == Binop(BinopKind.HASTYPE, Var("a"), Var("b"))
 
     def test_parse_hole(self) -> None:
-        assert parse(["()"]) == Hole()
+        assert parse(["(", ")"]) == Hole()
 
     def test_parse_pipe(self) -> None:
         assert parse(["1", "|>", "f", ".", "f", "=", "a", "->", "a", "+", "1"]) == Where(

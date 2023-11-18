@@ -64,16 +64,12 @@ class Lexer:
                 self.read_char()
                 return self.read_bytes()
             raise ParseError(f"unexpected token {c!r}")
-        if c == "(":
-            # TODO: Lex ( and ) separately so that we can decide in the parser
-            # if we are doing parenthesis grouping or a hole.
-            if self.has_input() and self.peek_char() == ")":
-                self.read_char()
-                return "()"
         if c.isdigit():
             return self.read_number(c)
         if c in OPER_CHARS:
             return self.read_op(c)
+        if c in "()":
+            return c
         if is_identifier_char(c):
             return self.read_var(c)
         raise ParseError(f"unexpected token {c!r}")
@@ -227,8 +223,12 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
         l = Bytes(base64.b64decode(token[len(tilde_tilde_prefix) :]))
     elif token.startswith('"') and token.endswith('"'):
         l = String(token[1:-1])
-    elif token == "()":
-        l = Hole()
+    elif token == "(":
+        if tokens[0] == ")":
+            l = Hole()
+        else:
+            l = parse(tokens, 0)
+        tokens.pop(0)
     elif token == "[":
         l = List([])
         token = tokens[0]
@@ -553,7 +553,13 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(tokenize("~~QUJD="), ["~~QUJD"])
 
     def test_tokenize_hole(self) -> None:
-        self.assertEqual(tokenize("()"), ["()"])
+        self.assertEqual(tokenize("()"), ["(", ")"])
+
+    def test_tokenize_hole_with_spaces(self) -> None:
+        self.assertEqual(tokenize("( )"), ["(", ")"])
+
+    def test_tokenize_parenthetical_expression(self) -> None:
+        self.assertEqual(tokenize("(1+2)"), ["(", "1", "+", "2", ")"])
 
     def test_tokenize_pipe(self) -> None:
         self.assertEqual(
@@ -700,7 +706,16 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse(["a", ":", "b"]), Binop(BinopKind.HASTYPE, Var("a"), Var("b")))
 
     def test_parse_hole(self) -> None:
-        self.assertEqual(parse(["()"]), Hole())
+        self.assertEqual(parse(["(", ")"]), Hole())
+
+    def test_parse_parenthesized_expression(self) -> None:
+        self.assertEqual(parse(["(", "1", "+", "2", ")"]), Binop(BinopKind.ADD, Int(1), Int(2)))
+
+    def test_parse_parenthesized_add_mul(self) -> None:
+        self.assertEqual(
+            parse(["(", "1", "+", "2", ")", "*", "3"]),
+            Binop(BinopKind.MUL, Binop(BinopKind.ADD, Int(1), Int(2)), Int(3)),
+        )
 
     def test_parse_pipe(self) -> None:
         self.assertEqual(

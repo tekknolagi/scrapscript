@@ -65,6 +65,8 @@ class Lexer:
                 return self.read_bytes()
             raise ParseError(f"unexpected token {c!r}")
         if c == "(":
+            # TODO: Lex ( and ) separately so that we can decide in the parser
+            # if we are doing parenthesis grouping or a hole.
             if self.has_input() and self.peek_char() == ")":
                 self.read_char()
                 return "()"

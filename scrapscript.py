@@ -259,6 +259,8 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
         if op == "=":
             l = Assign(l, parse(tokens, pr))
         elif op == "->":
+            if not isinstance(l, Var):
+                raise ParseError(f"expected variable in function definition {l!r}")
             l = Function(l, parse(tokens, pr))
         elif op == "":
             l = Apply(l, parse(tokens, pr))
@@ -367,7 +369,7 @@ class Assign(Object):
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Function(Object):
-    arg: Object
+    arg: Var
     body: Object
 
 
@@ -392,6 +394,12 @@ class Assert(Object):
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class EnvObject(Object):
     env: Env
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Closure(Object):
+    env: Env
+    func: Function
 
 
 def eval_int(env: Env, exp: Object) -> int:
@@ -430,7 +438,9 @@ BINOP_HANDLERS: dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
 
 # pylint: disable=redefined-builtin
 def eval(env: Env, exp: Object) -> Object:
-    if isinstance(exp, (Int, Bool, String, Bytes, Function, Hole)):
+    logger.debug("Env: %s", env)
+    logger.debug("Exp: %s", exp)
+    if isinstance(exp, (Int, Bool, String, Bytes, Hole, Closure)):
         return exp
     if isinstance(exp, Var):
         value = env.get(exp.name)
@@ -460,6 +470,15 @@ def eval(env: Env, exp: Object) -> Object:
         if cond != Bool(True):
             raise AssertionError(f"condition {exp.cond} failed")
         return eval(env, exp.value)
+    if isinstance(exp, Function):
+        return Closure(env, exp)
+    if isinstance(exp, Apply):
+        closure = eval(env, exp.func)
+        if not isinstance(closure, Closure):
+            raise TypeError(f"attempted to apply a non-function of type {type(closure).__name__}")
+        new_env = {**closure.env, closure.func.arg.name: exp.arg}
+        return eval(new_env, closure.func.body)
+
     raise NotImplementedError(f"eval not implemented for {exp}")
 
 
@@ -751,6 +770,11 @@ class ParserTests(unittest.TestCase):
             ),
         )
 
+    def test_parse_non_var_function_arg_raises_parse_error(self) -> None:
+        with self.assertRaises(ParseError) as ctx:
+            parse(["a", "->", "1", "->", "a"])
+        self.assertEqual(ctx.exception.args[0], "expected variable in function definition Int(value=1)")
+
 
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:
@@ -857,7 +881,7 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_with_function_returns_function(self) -> None:
         exp = Function(Var("x"), Var("x"))
-        self.assertEqual(eval({}, exp), exp)
+        self.assertEqual(eval({}, exp), Closure({}, Function(Var("x"), Var("x"))))
 
     def test_eval_assign_returns_env_object(self) -> None:
         exp = Assign(Var("a"), Int(1))
@@ -905,6 +929,26 @@ class EvalTests(unittest.TestCase):
     def test_eval_hole(self) -> None:
         exp = Hole()
         self.assertEqual(eval({}, exp), Hole())
+
+    def test_eval_function_application_one_arg(self) -> None:
+        exp = Apply(Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(1))), Int(2))
+        self.assertEqual(eval({}, exp), Int(3))
+
+    def test_eval_function_application_two_args(self) -> None:
+        exp = Apply(
+            Apply(Function(Var("a"), Function(Var("b"), Binop(BinopKind.ADD, Var("a"), Var("b")))), Int(3)),
+            Int(2),
+        )
+        self.assertEqual(eval({}, exp), Int(5))
+
+    def test_eval_function_capture_env(self) -> None:
+        exp = Apply(Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Var("y"))), Int(2))
+        self.assertEqual(eval({"y": Int(5)}, exp), Int(7))
+
+    def test_eval_non_function_raises_type_error(self) -> None:
+        exp = Apply(Int(3), Int(4))
+        with self.assertRaisesRegex(TypeError, re.escape("attempted to apply a non-function of type Int")):
+            eval({}, exp)
 
 
 class EndToEndTests(unittest.TestCase):
@@ -966,6 +1010,12 @@ class EndToEndTests(unittest.TestCase):
         with self.assertRaises(NameError) as ctx:
             self._run("b . a = 1 . b = a")
         self.assertEqual(ctx.exception.args[0], "name 'a' is not defined")
+
+    def test_function_application_two_args(self) -> None:
+        self.assertEqual(self._run("(a -> b -> a + b) 3 2"), Int(5))
+
+    def test_function_create_list_correct_order(self) -> None:
+        self.assertEqual(self._run("(a -> b -> [a, b]) 3 2"), List([Int(3), Int(2)]))
 
 
 @click.group()

@@ -1,0 +1,21 @@
+#!/bin/bash
+# Set up with `pushd .git/hooks; ln -s ../../hooks/pre-commit pre-commit; popd`
+
+set -eux
+
+if git rev-parse --verify HEAD >/dev/null 2>&1
+then
+	against=HEAD
+else
+	# Initial commit: diff against an empty tree object
+	against=$(git hash-object -t tree /dev/null)
+fi
+# cat always has error code 0
+filenames=$(git diff --cached --name-only $against | grep '\.py$' | cat)
+if [ -n "$filenames" ]
+then
+  ./scrapscript.py test
+  python -m pytest tests/test_scrapscript.py
+  ruff format --check $filenames
+  mypy --strict $filenames
+fi

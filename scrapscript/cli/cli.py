@@ -41,7 +41,7 @@ def apply_command(program: str, debug: bool) -> None:
     tokens = tokenize(program)
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
-    ast = parse(tokens)
+    logger.debug("AST: %s", ast)
     result = eval({}, ast)
     print(result)
 

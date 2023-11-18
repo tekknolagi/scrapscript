@@ -3,7 +3,7 @@
   "[markdown]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
   "[python]": { "editor.defaultFormatter": "charliermarsh.ruff" },
   "[toml]": { "editor.defaultFormatter": "tamasfe.even-better-toml" },
-  "cSpell.words": ["Binop", "blankspace", "OPER", "Prec"],
+  "cSpell.words": ["Binop", "blankspace", "HASTYPE", "OPER", "Prec"],
   "editor.codeActionsOnSave": { "source.organizeImports": true },
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.detectIndentation": true,

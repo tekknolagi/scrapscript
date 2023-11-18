@@ -178,6 +178,7 @@ PS = {
     "->": lp(5),
     "|": rp(4.5),
     ":": lp(4.5),
+    "|>": lp(4.11),
     "=": rp(4),
     "!": lp(3),
     ".": rp(3),
@@ -250,6 +251,8 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             l = Function(l, parse(tokens, pr))
         elif op == "":
             l = Apply(l, parse(tokens, pr))
+        elif op == "|>":
+            l = Apply(parse(tokens, pr), l)
         elif op == ".":
             l = Where(l, parse(tokens, pr))
         elif op == "?":
@@ -310,6 +313,7 @@ class BinopKind(enum.Enum):
     LESS_EQUAL = auto()
     GREATER_EQUAL = auto()
     HASTYPE = auto()
+    PIPE = auto()
 
     @classmethod
     def from_str(cls, x: str) -> "BinopKind":
@@ -326,6 +330,7 @@ class BinopKind(enum.Enum):
             "<=": cls.LESS_EQUAL,
             ">=": cls.GREATER_EQUAL,
             ":": cls.HASTYPE,
+            "|>": cls.PIPE,
         }[x]
 
 
@@ -541,6 +546,12 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_hole(self) -> None:
         self.assertEqual(tokenize("()"), ["()"])
 
+    def test_tokenize_pipe(self) -> None:
+        self.assertEqual(
+            tokenize("1 |> f . f = a -> a + 1"),
+            ["1", "|>", "f", ".", "f", "=", "a", "->", "a", "+", "1"],
+        )
+
 
 class ParserTests(unittest.TestCase):
     def test_parse_with_empty_tokens_raises_parse_error(self) -> None:
@@ -681,6 +692,20 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_hole(self) -> None:
         self.assertEqual(parse(["()"]), Hole())
+
+    def test_parse_pipe(self) -> None:
+        self.assertEqual(
+            parse(["1", "|>", "f", ".", "f", "=", "a", "->", "a", "+", "1"]),
+            Where(
+                first=Apply(func=Var(name="f"), arg=Int(value=1)),
+                second=Assign(
+                    name=Var(name="f"),
+                    value=Function(
+                        arg=Var(name="a"), body=Binop(op=BinopKind.ADD, left=Var(name="a"), right=Int(value=1))
+                    ),
+                ),
+            ),
+        )
 
 
 class EvalTests(unittest.TestCase):

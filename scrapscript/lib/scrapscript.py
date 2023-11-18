@@ -2,7 +2,7 @@
 import enum
 from dataclasses import dataclass
 from enum import auto
-from typing import Callable, Mapping
+from typing import Callable, Mapping, Optional
 
 
 class Lexer:
@@ -23,14 +23,27 @@ class Lexer:
             raise ParseError("unexpected EOF while reading token")
         return self.text[self.idx]
 
-    def read_one(self) -> str:
-        while (c := self.read_char()).isspace():
-            pass
+    def read_one(self) -> Optional[str]:
+        while self.has_input():
+            c = self.read_char()
+            if not c.isspace():
+                break
+        else:
+            return None
         if c == '"':
             return self.read_string()
-        if c == "-" and self.peek_char() == "-":
-            self.read_comment()
-            return self.read_one()
+        if c == "-":
+            if self.peek_char() == "-":
+                self.read_comment()
+                return self.read_one()
+            if self.peek_char().isdigit():
+                return self.read_number(c)
+        if c.isdigit():
+            return self.read_number(c)
+        if c in OPER_CHARS:
+            return self.read_op(c)
+        if c.isidentifier():
+            return self.read_var(c)
         tok = c
         while self.has_input() and not (c := self.read_char()).isspace():
             tok += c
@@ -38,20 +51,52 @@ class Lexer:
 
     def read_string(self) -> str:
         buf = ""
-        while self.has_input() and (c := self.read_char()) != '"':
+        while self.has_input():
+            if (c := self.read_char()) == '"':
+                break
             buf += c
+        else:
+            raise ParseError("unexpected EOF while reading string")
         return '"' + buf + '"'
 
     def read_comment(self) -> None:
         while self.has_input() and self.read_char() != "\n":
             pass
 
+    def read_number(self, first_digit: str) -> str:
+        buf = first_digit
+        while self.has_input() and (c := self.peek_char()).isdigit():
+            self.read_char()
+            buf += c
+        return buf
+
+    def read_op(self, first_char: str) -> str:
+        buf = first_char
+        # TODO(max): To catch ill-formed operators earlier and to avoid merging
+        # operators by accident, we could make a trie and do longest trie
+        # match.
+        while self.has_input() and (c := self.peek_char()) in OPER_CHARS:
+            self.read_char()
+            buf += c
+        return buf
+
+    def read_var(self, first_char: str) -> str:
+        buf = first_char
+        while self.has_input() and (c := self.peek_char()).isidentifier():
+            self.read_char()
+            buf += c
+        return buf
+
 
 def tokenize(x: str) -> list[str]:
     lexer = Lexer(x)
     tokens = []
     while lexer.has_input():
-        tokens.append(lexer.read_one())
+        token = lexer.read_one()
+        if token is None:
+            # EOF
+            break
+        tokens.append(token)
     return tokens
 
 
@@ -91,13 +136,27 @@ PS = {
     "+": lp(11),
     "-": lp(11),
     "**": rp(10),
+    "==": np(9),
+    "/=": np(9),
+    "<": np(9),
+    ">": np(9),
+    "<=": np(9),
+    ">=": np(9),
     ">*": rp(10),
     "++": rp(10),
     ">+": rp(10),
+    "->": lp(5),
     "=": rp(4),
+    "!": lp(3),
+    ".": rp(3),
+    "?": rp(3),
     ",": xp(1),
     "]": xp(1),
 }
+
+
+OPER_CHARS = set("[" + "".join(PS.keys()))
+assert " " not in OPER_CHARS
 
 
 class ParseError(Exception):
@@ -110,11 +169,14 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
     token = tokens.pop(0)
     l: Object
     sha_prefix = "$sha1'"
-    if token.isnumeric():
+    dollar_dollar_prefix = "$$"
+    if token.isnumeric() or (token[0] == "-" and token[1:].isnumeric()):
         l = Int(int(token))
     elif token.isidentifier():
         l = Var(token)
     elif token.startswith(sha_prefix) and token[len(sha_prefix) :].isidentifier():
+        l = Var(token)
+    elif token.startswith(dollar_dollar_prefix) and token[len(dollar_dollar_prefix) :].isidentifier():
         l = Var(token)
     elif token.startswith('"') and token.endswith('"'):
         l = String(token[1:-1])
@@ -145,6 +207,14 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             tokens.pop(0)
         if op == "=":
             l = Assign(l, parse(tokens, pr))
+        elif op == "->":
+            l = Function(l, parse(tokens, pr))
+        elif op == "":
+            l = Apply(l, parse(tokens, pr))
+        elif op == ".":
+            l = Where(l, parse(tokens, pr))
+        elif op == "?":
+            l = Assert(l, parse(tokens, pr))
         else:
             l = Binop(BinopKind.from_str(op), l, parse(tokens, pr))
     return l
@@ -170,6 +240,11 @@ class Var(Object):
     name: str
 
 
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Bool(Object):
+    value: bool
+
+
 Env = Mapping[str, Object]
 
 
@@ -179,6 +254,12 @@ class BinopKind(enum.Enum):
     SUB = auto()
     MUL = auto()
     DIV = auto()
+    EQUAL = auto()
+    NOT_EQUAL = auto()
+    LESS = auto()
+    GREATER = auto()
+    LESS_EQUAL = auto()
+    GREATER_EQUAL = auto()
 
     @classmethod
     def from_str(cls, x: str) -> "BinopKind":
@@ -188,6 +269,12 @@ class BinopKind(enum.Enum):
             "-": cls.SUB,
             "*": cls.MUL,
             "/": cls.DIV,
+            "==": cls.EQUAL,
+            "/=": cls.NOT_EQUAL,
+            "<": cls.LESS,
+            ">": cls.GREATER,
+            "<=": cls.LESS_EQUAL,
+            ">=": cls.GREATER_EQUAL,
         }[x]
 
 
@@ -207,6 +294,35 @@ class List(Object):
 class Assign(Object):
     name: Object
     value: Object
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Function(Object):
+    arg: Object
+    body: Object
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Apply(Object):
+    func: Object
+    arg: Object
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Where(Object):
+    first: Object
+    second: Object
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Assert(Object):
+    value: Object
+    cond: Object
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class EnvObject(Object):
+    env: Env
 
 
 def eval_int(env: Env, exp: Object) -> int:
@@ -229,12 +345,14 @@ BINOP_HANDLERS: dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.SUB: lambda env, x, y: Int(eval_int(env, x) - eval_int(env, y)),
     BinopKind.MUL: lambda env, x, y: Int(eval_int(env, x) * eval_int(env, y)),
     BinopKind.DIV: lambda env, x, y: Int(eval_int(env, x) // eval_int(env, y)),
+    # We have type: ignore because we haven't (re)defined eval yet.
+    BinopKind.EQUAL: lambda env, x, y: Bool(eval(env, x) == eval(env, y)),  # type: ignore [arg-type]
 }
 
 
 # pylint: disable=redefined-builtin
 def eval(env: Env, exp: Object) -> Object:
-    if isinstance(exp, (Int, String)):
+    if isinstance(exp, (Int, Bool, String, Function)):
         return exp
     if isinstance(exp, Var):
         value = env.get(exp.name)
@@ -248,4 +366,20 @@ def eval(env: Env, exp: Object) -> Object:
         return handler(env, exp.left, exp.right)
     if isinstance(exp, List):
         return List([eval(env, item) for item in exp.items])
+    if isinstance(exp, Assign):
+        # TODO(max): Rework this. There's something about matching that we need
+        # to figure out and implement.
+        assert isinstance(exp.name, Var)
+        value = eval(env, exp.value)
+        return EnvObject({**env, exp.name.name: value})
+    if isinstance(exp, Where):
+        res_env = eval(env, exp.second)
+        assert isinstance(res_env, EnvObject)
+        new_env = {**env, **res_env.env}
+        return eval(new_env, exp.first)
+    if isinstance(exp, Assert):
+        cond = eval(env, exp.cond)
+        if cond != Bool(True):
+            raise AssertionError(f"condition {exp.cond} failed")
+        return eval(env, exp.value)
     raise NotImplementedError(f"eval not implemented for {exp}")

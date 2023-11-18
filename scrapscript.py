@@ -894,7 +894,7 @@ def eval_command(program_file: click.File, debug: bool) -> None:
 @main.command(name="apply")
 @click.argument("program", type=str, required=True)
 @click.option("--debug", is_flag=True)
-def eval_apply_command(program: str, debug: bool) -> None:
+def apply_command(program: str, debug: bool) -> None:
     if debug:
         logging.basicConfig(level=logging.DEBUG)
 

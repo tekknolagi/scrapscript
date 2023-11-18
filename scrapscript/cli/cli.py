@@ -24,10 +24,11 @@ def eval_command(program_file: File, debug: bool) -> None:
 
     program = program_file.read()  # type: ignore [attr-defined]
     tokens = tokenize(program)
-    print(tokens)
+    logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
-    print(ast)
-    print(eval({}, ast))
+    logger.debug("AST: %s", ast)
+    result = eval({}, ast)
+    print(result)
 
 
 @main.command(name="apply")
@@ -38,10 +39,11 @@ def apply_command(program: str, debug: bool) -> None:
         logging.basicConfig(level=logging.DEBUG)
 
     tokens = tokenize(program)
-    print(tokens)
+    logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
-    print(ast)
-    print(eval({}, ast))
+    ast = parse(tokens)
+    result = eval({}, ast)
+    print(result)
 
 
 if __name__ == "__main__":

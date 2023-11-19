@@ -67,10 +67,10 @@ class Lexer:
             raise ParseError(f"unexpected token {c!r}")
         if c.isdigit():
             return self.read_number(c)
+        if c in "()[]":
+            return c
         if c in OPER_CHARS:
             return self.read_op(c)
-        if c in "()":
-            return c
         if is_identifier_char(c):
             return self.read_var(c)
         raise ParseError(f"unexpected token {c!r}")
@@ -194,7 +194,7 @@ PS = {
 }
 
 
-OPER_CHARS = set("[" + "".join(PS.keys()))
+OPER_CHARS = set("".join(PS.keys()))
 assert " " not in OPER_CHARS
 
 
@@ -509,6 +509,9 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(tokenize("] "), ["]"])
 
     def test_tokenize_empty_list(self) -> None:
+        self.assertEqual(tokenize("[ ]"), ["[", "]"])
+
+    def test_tokenize_empty_list_with_no_spaces(self) -> None:
         self.assertEqual(tokenize("[ ]"), ["[", "]"])
 
     def test_tokenize_list_with_items(self) -> None:
@@ -892,6 +895,9 @@ class EndToEndTests(unittest.TestCase):
 
     def test_empty_list(self) -> None:
         self.assertEqual(self._run("[ ]"), List([]))
+
+    def test_empty_list_with_no_spaces(self) -> None:
+        self.assertEqual(self._run("[]"), List([]))
 
     def test_list_of_ints(self) -> None:
         self.assertEqual(self._run("[ 1 , 2 ]"), List([Int(1), Int(2)]))

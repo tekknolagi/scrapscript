@@ -962,6 +962,11 @@ class EndToEndTests(unittest.TestCase):
     def test_hole(self) -> None:
         self.assertEqual(self._run("()"), Hole())
 
+    def test_bindings_behave_like_letstar(self) -> None:
+        with self.assertRaises(NameError) as ctx:
+            self._run("b . a = 1 . b = a")
+        self.assertEqual(ctx.exception.args[0], "name 'a' is not defined")
+
 
 @click.group()
 def main() -> None:

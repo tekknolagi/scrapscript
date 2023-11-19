@@ -27,6 +27,7 @@ def is_identifier_char(c: str) -> bool:
 
 
 class Lexer:
+    # TODO(chris): Add position information to tokens, enable showing position of error in program
     def __init__(self, text: str):
         self.text: str = text
         self.idx: int = 0
@@ -378,8 +379,8 @@ class Apply(Object):
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Where(Object):
-    first: Object
-    second: Object
+    body: Object
+    binding: Object
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -450,10 +451,10 @@ def eval(env: Env, exp: Object) -> Object:
         value = eval(env, exp.value)
         return EnvObject({**env, exp.name.name: value})
     if isinstance(exp, Where):
-        res_env = eval(env, exp.second)
+        res_env = eval(env, exp.binding)
         assert isinstance(res_env, EnvObject)
         new_env = {**env, **res_env.env}
-        return eval(new_env, exp.first)
+        return eval(new_env, exp.body)
     if isinstance(exp, Assert):
         cond = eval(env, exp.cond)
         if cond != Bool(True):

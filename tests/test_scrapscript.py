@@ -195,7 +195,7 @@ class TestParser:
         assert parse(["1", "*", "2", "+", "3"]) == Binop(BinopKind.ADD, Binop(BinopKind.MUL, Int(1), Int(2)), Int(3))
 
     def test_parse_binary_concat_returns_binop(self) -> None:
-        assert parse(['"abc"', "++", '"def"']) == Binop(BinopKind.CONCAT, String("abc"), String("def"))
+        assert parse(['"abc"', "++", '"def"']) == Binop(BinopKind.STRING_CONCAT, String("abc"), String("def"))
 
     @pytest.mark.parametrize("op", ["+", "-", "*", "/", "==", "/=", "<", ">", "<=", ">=", "++"])
     def test_parse_binary_op_returns_binop(self, op: str) -> None:
@@ -322,16 +322,16 @@ class TestEval:
         assert eval({}, exp) == Bool(False)
 
     def test_eval_with_binop_concat_with_strings_returns_string(self) -> None:
-        exp = Binop(BinopKind.CONCAT, String("hello"), String(" world"))
+        exp = Binop(BinopKind.STRING_CONCAT, String("hello"), String(" world"))
         assert eval({}, exp) == String("hello world")
 
     def test_eval_with_binop_concat_with_int_string_raises_type_error(self) -> None:
-        exp = Binop(BinopKind.CONCAT, Int(123), String(" world"))
+        exp = Binop(BinopKind.STRING_CONCAT, Int(123), String(" world"))
         with pytest.raises(TypeError, match=re.escape("expected String, got Int")):
             eval({}, exp)
 
     def test_eval_with_binop_concat_with_string_int_raises_type_error(self) -> None:
-        exp = Binop(BinopKind.CONCAT, String(" world"), Int(123))
+        exp = Binop(BinopKind.STRING_CONCAT, String(" world"), Int(123))
         with pytest.raises(TypeError, match=re.escape("expected String, got Int")):
             eval({}, exp)
 

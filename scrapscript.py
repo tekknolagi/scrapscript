@@ -312,7 +312,7 @@ Env = Mapping[str, Object]
 
 class BinopKind(enum.Enum):
     ADD = auto()
-    CONCAT = auto()
+    STRING_CONCAT = auto()
     SUB = auto()
     MUL = auto()
     DIV = auto()
@@ -329,7 +329,7 @@ class BinopKind(enum.Enum):
     def from_str(cls, x: str) -> "BinopKind":
         return {
             "+": cls.ADD,
-            "++": cls.CONCAT,
+            "++": cls.STRING_CONCAT,
             "-": cls.SUB,
             "*": cls.MUL,
             "/": cls.DIV,
@@ -407,7 +407,7 @@ def eval_str(env: Env, exp: Object) -> str:
 
 BINOP_HANDLERS: dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.ADD: lambda env, x, y: Int(eval_int(env, x) + eval_int(env, y)),
-    BinopKind.CONCAT: lambda env, x, y: String(eval_str(env, x) + eval_str(env, y)),
+    BinopKind.STRING_CONCAT: lambda env, x, y: String(eval_str(env, x) + eval_str(env, y)),
     BinopKind.SUB: lambda env, x, y: Int(eval_int(env, x) - eval_int(env, y)),
     BinopKind.MUL: lambda env, x, y: Int(eval_int(env, x) * eval_int(env, y)),
     BinopKind.DIV: lambda env, x, y: Int(eval_int(env, x) // eval_int(env, y)),
@@ -639,7 +639,7 @@ class ParserTests(unittest.TestCase):
     def test_parse_binary_concat_returns_binop(self) -> None:
         self.assertEqual(
             parse(['"abc"', "++", '"def"']),
-            Binop(BinopKind.CONCAT, String("abc"), String("def")),
+            Binop(BinopKind.STRING_CONCAT, String("abc"), String("def")),
         )
 
     def test_parse_binary_op_returns_binop(self) -> None:
@@ -799,17 +799,17 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(eval({}, exp), Bool(False))
 
     def test_eval_with_binop_concat_with_strings_returns_string(self) -> None:
-        exp = Binop(BinopKind.CONCAT, String("hello"), String(" world"))
+        exp = Binop(BinopKind.STRING_CONCAT, String("hello"), String(" world"))
         self.assertEqual(eval({}, exp), String("hello world"))
 
     def test_eval_with_binop_concat_with_int_string_raises_type_error(self) -> None:
-        exp = Binop(BinopKind.CONCAT, Int(123), String(" world"))
+        exp = Binop(BinopKind.STRING_CONCAT, Int(123), String(" world"))
         with self.assertRaises(TypeError) as ctx:
             eval({}, exp)
         self.assertEqual(ctx.exception.args[0], "expected String, got Int")
 
     def test_eval_with_binop_concat_with_string_int_raises_type_error(self) -> None:
-        exp = Binop(BinopKind.CONCAT, String(" world"), Int(123))
+        exp = Binop(BinopKind.STRING_CONCAT, String(" world"), Int(123))
         with self.assertRaises(TypeError) as ctx:
             eval({}, exp)
         self.assertEqual(ctx.exception.args[0], "expected String, got Int")

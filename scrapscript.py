@@ -721,12 +721,10 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(
             parse(["1", "|>", "f", ".", "f", "=", "a", "->", "a", "+", "1"]),
             Where(
-                first=Apply(func=Var(name="f"), arg=Int(value=1)),
-                second=Assign(
-                    name=Var(name="f"),
-                    value=Function(
-                        arg=Var(name="a"), body=Binop(op=BinopKind.ADD, left=Var(name="a"), right=Int(value=1))
-                    ),
+                Apply(Var("f"), Int(1)),
+                Assign(
+                    Var("f"),
+                    Function(Var("a"), Binop(BinopKind.ADD, Var("a"), Int(1))),
                 ),
             ),
         )

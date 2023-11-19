@@ -941,6 +941,13 @@ class EvalTests(unittest.TestCase):
         )
         self.assertEqual(eval({}, exp), Int(5))
 
+    def test_eval_function_returns_closure_with_captured_env(self) -> None:
+        exp = Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Var("y")))
+        res = eval({"y": Int(5)}, exp)
+        self.assertIsInstance(res, Closure)
+        assert isinstance(res, Closure)  # for mypy
+        self.assertEqual(res.env, {"y": Int(5)})
+
     def test_eval_function_capture_env(self) -> None:
         exp = Apply(Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Var("y"))), Int(2))
         self.assertEqual(eval({"y": Int(5)}, exp), Int(7))

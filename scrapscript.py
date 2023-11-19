@@ -2,6 +2,7 @@
 import base64
 import enum
 import logging
+import re
 import sys
 import unittest
 from dataclasses import dataclass
@@ -859,7 +860,7 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_assert_with_falsey_cond_raises_assertion_error(self) -> None:
         exp = Assert(Int(123), Bool(False))
-        with self.assertRaisesRegex(AssertionError, r"condition Bool\(value=False\) failed"):
+        with self.assertRaisesRegex(AssertionError, re.escape("condition Bool(value=False) failed")):
             eval({}, exp)
 
     def test_eval_nested_assert(self) -> None:

@@ -313,6 +313,7 @@ Env = Mapping[str, Object]
 class BinopKind(enum.Enum):
     ADD = auto()
     STRING_CONCAT = auto()
+    LIST_CONS = auto()
     SUB = auto()
     MUL = auto()
     DIV = auto()
@@ -330,6 +331,7 @@ class BinopKind(enum.Enum):
         return {
             "+": cls.ADD,
             "++": cls.STRING_CONCAT,
+            ">+": cls.LIST_CONS,
             "-": cls.SUB,
             "*": cls.MUL,
             "/": cls.DIV,
@@ -405,9 +407,18 @@ def eval_str(env: Env, exp: Object) -> str:
     return result.value
 
 
+def eval_list(env: Env, exp: Object) -> list[Object]:
+    result = eval(env, exp)
+    if not isinstance(result, List):
+        raise TypeError(f"expected List, got {type(result).__name__}")
+    return result.items
+
+
 BINOP_HANDLERS: dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.ADD: lambda env, x, y: Int(eval_int(env, x) + eval_int(env, y)),
     BinopKind.STRING_CONCAT: lambda env, x, y: String(eval_str(env, x) + eval_str(env, y)),
+    # We have type: ignore because we haven't (re)defined eval yet.
+    BinopKind.LIST_CONS: lambda env, x, y: List([eval(env, x)] + eval_list(env, y)),  # type: ignore [arg-type]
     BinopKind.SUB: lambda env, x, y: Int(eval_int(env, x) - eval_int(env, y)),
     BinopKind.MUL: lambda env, x, y: Int(eval_int(env, x) * eval_int(env, y)),
     BinopKind.DIV: lambda env, x, y: Int(eval_int(env, x) // eval_int(env, y)),
@@ -468,7 +479,7 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(tokenize("1+2"), ["1", "+", "2"])
 
     def test_tokenize_binop_var(self) -> None:
-        ops = ["+", "-", "*", "/", "==", "/=", "<", ">", "<=", ">=", "++"]
+        ops = ["+", "-", "*", "/", "==", "/=", "<", ">", "<=", ">=", "++", ">+"]
         for op in ops:
             with self.subTest(op=op):
                 self.assertEqual(tokenize(f"a {op} b"), ["a", op, "b"])
@@ -636,10 +647,16 @@ class ParserTests(unittest.TestCase):
             Binop(BinopKind.ADD, Binop(BinopKind.MUL, Int(1), Int(2)), Int(3)),
         )
 
-    def test_parse_binary_concat_returns_binop(self) -> None:
+    def test_parse_binary_str_concat_returns_binop(self) -> None:
         self.assertEqual(
             parse(['"abc"', "++", '"def"']),
             Binop(BinopKind.STRING_CONCAT, String("abc"), String("def")),
+        )
+
+    def test_parse_binary_list_cons_returns_binop(self) -> None:
+        self.assertEqual(
+            parse(["a", ">+", "b"]),
+            Binop(BinopKind.LIST_CONS, Var("a"), Var("b")),
         )
 
     def test_parse_binary_op_returns_binop(self) -> None:
@@ -814,6 +831,20 @@ class EvalTests(unittest.TestCase):
             eval({}, exp)
         self.assertEqual(ctx.exception.args[0], "expected String, got Int")
 
+    def test_eval_with_binop_cons_with_int_list_returns_list(self) -> None:
+        exp = Binop(BinopKind.LIST_CONS, Int(1), List([Int(2), Int(3)]))
+        self.assertEqual(eval({}, exp), List([Int(1), Int(2), Int(3)]))
+
+    def test_eval_with_binop_cons_with_list_list_returns_nested_list(self) -> None:
+        exp = Binop(BinopKind.LIST_CONS, List([]), List([]))
+        self.assertEqual(eval({}, exp), List([List([])]))
+
+    def test_eval_with_binop_cons_with_list_int_raises_type_error(self) -> None:
+        exp = Binop(BinopKind.LIST_CONS, List([]), Int(123))
+        with self.assertRaises(TypeError) as ctx:
+            eval({}, exp)
+        self.assertEqual(ctx.exception.args[0], "expected List, got Int")
+
     def test_eval_with_list_evaluates_elements(self) -> None:
         exp = List(
             [
@@ -892,6 +923,9 @@ class EndToEndTests(unittest.TestCase):
 
     def test_string_concat_returns_string(self) -> None:
         self.assertEqual(self._run('"abc" ++ "def"'), String("abcdef"))
+
+    def test_list_cons_returns_list(self) -> None:
+        self.assertEqual(self._run("1 >+ [2,3]"), List([Int(1), Int(2), Int(3)]))
 
     def test_empty_list(self) -> None:
         self.assertEqual(self._run("[ ]"), List([]))

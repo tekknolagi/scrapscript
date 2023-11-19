@@ -15,7 +15,6 @@ filenames=$(git diff --cached --name-only $against | grep '\.py$' | cat)
 if [ -n "$filenames" ]
 then
   ./scrapscript.py test
-  python -m pytest tests/test_scrapscript.py
   ruff format --check $filenames
   mypy --strict $filenames
 fi

@@ -1314,11 +1314,11 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(ctx.exception.args[0], "expected variable in function definition Int(value=1)")
 
 
-def eval_command(args) -> None:
+def eval_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
-    program = args.program_file.read()  # type: ignore [attr-defined]
+    program = args.program_file.read()
     tokens = tokenize(program)
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
@@ -1327,7 +1327,7 @@ def eval_command(args) -> None:
     print(result)
 
 
-def apply_command(args) -> None:
+def apply_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
@@ -1339,7 +1339,7 @@ def apply_command(args) -> None:
     print(result)
 
 
-def repl_command(args) -> None:
+def repl_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
@@ -1364,11 +1364,11 @@ def repl_command(args) -> None:
             print(f"Error: {e}", file=sys.stderr)
 
 
-def test_command(args) -> None:
+def test_command(args: argparse.Namespace) -> None:
     unittest.main(argv=[__file__])
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(required=True)
 

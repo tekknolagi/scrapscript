@@ -611,7 +611,9 @@ def eval(env: Env, exp: Object) -> Object:
             raise TypeError(f"attempted to access from a non-record of type {type(record).__name__}")
         return record.data[exp.field.name]
     if isinstance(exp, Compose):
-        return Closure(env, Function(Var("x"), Apply(exp.g, (Apply(exp.f, Var("x"))))))
+        clo_f = eval(env, exp.f)
+        clo_g = eval(env, exp.g)
+        return Closure({}, Function(Var("x"), Apply(clo_g, Apply(clo_f, Var("x")))))
     raise NotImplementedError(f"eval not implemented for {exp}")
 
 
@@ -1275,17 +1277,18 @@ class EvalTests(unittest.TestCase):
             Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3))),
             Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2))),
         )
+        env = {"a": Int(1)}
         expected = Closure(
             {},
             Function(
                 Var("x"),
                 Apply(
-                    Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2))),
-                    Apply(Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3))), Var("x")),
+                    Closure(env, Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2)))),
+                    Apply(Closure(env, Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3)))), Var("x")),
                 ),
             ),
         )
-        self.assertEqual(eval({}, exp), expected)
+        self.assertEqual(eval(env, exp), expected)
 
     def test_eval_compose_apply(self) -> None:
         exp = Apply(
@@ -1395,6 +1398,10 @@ class EndToEndTests(unittest.TestCase):
 
     def test_compose(self) -> None:
         self.assertEqual(self._run("((a -> a + 1) >> (b -> b * 2)) 3"), Int(8))
+
+    def test_compose_does_not_expose_internal_x(self) -> None:
+        with self.assertRaisesRegex(NameError, "name 'x' is not defined"):
+            self._run("f 3 . f = ((y -> x) >> (z -> x))")
 
     def test_double_compose(self) -> None:
         self.assertEqual(self._run("((a -> a + 1) >> (x -> x) >> (b -> b * 2)) 3"), Int(8))

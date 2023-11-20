@@ -204,6 +204,13 @@ class ParseError(Exception):
     pass
 
 
+def parse_assign(tokens: list[str], p: float = 0) -> "Assign":
+    assign = parse(tokens, p)
+    if not isinstance(assign, Assign):
+        raise ValueError("failed to parse assignment")
+    return assign
+
+
 def parse(tokens: list[str], p: float = 0) -> "Object":
     if not tokens:
         raise ParseError("unexpected end of input")
@@ -247,17 +254,12 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
         if token == "}":
             tokens.pop(0)
         else:
-            record_assign = parse(tokens, 2)
-            # TODO(chris): Refactor this to avoid validating twice
-            if not isinstance(record_assign, Assign):
-                raise ValueError("failed to parse assignment in record constructor")
-            l.data[record_assign.name.name] = record_assign.value
+            assign = parse_assign(tokens, 2)
+            l.data[assign.name.name] = assign.value
             while tokens.pop(0) != "}":
-                # TODO: Implement spread operator
-                record_assign = parse(tokens, 2)
-                if not isinstance(record_assign, Assign):
-                    raise ValueError("failed to parse assignment in record constructor")
-                l.data[record_assign.name.name] = record_assign.value
+                # TODO: Implement .. and ... operators
+                assign = parse_assign(tokens, 2)
+                l.data[assign.name.name] = assign.value
     else:
         raise ParseError(f"unexpected token {token!r}")
 

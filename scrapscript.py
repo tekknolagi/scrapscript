@@ -1020,6 +1020,12 @@ class ParserTests(unittest.TestCase):
     def test_parse_compose_reverse(self) -> None:
         self.assertEqual(parse(["f", "<<", "g"]), Compose(Var("g"), Var("f")))
 
+    def test_parse_double_compose(self) -> None:
+        self.assertEqual(
+            parse(["f", "<<", "g", "<<", "h"]),
+            Compose(f=Compose(f=Var(name="h"), g=Var(name="g")), g=Var(name="f")),
+        )
+
 
 class MatchTests(unittest.TestCase):
     def test_match_with_equal_ints_returns_true(self) -> None:
@@ -1253,6 +1259,23 @@ class EvalTests(unittest.TestCase):
         with self.assertRaisesRegex(MatchError, "no matching cases"):
             eval({}, exp)
 
+    def test_eval_compose(self) -> None:
+        exp = Compose(
+            Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3))),
+            Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2))),
+        )
+        expected = Closure(
+            {},
+            Function(
+                Var("x"),
+                Apply(
+                    Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2))),
+                    Apply(Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3))), Var("x")),
+                ),
+            ),
+        )
+        self.assertEqual(eval({}, exp), expected)
+
     def test_eval_compose_apply(self) -> None:
         exp = Apply(
             Compose(
@@ -1362,7 +1385,7 @@ class EndToEndTests(unittest.TestCase):
     def test_compose(self) -> None:
         self.assertEqual(self._run("((a -> a + 1) >> (b -> b * 2)) 3"), Int(8))
 
-    def test_compose_twice(self) -> None:
+    def test_double_compose(self) -> None:
         self.assertEqual(self._run("((a -> a + 1) >> (x -> x) >> (b -> b * 2)) 3"), Int(8))
 
     def test_reverse_compose(self) -> None:

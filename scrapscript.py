@@ -117,12 +117,10 @@ class Lexer:
     def read_bytes(self) -> str:
         buf = ""
         while self.has_input():
-            if (c := self.read_char()) == "=":
+            if (c := self.read_char()).isspace():
                 break
             buf += c
-        else:
-            raise ParseError("unexpected EOF while reading bytes")
-        if not buf.startswith("64'"):
+        if not (len(buf) >= 2 and buf[:2].isnumeric()):
             buf = "64'" + buf
         return "~~" + buf
 
@@ -236,9 +234,16 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
         assert "'" in token, "expected base in bytes"
         base, without_base = token[len(tilde_tilde_prefix) :].split("'")
         assert base.isnumeric(), f"unexpected base {base!r} in {token!r}"
-        assert without_base.isalnum()
-        assert base == "64", "only base 64 is supported right now"
-        l = Bytes(base64.b64decode(without_base))
+        if base == "85":
+            l = Bytes(base64.b85decode(without_base))
+        elif base == "64":
+            l = Bytes(base64.b64decode(without_base))
+        elif base == "32":
+            l = Bytes(base64.b32decode(without_base))
+        elif base == "16":
+            l = Bytes(base64.b16decode(without_base))
+        else:
+            raise ParseError(f"unexpected base {base!r} in {token!r}")
     elif token.startswith('"') and token.endswith('"'):
         l = String(token[1:-1])
     elif token == "(":
@@ -625,19 +630,27 @@ class TokenizerTests(unittest.TestCase):
         with self.assertRaisesRegex(ParseError, "unexpected token '~'"):
             tokenize("~")
 
-    def test_tokenize_tilde_tilde_raises_parse_error(self) -> None:
-        with self.assertRaisesRegex(ParseError, "unexpected EOF while reading bytes"):
-            tokenize("~~")
-
     def test_tokenize_tilde_equals_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, "unexpected token '~'"):
             tokenize("~=")
 
     def test_tokenize_tilde_tilde_equals_returns_empty_bytes(self) -> None:
-        self.assertEqual(tokenize("~~="), ["~~64'"])
+        self.assertEqual(tokenize("~~"), ["~~64'"])
 
-    def test_tokenize_bytes_returns_bytes(self) -> None:
-        self.assertEqual(tokenize("~~QUJD="), ["~~64'QUJD"])
+    def test_tokenize_bytes_returns_bytes_base64(self) -> None:
+        self.assertEqual(tokenize("~~QUJD"), ["~~64'QUJD"])
+
+    def test_tokenize_bytes_base85(self) -> None:
+        self.assertEqual(tokenize("~~85'K|(_"), ["~~85'K|(_"])
+
+    def test_tokenize_bytes_base64(self) -> None:
+        self.assertEqual(tokenize("~~64'QUJD"), ["~~64'QUJD"])
+
+    def test_tokenize_bytes_base32(self) -> None:
+        self.assertEqual(tokenize("~~32'IFBEG==="), ["~~32'IFBEG==="])
+
+    def test_tokenize_bytes_base16(self) -> None:
+        self.assertEqual(tokenize("~~16'414243"), ["~~16'414243"])
 
     def test_tokenize_hole(self) -> None:
         self.assertEqual(tokenize("()"), ["(", ")"])
@@ -1087,7 +1100,19 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(self._run("1"), Int(1))
 
     def test_bytes_returns_bytes(self) -> None:
-        self.assertEqual(self._run("~~QUJD="), Bytes(b"ABC"))
+        self.assertEqual(self._run("~~QUJD"), Bytes(b"ABC"))
+
+    def test_bytes_base85_returns_bytes(self) -> None:
+        self.assertEqual(self._run("~~85'K|(_"), Bytes(b"ABC"))
+
+    def test_bytes_base64_returns_bytes(self) -> None:
+        self.assertEqual(self._run("~~64'QUJD"), Bytes(b"ABC"))
+
+    def test_bytes_base32_returns_bytes(self) -> None:
+        self.assertEqual(self._run("~~32'IFBEG==="), Bytes(b"ABC"))
+
+    def test_bytes_base16_returns_bytes(self) -> None:
+        self.assertEqual(self._run("~~16'414243"), Bytes(b"ABC"))
 
     def test_int_add_returns_int(self) -> None:
         self.assertEqual(self._run("1 + 2"), Int(3))

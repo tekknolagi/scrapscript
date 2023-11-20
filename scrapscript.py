@@ -1072,15 +1072,20 @@ def repl_command(debug: bool) -> None:
     # TODO(max): Use readline
     while True:
         try:
-            program = input("> ")
-        except EOFError:
+            try:
+                program = input("> ")
+            except EOFError:
+                break
+            tokens = tokenize(program)
+            logger.debug("Tokens: %s", tokens)
+            ast = parse(tokens)
+            logger.debug("AST: %s", ast)
+            result = eval({}, ast)
+            print(result)
+        except KeyboardInterrupt:
             break
-        tokens = tokenize(program)
-        logger.debug("Tokens: %s", tokens)
-        ast = parse(tokens)
-        logger.debug("AST: %s", ast)
-        result = eval({}, ast)
-        print(result)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
 
 
 @main.command(name="test")

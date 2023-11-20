@@ -23,7 +23,6 @@ version = "0.1.0"
 include = "scrapscript"
 
 [tool.poetry.dependencies]
-click = "^8.1.7"
 python = ">=3.9"
 
 [tool.poetry.group.dev.dependencies]

@@ -1410,6 +1410,19 @@ class EndToEndTests(unittest.TestCase):
     def test_reverse_compose(self) -> None:
         self.assertEqual(self._run("((a -> a + 1) << (b -> b * 2)) 3"), Int(7))
 
+    def test_simple_int_match(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                inc 2
+                . inc =
+                  | 1 -> 2
+                  | 2 -> 3
+                  """
+            ),
+            Int(3),
+        )
+
 
 def eval_command(args: argparse.Namespace) -> None:
     if args.debug:

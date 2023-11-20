@@ -646,6 +646,18 @@ class TokenizerTests(unittest.TestCase):
             ["1", "|>", "f", ".", "f", "=", "a", "->", "a", "+", "1"],
         )
 
+    def test_tokenize_record_no_fields(self) -> None:
+        self.assertEqual(
+            tokenize("{ }"),
+            ["{", "}"],
+        )
+
+    def test_tokenize_record_no_fields_no_spaces(self) -> None:
+        self.assertEqual(
+            tokenize("{}"),
+            ["{", "}"],
+        )
+
     def test_tokenize_record_one_field(self) -> None:
         self.assertEqual(
             tokenize("{ a = 4 }"),
@@ -842,6 +854,12 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_record_single_field(self) -> None:
         self.assertEqual(parse(["{", "a", "=", "4", "}"]), Record({"a": Int(4)}))
+
+    def test_parse_record_with_expression(self) -> None:
+        self.assertEqual(
+            parse(["{", "a", "=", "1", "+", "2", "}"]),
+            Record({"a": Binop(BinopKind.ADD, Int(1), Int(2))}),
+        )
 
     def test_parse_record_multiple_fields(self) -> None:
         self.assertEqual(
@@ -1118,7 +1136,7 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(self._run("(a -> b -> [a, b]) 3 2"), List([Int(3), Int(2)]))
 
     def test_create_record(self) -> None:
-        self.assertEqual(self._run("{a = 4}"), Record({"a": Int(4)}))
+        self.assertEqual(self._run("{a = 1 + 3}"), Record({"a": Int(4)}))
 
     def test_access_record(self) -> None:
         self.assertEqual(self._run('rec@b . rec = { a = 1, b = "x" }'), String("x"))

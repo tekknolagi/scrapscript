@@ -68,7 +68,7 @@ class Lexer:
             raise ParseError(f"unexpected token {c!r}")
         if c.isdigit():
             return self.read_number(c)
-        if c in "()[]":
+        if c in "()[]{}":
             return c
         if c in OPER_CHARS:
             return self.read_op(c)
@@ -240,13 +240,30 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             l.items.append(parse(tokens, 2))
             while tokens.pop(0) != "]":
                 l.items.append(parse(tokens, 2))
+    elif token == "{":
+        l = Record({})
+        token = tokens[0]
+        if token == "}":
+            tokens.pop(0)
+        else:
+            record_assign = parse(tokens, 2)
+            if not isinstance(record_assign, Assign):
+                raise ValueError("failed to parse assignment in record constructor")
+            l.data[record_assign.name.name] = record_assign.value
+            while tokens.pop(0) != "}":
+                # TODO: Implement spread operator
+                record_assign = parse(tokens, 2)
+                if not isinstance(record_assign, Assign):
+                    raise ValueError("failed to parse assignment in record constructor")
+                l.data[record_assign.name.name] = record_assign.value
     else:
         raise ParseError(f"unexpected token {token!r}")
+
     while True:
         if not tokens:
             break
         op = tokens[0]
-        if op == ")" or op == "]":
+        if op in ")]}":
             break
         if op not in PS:
             op = ""
@@ -257,6 +274,8 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
         if op != "":
             tokens.pop(0)
         if op == "=":
+            if not isinstance(l, Var):
+                raise ParseError(f"expected variable in assignment {l!r}")
             l = Assign(l, parse(tokens, pr))
         elif op == "->":
             if not isinstance(l, Var):
@@ -363,7 +382,7 @@ class List(Object):
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Assign(Object):
-    name: Object
+    name: Var
     value: Object
 
 
@@ -402,6 +421,11 @@ class Closure(Object):
     func: Function
 
 
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Record(Object):
+    data: dict[str, Object]
+
+
 def eval_int(env: Env, exp: Object) -> int:
     result = eval(env, exp)
     if not isinstance(result, Int):
@@ -438,8 +462,6 @@ BINOP_HANDLERS: dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
 
 # pylint: disable=redefined-builtin
 def eval(env: Env, exp: Object) -> Object:
-    logger.debug("Env: %s", env)
-    logger.debug("Exp: %s", exp)
     if isinstance(exp, (Int, Bool, String, Bytes, Hole, Closure)):
         return exp
     if isinstance(exp, Var):
@@ -454,6 +476,8 @@ def eval(env: Env, exp: Object) -> Object:
         return handler(env, exp.left, exp.right)
     if isinstance(exp, List):
         return List([eval(env, item) for item in exp.items])
+    if isinstance(exp, Record):
+        return Record({k: eval(env, exp.data[k]) for k in exp.data})
     if isinstance(exp, Assign):
         # TODO(max): Rework this. There's something about matching that we need
         # to figure out and implement.
@@ -600,6 +624,18 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(
             tokenize("1 |> f . f = a -> a + 1"),
             ["1", "|>", "f", ".", "f", "=", "a", "->", "a", "+", "1"],
+        )
+
+    def test_tokenize_record_one_member(self) -> None:
+        self.assertEqual(
+            tokenize("{ a = 4 }"),
+            ["{", "a", "=", "4", "}"],
+        )
+
+    def test_tokenize_record_multiple_members(self) -> None:
+        self.assertEqual(
+            tokenize('{ a = 4, b = "z" }'),
+            ["{", "a", "=", "4", ",", "b", "=", '"z"', "}"],
         )
 
 
@@ -774,6 +810,17 @@ class ParserTests(unittest.TestCase):
         with self.assertRaises(ParseError) as ctx:
             parse(["a", "->", "1", "->", "a"])
         self.assertEqual(ctx.exception.args[0], "expected variable in function definition Int(value=1)")
+
+    def test_parse_empty_record(self) -> None:
+        self.assertEqual(parse(["{", "}"]), Record({}))
+
+    def test_parse_record_single_member(self) -> None:
+        self.assertEqual(parse(["{", "a", "=", "4", "}"]), Record({"a": Int(4)}))
+
+    def test_parse_record_multiple_members(self) -> None:
+        self.assertEqual(
+            parse(["{", "a", "=", "4", ",", "b", "=", '"z"', "}"]), Record({"a": Int(4), "b": String("z")})
+        )
 
 
 class EvalTests(unittest.TestCase):
@@ -1016,6 +1063,9 @@ class EndToEndTests(unittest.TestCase):
 
     def test_function_create_list_correct_order(self) -> None:
         self.assertEqual(self._run("(a -> b -> [a, b]) 3 2"), List([Int(3), Int(2)]))
+
+    def test_create_record(self) -> None:
+        self.assertEqual(self._run("{a = 4}"), Record({"a": Int(4)}))
 
 
 @click.group()

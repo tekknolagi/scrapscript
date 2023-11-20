@@ -187,6 +187,7 @@ PS = {
     ":": lp(4.5),
     "|>": lp(4.11),
     "=": rp(4),
+    "@": rp(4),
     "!": lp(3),
     ".": rp(3),
     "?": rp(3),
@@ -290,6 +291,12 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             l = Where(l, parse(tokens, pr))
         elif op == "?":
             l = Assert(l, parse(tokens, pr))
+        elif op == "@":
+            # TODO: revisit whether to use @ or . for record field access
+            access_var = parse(tokens, pr)
+            if not isinstance(access_var, Var):
+                raise ParseError(f"cannot access record with non-name {access_var!r}")
+            l = Access(l, access_var)
         else:
             l = Binop(BinopKind.from_str(op), l, parse(tokens, pr))
     return l
@@ -427,6 +434,12 @@ class Record(Object):
     data: dict[str, Object]
 
 
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Access(Object):
+    record: Object
+    field: Var
+
+
 def eval_int(env: Env, exp: Object) -> int:
     result = eval(env, exp)
     if not isinstance(result, Int):
@@ -503,7 +516,11 @@ def eval(env: Env, exp: Object) -> Object:
             raise TypeError(f"attempted to apply a non-function of type {type(closure).__name__}")
         new_env = {**closure.env, closure.func.arg.name: exp.arg}
         return eval(new_env, closure.func.body)
-
+    if isinstance(exp, Access):
+        record = eval(env, exp.record)
+        if not isinstance(record, Record):
+            raise TypeError(f"attempted to access from a non-record of type {type(record).__name__}")
+        return record.data[exp.field.name]
     raise NotImplementedError(f"eval not implemented for {exp}")
 
 
@@ -627,16 +644,22 @@ class TokenizerTests(unittest.TestCase):
             ["1", "|>", "f", ".", "f", "=", "a", "->", "a", "+", "1"],
         )
 
-    def test_tokenize_record_one_member(self) -> None:
+    def test_tokenize_record_one_field(self) -> None:
         self.assertEqual(
             tokenize("{ a = 4 }"),
             ["{", "a", "=", "4", "}"],
         )
 
-    def test_tokenize_record_multiple_members(self) -> None:
+    def test_tokenize_record_multiple_fields(self) -> None:
         self.assertEqual(
             tokenize('{ a = 4, b = "z" }'),
             ["{", "a", "=", "4", ",", "b", "=", '"z"', "}"],
+        )
+
+    def test_tokenize_record_access(self) -> None:
+        self.assertEqual(
+            tokenize("r@a"),
+            ["r", "@", "a"],
         )
 
 
@@ -815,13 +838,23 @@ class ParserTests(unittest.TestCase):
     def test_parse_empty_record(self) -> None:
         self.assertEqual(parse(["{", "}"]), Record({}))
 
-    def test_parse_record_single_member(self) -> None:
+    def test_parse_record_single_field(self) -> None:
         self.assertEqual(parse(["{", "a", "=", "4", "}"]), Record({"a": Int(4)}))
 
-    def test_parse_record_multiple_members(self) -> None:
+    def test_parse_record_multiple_fields(self) -> None:
         self.assertEqual(
             parse(["{", "a", "=", "4", ",", "b", "=", '"z"', "}"]), Record({"a": Int(4), "b": String("z")})
         )
+
+    def test_non_variable_in_assignment_raises_parse_error(self) -> None:
+        with self.assertRaises(ParseError) as ctx:
+            parse(["3", "=", "4"])
+        self.assertEqual(ctx.exception.args[0], "expected variable in assignment Int(value=3)")
+
+    def test_record_access_with_non_name_raises_parse_error(self) -> None:
+        with self.assertRaises(ParseError) as ctx:
+            parse(["r", "@", "1"])
+        self.assertEqual(ctx.exception.args[0], "cannot access record with non-name Int(value=1)")
 
 
 class EvalTests(unittest.TestCase):
@@ -998,6 +1031,11 @@ class EvalTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, re.escape("attempted to apply a non-function of type Int")):
             eval({}, exp)
 
+    def test_access_from_non_record_raises_type_error(self) -> None:
+        exp = Access(Int(4), Var("x"))
+        with self.assertRaisesRegex(TypeError, re.escape("attempted to access from a non-record of type Int")):
+            eval({}, exp)
+
 
 class EndToEndTests(unittest.TestCase):
     def _run(self, text: str, env: Optional[Env] = None) -> Object:
@@ -1067,6 +1105,9 @@ class EndToEndTests(unittest.TestCase):
 
     def test_create_record(self) -> None:
         self.assertEqual(self._run("{a = 4}"), Record({"a": Int(4)}))
+
+    def test_access_record(self) -> None:
+        self.assertEqual(self._run('rec@b . rec = { a = 1, b = "x" }'), String("x"))
 
 
 @click.group()

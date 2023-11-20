@@ -68,7 +68,7 @@ class Lexer:
             raise ParseError(f"unexpected token {c!r}")
         if c.isdigit():
             return self.read_number(c)
-        if c in "()[]":
+        if c in "()[]{}":
             return c
         if c in OPER_CHARS:
             return self.read_op(c)
@@ -187,6 +187,7 @@ PS = {
     ":": lp(4.5),
     "|>": lp(4.11),
     "=": rp(4),
+    "@": rp(4),
     "!": lp(3),
     ".": rp(3),
     "?": rp(3),
@@ -201,6 +202,13 @@ assert " " not in OPER_CHARS
 
 class ParseError(Exception):
     pass
+
+
+def parse_assign(tokens: list[str], p: float = 0) -> "Assign":
+    assign = parse(tokens, p)
+    if not isinstance(assign, Assign):
+        raise ParseError("failed to parse variable assignment in record constructor")
+    return assign
 
 
 def parse(tokens: list[str], p: float = 0) -> "Object":
@@ -240,13 +248,26 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             l.items.append(parse(tokens, 2))
             while tokens.pop(0) != "]":
                 l.items.append(parse(tokens, 2))
+    elif token == "{":
+        l = Record({})
+        token = tokens[0]
+        if token == "}":
+            tokens.pop(0)
+        else:
+            assign = parse_assign(tokens, 2)
+            l.data[assign.name.name] = assign.value
+            while tokens.pop(0) != "}":
+                # TODO: Implement .. and ... operators
+                assign = parse_assign(tokens, 2)
+                l.data[assign.name.name] = assign.value
     else:
         raise ParseError(f"unexpected token {token!r}")
+
     while True:
         if not tokens:
             break
         op = tokens[0]
-        if op == ")" or op == "]":
+        if op in ")]}":
             break
         if op not in PS:
             op = ""
@@ -257,6 +278,8 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
         if op != "":
             tokens.pop(0)
         if op == "=":
+            if not isinstance(l, Var):
+                raise ParseError(f"expected variable in assignment {l!r}")
             l = Assign(l, parse(tokens, pr))
         elif op == "->":
             if not isinstance(l, Var):
@@ -270,6 +293,12 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             l = Where(l, parse(tokens, pr))
         elif op == "?":
             l = Assert(l, parse(tokens, pr))
+        elif op == "@":
+            # TODO: revisit whether to use @ or . for record field access
+            access_var = parse(tokens, pr)
+            if not isinstance(access_var, Var):
+                raise ParseError(f"cannot access record with non-name {access_var!r}")
+            l = Access(l, access_var)
         else:
             l = Binop(BinopKind.from_str(op), l, parse(tokens, pr))
     return l
@@ -363,7 +392,7 @@ class List(Object):
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Assign(Object):
-    name: Object
+    name: Var
     value: Object
 
 
@@ -402,6 +431,17 @@ class Closure(Object):
     func: Function
 
 
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Record(Object):
+    data: dict[str, Object]
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Access(Object):
+    record: Object
+    field: Var
+
+
 def eval_int(env: Env, exp: Object) -> int:
     result = eval(env, exp)
     if not isinstance(result, Int):
@@ -438,8 +478,6 @@ BINOP_HANDLERS: dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
 
 # pylint: disable=redefined-builtin
 def eval(env: Env, exp: Object) -> Object:
-    logger.debug("Env: %s", env)
-    logger.debug("Exp: %s", exp)
     if isinstance(exp, (Int, Bool, String, Bytes, Hole, Closure)):
         return exp
     if isinstance(exp, Var):
@@ -454,6 +492,8 @@ def eval(env: Env, exp: Object) -> Object:
         return handler(env, exp.left, exp.right)
     if isinstance(exp, List):
         return List([eval(env, item) for item in exp.items])
+    if isinstance(exp, Record):
+        return Record({k: eval(env, exp.data[k]) for k in exp.data})
     if isinstance(exp, Assign):
         # TODO(max): Rework this. There's something about matching that we need
         # to figure out and implement.
@@ -478,7 +518,11 @@ def eval(env: Env, exp: Object) -> Object:
             raise TypeError(f"attempted to apply a non-function of type {type(closure).__name__}")
         new_env = {**closure.env, closure.func.arg.name: exp.arg}
         return eval(new_env, closure.func.body)
-
+    if isinstance(exp, Access):
+        record = eval(env, exp.record)
+        if not isinstance(record, Record):
+            raise TypeError(f"attempted to access from a non-record of type {type(record).__name__}")
+        return record.data[exp.field.name]
     raise NotImplementedError(f"eval not implemented for {exp}")
 
 
@@ -600,6 +644,24 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(
             tokenize("1 |> f . f = a -> a + 1"),
             ["1", "|>", "f", ".", "f", "=", "a", "->", "a", "+", "1"],
+        )
+
+    def test_tokenize_record_one_field(self) -> None:
+        self.assertEqual(
+            tokenize("{ a = 4 }"),
+            ["{", "a", "=", "4", "}"],
+        )
+
+    def test_tokenize_record_multiple_fields(self) -> None:
+        self.assertEqual(
+            tokenize('{ a = 4, b = "z" }'),
+            ["{", "a", "=", "4", ",", "b", "=", '"z"', "}"],
+        )
+
+    def test_tokenize_record_access(self) -> None:
+        self.assertEqual(
+            tokenize("r@a"),
+            ["r", "@", "a"],
         )
 
 
@@ -774,6 +836,32 @@ class ParserTests(unittest.TestCase):
         with self.assertRaises(ParseError) as ctx:
             parse(["a", "->", "1", "->", "a"])
         self.assertEqual(ctx.exception.args[0], "expected variable in function definition Int(value=1)")
+
+    def test_parse_empty_record(self) -> None:
+        self.assertEqual(parse(["{", "}"]), Record({}))
+
+    def test_parse_record_single_field(self) -> None:
+        self.assertEqual(parse(["{", "a", "=", "4", "}"]), Record({"a": Int(4)}))
+
+    def test_parse_record_multiple_fields(self) -> None:
+        self.assertEqual(
+            parse(["{", "a", "=", "4", ",", "b", "=", '"z"', "}"]), Record({"a": Int(4), "b": String("z")})
+        )
+
+    def test_non_variable_in_assignment_raises_parse_error(self) -> None:
+        with self.assertRaises(ParseError) as ctx:
+            parse(["3", "=", "4"])
+        self.assertEqual(ctx.exception.args[0], "expected variable in assignment Int(value=3)")
+
+    def test_record_access_with_non_name_raises_parse_error(self) -> None:
+        with self.assertRaises(ParseError) as ctx:
+            parse(["r", "@", "1"])
+        self.assertEqual(ctx.exception.args[0], "cannot access record with non-name Int(value=1)")
+
+    def test_non_assign_in_record_constructor_raises_parse_error(self) -> None:
+        with self.assertRaises(ParseError) as ctx:
+            parse(["{", "1", ",", "2", "}"])
+        self.assertEqual(ctx.exception.args[0], "failed to parse variable assignment in record constructor")
 
 
 class EvalTests(unittest.TestCase):
@@ -957,6 +1045,11 @@ class EvalTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, re.escape("attempted to apply a non-function of type Int")):
             eval({}, exp)
 
+    def test_access_from_non_record_raises_type_error(self) -> None:
+        exp = Access(Int(4), Var("x"))
+        with self.assertRaisesRegex(TypeError, re.escape("attempted to access from a non-record of type Int")):
+            eval({}, exp)
+
 
 class EndToEndTests(unittest.TestCase):
     def _run(self, text: str, env: Optional[Env] = None) -> Object:
@@ -1023,6 +1116,12 @@ class EndToEndTests(unittest.TestCase):
 
     def test_function_create_list_correct_order(self) -> None:
         self.assertEqual(self._run("(a -> b -> [a, b]) 3 2"), List([Int(3), Int(2)]))
+
+    def test_create_record(self) -> None:
+        self.assertEqual(self._run("{a = 4}"), Record({"a": Int(4)}))
+
+    def test_access_record(self) -> None:
+        self.assertEqual(self._run('rec@b . rec = { a = 1, b = "x" }'), String("x"))
 
 
 @click.group()

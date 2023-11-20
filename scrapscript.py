@@ -247,6 +247,7 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             tokens.pop(0)
         else:
             record_assign = parse(tokens, 2)
+            # TODO(chris): Refactor this to avoid validating twice
             if not isinstance(record_assign, Assign):
                 raise ValueError("failed to parse assignment in record constructor")
             l.data[record_assign.name.name] = record_assign.value

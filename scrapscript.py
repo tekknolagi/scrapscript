@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from enum import auto
 from typing import Callable, Mapping, Optional
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -18,6 +17,7 @@ FULL_TEST_OUTPUT = False
 
 
 if FULL_TEST_OUTPUT:
+    # pylint: disable=protected-access
     __import__("sys").modules["unittest.util"]._MAX_LENGTH = 999999999
 
 
@@ -165,6 +165,8 @@ def xp(n: float) -> Prec:
 PS = {
     "::": lp(2000),
     "": rp(1000),
+    ">>": lp(14),
+    "<<": lp(14),
     "*": lp(12),
     "/": lp(12),
     "//": lp(12),
@@ -311,6 +313,10 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             l = Apply(l, parse(tokens, pr))
         elif op == "|>":
             l = Apply(parse(tokens, pr), l)
+        elif op == ">>":
+            l = Compose(l, parse(tokens, pr))
+        elif op == "<<":
+            l = Compose(parse(tokens, pr), l)
         elif op == ".":
             l = Where(l, parse(tokens, pr))
         elif op == "?":
@@ -433,6 +439,12 @@ class Apply(Object):
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Compose(Object):
+    f: Object
+    g: Object
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Where(Object):
     body: Object
     binding: Object
@@ -525,6 +537,7 @@ def match(obj: Object, pattern: Object) -> bool:
 
 # pylint: disable=redefined-builtin
 def eval(env: Env, exp: Object) -> Object:
+    logger.debug(exp)
     if isinstance(exp, (Int, Bool, String, Bytes, Hole, Closure)):
         return exp
     if isinstance(exp, Var):
@@ -586,6 +599,14 @@ def eval(env: Env, exp: Object) -> Object:
         if not isinstance(record, Record):
             raise TypeError(f"attempted to access from a non-record of type {type(record).__name__}")
         return record.data[exp.field.name]
+    if isinstance(exp, Compose):
+        # f = eval(env, exp.f)
+        # if not isinstance(f, Closure):
+        #     raise TypeError(f"attempted to compose a non-function of type {type(f).__name__}")
+        # g = eval(env, exp.g)
+        # if not isinstance(g, Closure):
+        #     raise TypeError(f"attempted to compose a non-function of type {type(g).__name__}")
+        return Closure(env, Function(Var("x"), Apply(exp.f, (Apply(exp.g, Var("x"))))))
     raise NotImplementedError(f"eval not implemented for {exp}")
 
 
@@ -754,6 +775,18 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(
             tokenize("g = | 1 -> 2 | 2 -> 3"),
             ["g", "=", "|", "1", "->", "2", "|", "2", "->", "3"],
+        )
+
+    def test_tokenize_compose(self) -> None:
+        self.assertEqual(
+            tokenize("f >> g"),
+            ["f", ">>", "g"],
+        )
+
+    def test_tokenize_compose_reverse(self) -> None:
+        self.assertEqual(
+            tokenize("f << g"),
+            ["f", "<<", "g"],
         )
 
 
@@ -986,6 +1019,12 @@ class ParserTests(unittest.TestCase):
                 ]
             ),
         )
+
+    def test_parse_compose(self) -> None:
+        self.assertEqual(parse(["f", ">>", "g"]), Compose(Var("f"), Var("g")))
+
+    def test_parse_compose_reverse(self) -> None:
+        self.assertEqual(parse(["f", "<<", "g"]), Compose(Var("g"), Var("f")))
 
 
 class MatchTests(unittest.TestCase):
@@ -1220,6 +1259,16 @@ class EvalTests(unittest.TestCase):
         with self.assertRaisesRegex(MatchError, "no matching cases"):
             eval({}, exp)
 
+    def test_compose(self) -> None:
+        exp = Compose(
+            Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3))),
+            Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2))),
+        )
+        self.assertEqual(
+            eval({}, exp),
+            Int(2),
+        )
+
 
 class EndToEndTests(unittest.TestCase):
     def _run(self, text: str, env: Optional[Env] = None) -> Object:
@@ -1364,7 +1413,7 @@ def repl_command(args: argparse.Namespace) -> None:
             print(f"Error: {e}", file=sys.stderr)
 
 
-def test_command(args: argparse.Namespace) -> None:
+def test_command(_args: argparse.Namespace) -> None:
     unittest.main(argv=[__file__])
 
 

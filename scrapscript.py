@@ -600,13 +600,7 @@ def eval(env: Env, exp: Object) -> Object:
             raise TypeError(f"attempted to access from a non-record of type {type(record).__name__}")
         return record.data[exp.field.name]
     if isinstance(exp, Compose):
-        # f = eval(env, exp.f)
-        # if not isinstance(f, Closure):
-        #     raise TypeError(f"attempted to compose a non-function of type {type(f).__name__}")
-        # g = eval(env, exp.g)
-        # if not isinstance(g, Closure):
-        #     raise TypeError(f"attempted to compose a non-function of type {type(g).__name__}")
-        return Closure(env, Function(Var("x"), Apply(exp.f, (Apply(exp.g, Var("x"))))))
+        return Closure(env, Function(Var("x"), Apply(exp.g, (Apply(exp.f, Var("x"))))))
     raise NotImplementedError(f"eval not implemented for {exp}")
 
 
@@ -1219,7 +1213,7 @@ class EvalTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, re.escape("attempted to apply a non-closure of type Int")):
             eval({}, exp)
 
-    def test_access_from_non_record_raises_type_error(self) -> None:
+    def test_eval_access_from_non_record_raises_type_error(self) -> None:
         exp = Access(Int(4), Var("x"))
         with self.assertRaisesRegex(TypeError, re.escape("attempted to access from a non-record of type Int")):
             eval({}, exp)
@@ -1259,14 +1253,17 @@ class EvalTests(unittest.TestCase):
         with self.assertRaisesRegex(MatchError, "no matching cases"):
             eval({}, exp)
 
-    def test_compose(self) -> None:
-        exp = Compose(
-            Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3))),
-            Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2))),
+    def test_eval_compose_apply(self) -> None:
+        exp = Apply(
+            Compose(
+                Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3))),
+                Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2))),
+            ),
+            Int(4),
         )
         self.assertEqual(
             eval({}, exp),
-            Int(2),
+            Int(14),
         )
 
 
@@ -1361,6 +1358,15 @@ class EndToEndTests(unittest.TestCase):
         with self.assertRaises(RuntimeError) as ctx:
             self._run("1 -> a")
         self.assertEqual(ctx.exception.args[0], "expected variable in function definition Int(value=1)")
+
+    def test_compose(self) -> None:
+        self.assertEqual(self._run("((a -> a + 1) >> (b -> b * 2)) 3"), Int(8))
+
+    def test_compose_twice(self) -> None:
+        self.assertEqual(self._run("((a -> a + 1) >> (x -> x) >> (b -> b * 2)) 3"), Int(8))
+
+    def test_reverse_compose(self) -> None:
+        self.assertEqual(self._run("((a -> a + 1) << (b -> b * 2)) 3"), Int(7))
 
 
 def eval_command(args: argparse.Namespace) -> None:

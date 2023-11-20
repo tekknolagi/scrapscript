@@ -451,9 +451,20 @@ class EnvObject(Object):
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
+class MatchCase(Object):
+    pattern: Object
+    body: Object
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class MatchFunction(Object):
+    cases: list[MatchCase]
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Closure(Object):
     env: Env
-    func: Function
+    func: Function | MatchFunction
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -465,17 +476,6 @@ class Record(Object):
 class Access(Object):
     record: Object
     field: Var
-
-
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
-class MatchCase(Object):
-    pattern: Object
-    body: Object
-
-
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
-class MatchFunction(Object):
-    cases: list[MatchCase]
 
 
 def eval_int(env: Env, exp: Object) -> int:
@@ -512,6 +512,14 @@ BINOP_HANDLERS: dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     # We have type: ignore because we haven't (re)defined eval yet.
     BinopKind.RIGHT_EVAL: lambda env, x, y: eval(env, y),  # type: ignore [arg-type]
 }
+
+
+class MatchError(Exception):
+    pass
+
+
+def match(obj: Object, pattern: Object) -> bool:
+    raise NotImplementedError("TODO: match")
 
 
 # pylint: disable=redefined-builtin
@@ -552,14 +560,26 @@ def eval(env: Env, exp: Object) -> Object:
         if not isinstance(exp.arg, Var):
             raise RuntimeError(f"expected variable in function definition {exp.arg}")
         return Closure(env, exp)
+    if isinstance(exp, MatchFunction):
+        return Closure(env, exp)
     if isinstance(exp, Apply):
-        closure = eval(env, exp.func)
-        if not isinstance(closure, Closure):
-            raise TypeError(f"attempted to apply a non-function of type {type(closure).__name__}")
+        callee = eval(env, exp.func)
+        if not isinstance(callee, Closure):
+            raise TypeError(f"attempted to apply a non-closure of type {type(callee).__name__}")
         arg = eval(env, exp.arg)
-        assert isinstance(closure.func.arg, Var)
-        new_env = {**closure.env, closure.func.arg.name: arg}
-        return eval(new_env, closure.func.body)
+        if isinstance(callee.func, Function):
+            assert isinstance(callee.func.arg, Var)
+            new_env = {**callee.env, callee.func.arg.name: arg}
+            return eval(new_env, callee.func.body)
+        elif isinstance(callee.func, MatchFunction):
+            # TODO(max): Implement MatchClosure
+            arg = eval(env, exp.arg)
+            for case in callee.func.cases:
+                if match(arg, case.pattern):
+                    return eval(env, case.body)
+            raise MatchError("no matching cases")
+        else:
+            raise TypeError(f"attempted to apply a non-function of type {type(callee.func).__name__}")
     if isinstance(exp, Access):
         record = eval(env, exp.record)
         if not isinstance(record, Record):
@@ -1145,7 +1165,7 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_non_function_raises_type_error(self) -> None:
         exp = Apply(Int(3), Int(4))
-        with self.assertRaisesRegex(TypeError, re.escape("attempted to apply a non-function of type Int")):
+        with self.assertRaisesRegex(TypeError, re.escape("attempted to apply a non-closure of type Int")):
             eval({}, exp)
 
     def test_access_from_non_record_raises_type_error(self) -> None:
@@ -1156,6 +1176,11 @@ class EvalTests(unittest.TestCase):
     def test_right_eval_evaluates_right_hand_side(self) -> None:
         exp = Binop(BinopKind.RIGHT_EVAL, Int(1), Int(2))
         self.assertEqual(eval({}, exp), Int(2))
+
+    def test_match_no_cases_raises_match_error(self) -> None:
+        exp = Apply(MatchFunction([]), Int(1))
+        with self.assertRaisesRegex(MatchError, "no matching cases"):
+            eval({}, exp)
 
 
 class EndToEndTests(unittest.TestCase):

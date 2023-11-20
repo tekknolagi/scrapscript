@@ -519,6 +519,8 @@ class MatchError(Exception):
 
 
 def match(obj: Object, pattern: Object) -> bool:
+    if isinstance(pattern, Int):
+        return isinstance(obj, Int) and obj.value == pattern.value
     raise NotImplementedError("TODO: match")
 
 
@@ -987,6 +989,17 @@ class ParserTests(unittest.TestCase):
         )
 
 
+class MatchTests(unittest.TestCase):
+    def test_match_with_equal_ints_returns_true(self) -> None:
+        self.assertTrue(match(Int(1), pattern=Int(1)))
+
+    def test_match_with_inequal_ints_returns_true(self) -> None:
+        self.assertFalse(match(Int(2), pattern=Int(1)))
+
+    def test_match_int_with_non_int_returns_false(self) -> None:
+        self.assertFalse(match(String("abc"), pattern=Int(1)))
+
+
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:
         exp = Int(5)
@@ -1179,6 +1192,32 @@ class EvalTests(unittest.TestCase):
 
     def test_match_no_cases_raises_match_error(self) -> None:
         exp = Apply(MatchFunction([]), Int(1))
+        with self.assertRaisesRegex(MatchError, "no matching cases"):
+            eval({}, exp)
+
+    def test_match_int_with_equal_int_returns_true(self) -> None:
+        exp = Apply(
+            MatchFunction(
+                [MatchCase(pattern=Int(1), body=Int(2))],
+            ),
+            Int(1),
+        )
+        self.assertEqual(eval({}, exp), Int(2))
+
+    def test_match_falls_through_to_next(self) -> None:
+        exp = Apply(
+            MatchFunction(
+                [MatchCase(pattern=Int(3), body=Int(4)), MatchCase(pattern=Int(1), body=Int(2))],
+            ),
+            Int(1),
+        )
+        self.assertEqual(eval({}, exp), Int(2))
+
+    def test_match_int_with_inequal_int_returns_true(self) -> None:
+        exp = Apply(
+            MatchFunction([MatchCase(pattern=Int(1), body=Int(2))]),
+            Int(3),
+        )
         with self.assertRaisesRegex(MatchError, "no matching cases"):
             eval({}, exp)
 

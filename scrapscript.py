@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.10
 import argparse
 import base64
+import code
 import enum
 import logging
 import re
@@ -1339,29 +1340,31 @@ def apply_command(args: argparse.Namespace) -> None:
     print(result)
 
 
-def repl_command(args: argparse.Namespace) -> None:
-    if args.debug:
-        logging.basicConfig(level=logging.DEBUG)
-
-    # TODO(max): Make parser drive lexer so that we can let the parser state
-    # determine when to stop reading input.
-    # TODO(max): Use readline
-    while True:
+class ScrapRepl(code.InteractiveConsole):
+    def runsource(self, source: str, filename: str = "<input>", symbol: str = "single") -> bool:
+        # TODO(max): Detect when the user is typing a multi-line expression and
+        # continue asking for more input for the same expression.
+        # TODO(max): Use readline
         try:
-            try:
-                program = input("> ")
-            except EOFError:
-                break
-            tokens = tokenize(program)
+            tokens = tokenize(source)
             logger.debug("Tokens: %s", tokens)
             ast = parse(tokens)
             logger.debug("AST: %s", ast)
             result = eval({}, ast)
             print(result)
-        except KeyboardInterrupt:
-            break
+        except ParseError as e:
+            print(f"Parse error: {e}", file=sys.stderr)
         except Exception as e:
             print(f"Error: {e}", file=sys.stderr)
+        return False
+
+
+def repl_command(args: argparse.Namespace) -> None:
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+
+    repl = ScrapRepl()
+    repl.interact(banner="")
 
 
 def test_command(args: argparse.Namespace) -> None:

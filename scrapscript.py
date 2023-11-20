@@ -370,6 +370,7 @@ class BinopKind(enum.Enum):
     GREATER_EQUAL = auto()
     HASTYPE = auto()
     PIPE = auto()
+    RIGHT_EVAL = auto()
 
     @classmethod
     def from_str(cls, x: str) -> "BinopKind":
@@ -388,6 +389,7 @@ class BinopKind(enum.Enum):
             ">=": cls.GREATER_EQUAL,
             ":": cls.HASTYPE,
             "|>": cls.PIPE,
+            "!": cls.RIGHT_EVAL,
         }[x]
 
 
@@ -486,6 +488,8 @@ BINOP_HANDLERS: dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.DIV: lambda env, x, y: Int(eval_int(env, x) // eval_int(env, y)),
     # We have type: ignore because we haven't (re)defined eval yet.
     BinopKind.EQUAL: lambda env, x, y: Bool(eval(env, x) == eval(env, y)),  # type: ignore [arg-type]
+    # We have type: ignore because we haven't (re)defined eval yet.
+    BinopKind.RIGHT_EVAL: lambda env, x, y: eval(env, y),  # type: ignore [arg-type]
 }
 
 
@@ -697,6 +701,9 @@ class TokenizerTests(unittest.TestCase):
             ["r", "@", "a"],
         )
 
+    def test_tokenize_right_eval(self) -> None:
+        self.assertEqual(tokenize("a!b"), ["a", "!", "b"])
+
 
 class ParserTests(unittest.TestCase):
     def test_parse_with_empty_tokens_raises_parse_error(self) -> None:
@@ -902,6 +909,15 @@ class ParserTests(unittest.TestCase):
             parse(["{", "1", ",", "2", "}"])
         self.assertEqual(ctx.exception.args[0], "failed to parse variable assignment in record constructor")
 
+    def test_parse_right_eval_returns_binop(self) -> None:
+        self.assertEqual(parse(["a", "!", "b"]), Binop(BinopKind.RIGHT_EVAL, Var("a"), Var("b")))
+
+    def test_parse_right_eval_with_defs_returns_binop(self) -> None:
+        self.assertEqual(
+            parse(["a", "!", "b", ".", "c"]),
+            Binop(BinopKind.RIGHT_EVAL, Var("a"), Where(Var("b"), Var("c"))),
+        )
+
 
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:
@@ -1088,6 +1104,10 @@ class EvalTests(unittest.TestCase):
         exp = Access(Int(4), Var("x"))
         with self.assertRaisesRegex(TypeError, re.escape("attempted to access from a non-record of type Int")):
             eval({}, exp)
+
+    def test_right_eval_evaluates_right_hand_side(self) -> None:
+        exp = Binop(BinopKind.RIGHT_EVAL, Int(1), Int(2))
+        self.assertEqual(eval({}, exp), Int(2))
 
 
 class EndToEndTests(unittest.TestCase):

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3.10
+import argparse
 import base64
 import enum
 import logging
@@ -9,8 +10,6 @@ from dataclasses import dataclass
 from enum import auto
 from typing import Callable, Mapping, Optional
 
-import click
-from click import File
 
 logger = logging.getLogger(__name__)
 
@@ -1315,19 +1314,11 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(ctx.exception.args[0], "expected variable in function definition Int(value=1)")
 
 
-@click.group()
-def main() -> None:
-    """Main CLI entrypoint."""
-
-
-@main.command(name="eval")
-@click.argument("program-file", type=File(), default=sys.stdin)
-@click.option("--debug", is_flag=True)
-def eval_command(program_file: File, debug: bool) -> None:
-    if debug:
+def eval_command(args) -> None:
+    if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
-    program = program_file.read()  # type: ignore [attr-defined]
+    program = args.program_file.read()  # type: ignore [attr-defined]
     tokens = tokenize(program)
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
@@ -1336,14 +1327,11 @@ def eval_command(program_file: File, debug: bool) -> None:
     print(result)
 
 
-@main.command(name="apply")
-@click.argument("program", type=str, required=True)
-@click.option("--debug", is_flag=True)
-def apply_command(program: str, debug: bool) -> None:
-    if debug:
+def apply_command(args) -> None:
+    if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
-    tokens = tokenize(program)
+    tokens = tokenize(args.program)
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
@@ -1351,10 +1339,8 @@ def apply_command(program: str, debug: bool) -> None:
     print(result)
 
 
-@main.command(name="repl")
-@click.option("--debug", is_flag=True)
-def repl_command(debug: bool) -> None:
-    if debug:
+def repl_command(args) -> None:
+    if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
     # TODO(max): Make parser drive lexer so that we can let the parser state
@@ -1378,9 +1364,34 @@ def repl_command(debug: bool) -> None:
             print(f"Error: {e}", file=sys.stderr)
 
 
-@main.command(name="test")
-def eval_test_command() -> None:
+def test_command(args) -> None:
     unittest.main(argv=[__file__])
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(required=True)
+
+    repl = subparsers.add_parser("repl")
+    repl.set_defaults(func=repl_command)
+    repl.add_argument("--debug", action="store_true")
+
+    test = subparsers.add_parser("test")
+    test.set_defaults(func=test_command)
+    test.add_argument("--debug", action="store_true")
+
+    eval_ = subparsers.add_parser("eval")
+    eval_.set_defaults(func=eval_command)
+    eval_.add_argument("program_file", type=argparse.FileType("r"))
+    eval_.add_argument("--debug", action="store_true")
+
+    apply = subparsers.add_parser("apply")
+    apply.set_defaults(func=apply_command)
+    apply.add_argument("program")
+    apply.add_argument("--debug", action="store_true")
+
+    args = parser.parse_args()
+    args.func(args)
 
 
 if __name__ == "__main__":

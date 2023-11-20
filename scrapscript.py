@@ -246,6 +246,18 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             raise ParseError(f"unexpected base {base!r} in {token!r}")
     elif token.startswith('"') and token.endswith('"'):
         l = String(token[1:-1])
+    elif token == "|":
+        expr = parse(tokens, 5)  # TODO: make this work for larger arities
+        if not isinstance(expr, Function):
+            raise ParseError(f"expected function in match expression {expr!r}")
+        cases = [MatchCase(expr.arg, expr.body)]
+        while tokens and tokens[0] == "|":
+            tokens.pop(0)
+            expr = parse(tokens, 5)  # TODO: make this work for larger arities
+            if not isinstance(expr, Function):
+                raise ParseError(f"expected function in match expression {expr!r}")
+            cases.append(MatchCase(expr.arg, expr.body))
+        l = MatchFunction(cases)
     elif token == "(":
         if tokens[0] == ")":
             l = Hole()
@@ -295,8 +307,6 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
                 raise ParseError(f"expected variable in assignment {l!r}")
             l = Assign(l, parse(tokens, pr))
         elif op == "->":
-            if not isinstance(l, Var):
-                raise ParseError(f"expected variable in function definition {l!r}")
             l = Function(l, parse(tokens, pr))
         elif op == "":
             l = Apply(l, parse(tokens, pr))
@@ -413,7 +423,7 @@ class Assign(Object):
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Function(Object):
-    arg: Var
+    arg: Object
     body: Object
 
 
@@ -455,6 +465,17 @@ class Record(Object):
 class Access(Object):
     record: Object
     field: Var
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class MatchCase(Object):
+    pattern: Object
+    body: Object
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class MatchFunction(Object):
+    cases: list[MatchCase]
 
 
 def eval_int(env: Env, exp: Object) -> int:
@@ -528,12 +549,15 @@ def eval(env: Env, exp: Object) -> Object:
             raise AssertionError(f"condition {exp.cond} failed")
         return eval(env, exp.value)
     if isinstance(exp, Function):
+        if not isinstance(exp.arg, Var):
+            raise RuntimeError(f"expected variable in function definition {exp.arg}")
         return Closure(env, exp)
     if isinstance(exp, Apply):
         closure = eval(env, exp.func)
         if not isinstance(closure, Closure):
             raise TypeError(f"attempted to apply a non-function of type {type(closure).__name__}")
         arg = eval(env, exp.arg)
+        assert isinstance(closure.func.arg, Var)
         new_env = {**closure.env, closure.func.arg.name: arg}
         return eval(new_env, closure.func.body)
     if isinstance(exp, Access):
@@ -705,6 +729,12 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_right_eval(self) -> None:
         self.assertEqual(tokenize("a!b"), ["a", "!", "b"])
 
+    def test_tokenize_match(self) -> None:
+        self.assertEqual(
+            tokenize("g = | 1 -> 2 | 2 -> 3"),
+            ["g", "=", "|", "1", "->", "2", "|", "2", "->", "3"],
+        )
+
 
 class ParserTests(unittest.TestCase):
     def test_parse_with_empty_tokens_raises_parse_error(self) -> None:
@@ -873,11 +903,6 @@ class ParserTests(unittest.TestCase):
             ),
         )
 
-    def test_parse_non_var_function_arg_raises_parse_error(self) -> None:
-        with self.assertRaises(ParseError) as ctx:
-            parse(["a", "->", "1", "->", "a"])
-        self.assertEqual(ctx.exception.args[0], "expected variable in function definition Int(value=1)")
-
     def test_parse_empty_record(self) -> None:
         self.assertEqual(parse(["{", "}"]), Record({}))
 
@@ -917,6 +942,28 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(
             parse(["a", "!", "b", ".", "c"]),
             Binop(BinopKind.RIGHT_EVAL, Var("a"), Where(Var("b"), Var("c"))),
+        )
+
+    def test_parse_match_no_cases_raises_parse_error(self) -> None:
+        with self.assertRaises(ParseError) as ctx:
+            (parse(["|"]),)
+        self.assertEqual(ctx.exception.args[0], "unexpected end of input")
+
+    def test_parse_match_one_case(self) -> None:
+        self.assertEqual(
+            parse(["|", "1", "->", "2"]),
+            MatchFunction([MatchCase(Int(1), Int(2))]),
+        )
+
+    def test_parse_match_two_cases(self) -> None:
+        self.assertEqual(
+            parse(["|", "1", "->", "2", "|", "2", "->", "3"]),
+            MatchFunction(
+                [
+                    MatchCase(Int(1), Int(2)),
+                    MatchCase(Int(2), Int(3)),
+                ]
+            ),
         )
 
 
@@ -1197,6 +1244,11 @@ class EndToEndTests(unittest.TestCase):
 
     def test_functions_eval_arguments(self) -> None:
         self.assertEqual(self._run("(x -> x) c . c = 1"), Int(1))
+
+    def test_non_var_function_arg_raises_parse_error(self) -> None:
+        with self.assertRaises(RuntimeError) as ctx:
+            self._run("1 -> a")
+        self.assertEqual(ctx.exception.args[0], "expected variable in function definition Int(value=1)")
 
 
 @click.group()

@@ -1061,6 +1061,28 @@ def apply_command(program: str, debug: bool) -> None:
     print(result)
 
 
+@main.command(name="repl")
+@click.option("--debug", is_flag=True)
+def repl_command(debug: bool) -> None:
+    if debug:
+        logging.basicConfig(level=logging.DEBUG)
+
+    # TODO(max): Make parser drive lexer so that we can let the parser state
+    # determine when to stop reading input.
+    # TODO(max): Use readline
+    while True:
+        try:
+            program = input("> ")
+        except EOFError:
+            break
+        tokens = tokenize(program)
+        logger.debug("Tokens: %s", tokens)
+        ast = parse(tokens)
+        logger.debug("AST: %s", ast)
+        result = eval({}, ast)
+        print(result)
+
+
 @main.command(name="test")
 def eval_test_command() -> None:
     unittest.main(argv=[__file__])

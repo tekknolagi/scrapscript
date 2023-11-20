@@ -4,12 +4,22 @@ import base64
 import code
 import enum
 import logging
+import os
 import re
 import sys
 import unittest
 from dataclasses import dataclass
 from enum import auto
+from types import ModuleType
 from typing import Callable, Mapping, Optional
+
+
+readline: Optional[ModuleType]
+try:
+    import readline
+except ImportError:
+    readline = None
+
 
 logger = logging.getLogger(__name__)
 
@@ -1422,7 +1432,6 @@ class ScrapRepl(code.InteractiveConsole):
     def runsource(self, source: str, filename: str = "<input>", symbol: str = "single") -> bool:
         # TODO(max): Detect when the user is typing a multi-line expression and
         # continue asking for more input for the same expression.
-        # TODO(max): Use readline
         try:
             tokens = tokenize(source)
             logger.debug("Tokens: %s", tokens)
@@ -1441,8 +1450,15 @@ def repl_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
+    histfile = os.path.expanduser(".scrap-history")
+    histfile_size = 1000
+    if readline and os.path.exists(histfile):
+        readline.read_history_file(histfile)
     repl = ScrapRepl()
     repl.interact(banner="")
+    if readline:
+        readline.set_history_length(histfile_size)
+        readline.write_history_file(histfile)
 
 
 def test_command(_args: argparse.Namespace) -> None:

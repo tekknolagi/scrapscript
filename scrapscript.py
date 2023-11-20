@@ -13,7 +13,6 @@ from enum import auto
 from types import ModuleType
 from typing import Callable, Mapping, Optional
 
-
 readline: Optional[ModuleType]
 try:
     import readline
@@ -451,8 +450,8 @@ class Apply(Object):
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Compose(Object):
-    f: Object
-    g: Object
+    inner: Object
+    outer: Object
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -611,9 +610,9 @@ def eval(env: Env, exp: Object) -> Object:
             raise TypeError(f"attempted to access from a non-record of type {type(record).__name__}")
         return record.data[exp.field.name]
     if isinstance(exp, Compose):
-        clo_f = eval(env, exp.f)
-        clo_g = eval(env, exp.g)
-        return Closure({}, Function(Var("x"), Apply(clo_g, Apply(clo_f, Var("x")))))
+        clo_inner = eval(env, exp.inner)
+        clo_outer = eval(env, exp.outer)
+        return Closure({}, Function(Var("x"), Apply(clo_outer, Apply(clo_inner, Var("x")))))
     raise NotImplementedError(f"eval not implemented for {exp}")
 
 
@@ -1036,7 +1035,7 @@ class ParserTests(unittest.TestCase):
     def test_parse_double_compose(self) -> None:
         self.assertEqual(
             parse(["f", "<<", "g", "<<", "h"]),
-            Compose(f=Compose(f=Var(name="h"), g=Var(name="g")), g=Var(name="f")),
+            Compose(Compose(Var("h"), Var("g")), Var("f")),
         )
 
 

@@ -207,7 +207,7 @@ class ParseError(Exception):
 def parse_assign(tokens: list[str], p: float = 0) -> "Assign":
     assign = parse(tokens, p)
     if not isinstance(assign, Assign):
-        raise ValueError("failed to parse assignment")
+        raise ParseError("failed to parse variable assignment in record constructor")
     return assign
 
 
@@ -857,6 +857,11 @@ class ParserTests(unittest.TestCase):
         with self.assertRaises(ParseError) as ctx:
             parse(["r", "@", "1"])
         self.assertEqual(ctx.exception.args[0], "cannot access record with non-name Int(value=1)")
+
+    def test_non_assign_in_record_constructor_raises_parse_error(self) -> None:
+        with self.assertRaises(ParseError) as ctx:
+            parse(["{", "1", ",", "2", "}"])
+        self.assertEqual(ctx.exception.args[0], "failed to parse variable assignment in record constructor")
 
 
 class EvalTests(unittest.TestCase):

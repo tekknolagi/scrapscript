@@ -115,14 +115,16 @@ class Lexer:
         return buf
 
     def read_bytes(self) -> str:
-        buf = "~~"
+        buf = ""
         while self.has_input():
             if (c := self.read_char()) == "=":
                 break
             buf += c
         else:
             raise ParseError("unexpected EOF while reading bytes")
-        return buf
+        if not buf.startswith("64'"):
+            buf = "64'" + buf
+        return "~~" + buf
 
 
 def tokenize(x: str) -> list[str]:
@@ -230,7 +232,13 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
     elif token.startswith(dollar_dollar_prefix) and token[len(dollar_dollar_prefix) :].isidentifier():
         l = Var(token)
     elif token.startswith(tilde_tilde_prefix):
-        l = Bytes(base64.b64decode(token[len(tilde_tilde_prefix) :]))
+        assert len(token) >= len("~~XX'")
+        assert "'" in token, "expected base in bytes"
+        base, without_base = token[len(tilde_tilde_prefix) :].split("'")
+        assert base.isnumeric(), f"unexpected base {base!r} in {token!r}"
+        assert without_base.isalnum()
+        assert base == "64", "only base 64 is supported right now"
+        l = Bytes(base64.b64decode(without_base))
     elif token.startswith('"') and token.endswith('"'):
         l = String(token[1:-1])
     elif token == "(":
@@ -626,10 +634,10 @@ class TokenizerTests(unittest.TestCase):
             tokenize("~=")
 
     def test_tokenize_tilde_tilde_equals_returns_empty_bytes(self) -> None:
-        self.assertEqual(tokenize("~~="), ["~~"])
+        self.assertEqual(tokenize("~~="), ["~~64'"])
 
     def test_tokenize_bytes_returns_bytes(self) -> None:
-        self.assertEqual(tokenize("~~QUJD="), ["~~QUJD"])
+        self.assertEqual(tokenize("~~QUJD="), ["~~64'QUJD"])
 
     def test_tokenize_hole(self) -> None:
         self.assertEqual(tokenize("()"), ["(", ")"])
@@ -718,7 +726,7 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse(["$$bills"]), Var("$$bills"))
 
     def test_parse_bytes_returns_bytes(self) -> None:
-        self.assertEqual(parse(["~~QUJD"]), Bytes(b"ABC"))
+        self.assertEqual(parse(["~~64'QUJD"]), Bytes(b"ABC"))
 
     def test_parse_binary_add_returns_binop(self) -> None:
         self.assertEqual(parse(["1", "+", "2"]), Binop(BinopKind.ADD, Int(1), Int(2)))

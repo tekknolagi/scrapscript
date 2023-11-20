@@ -967,7 +967,7 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_match_no_cases_raises_parse_error(self) -> None:
         with self.assertRaises(ParseError) as ctx:
-            (parse(["|"]),)
+            parse(["|"])
         self.assertEqual(ctx.exception.args[0], "unexpected end of input")
 
     def test_parse_match_one_case(self) -> None:

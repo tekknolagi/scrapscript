@@ -533,7 +533,8 @@ def eval(env: Env, exp: Object) -> Object:
         closure = eval(env, exp.func)
         if not isinstance(closure, Closure):
             raise TypeError(f"attempted to apply a non-function of type {type(closure).__name__}")
-        new_env = {**closure.env, closure.func.arg.name: exp.arg}
+        arg = eval(env, exp.arg)
+        new_env = {**closure.env, closure.func.arg.name: arg}
         return eval(new_env, closure.func.body)
     if isinstance(exp, Access):
         record = eval(env, exp.record)
@@ -1193,6 +1194,9 @@ class EndToEndTests(unittest.TestCase):
 
     def test_access_record(self) -> None:
         self.assertEqual(self._run('rec@b . rec = { a = 1, b = "x" }'), String("x"))
+
+    def test_functions_eval_arguments(self) -> None:
+        self.assertEqual(self._run("(x -> x) c . c = 1"), Int(1))
 
 
 @click.group()

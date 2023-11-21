@@ -197,6 +197,7 @@ PS = {
     "|": rp(4.5),
     ":": lp(4.5),
     "|>": lp(4.11),
+    "<|": lp(4.11),
     "=": rp(4),
     "@": rp(4),
     "!": lp(3),
@@ -324,6 +325,8 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             l = Apply(l, parse(tokens, pr))
         elif op == "|>":
             l = Apply(parse(tokens, pr), l)
+        elif op == "<|":
+            l = Apply(l, parse(tokens, pr))
         elif op == ">>":
             l = Compose(l, parse(tokens, pr))
         elif op == "<<":
@@ -396,6 +399,7 @@ class BinopKind(enum.Enum):
     GREATER_EQUAL = auto()
     HASTYPE = auto()
     PIPE = auto()
+    REVERSE_PIPE = auto()
     RIGHT_EVAL = auto()
 
     @classmethod
@@ -415,6 +419,7 @@ class BinopKind(enum.Enum):
             ">=": cls.GREATER_EQUAL,
             ":": cls.HASTYPE,
             "|>": cls.PIPE,
+            "<|": cls.REVERSE_PIPE,
             "!": cls.RIGHT_EVAL,
         }[x]
 
@@ -748,6 +753,12 @@ class TokenizerTests(unittest.TestCase):
             ["1", "|>", "f", ".", "f", "=", "a", "->", "a", "+", "1"],
         )
 
+    def test_tokenize_reverse_pipe(self) -> None:
+        self.assertEqual(
+            tokenize("f <| 1 . f = a -> a + 1"),
+            ["f", "<|", "1", ".", "f", "=", "a", "->", "a", "+", "1"],
+        )
+
     def test_tokenize_record_no_fields(self) -> None:
         self.assertEqual(
             tokenize("{ }"),
@@ -957,14 +968,26 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_pipe(self) -> None:
         self.assertEqual(
-            parse(["1", "|>", "f", ".", "f", "=", "a", "->", "a", "+", "1"]),
-            Where(
-                Apply(Var("f"), Int(1)),
-                Assign(
-                    Var("f"),
-                    Function(Var("a"), Binop(BinopKind.ADD, Var("a"), Int(1))),
-                ),
-            ),
+            parse(["1", "|>", "f"]),
+            Apply(Var("f"), Int(1)),
+        )
+
+    def test_parse_nested_pipe(self) -> None:
+        self.assertEqual(
+            parse(["(", "1", "|>", "f", ")", "|>", "g"]),
+            Apply(Var("g"), Apply(Var("f"), Int(1))),
+        )
+
+    def test_parse_reverse_pipe(self) -> None:
+        self.assertEqual(
+            parse(["f", "<|", "1"]),
+            Apply(Var("f"), Int(1)),
+        )
+
+    def test_parse_nested_reverse_pipe(self) -> None:
+        self.assertEqual(
+            parse(["g", "<|", "f", "<|", "1"]),
+            Apply(Var("g"), Apply(Var("f"), Int(1))),
         )
 
     def test_parse_empty_record(self) -> None:
@@ -1431,6 +1454,18 @@ class EndToEndTests(unittest.TestCase):
             ),
             Int(3),
         )
+
+    def test_pipe(self) -> None:
+        self.assertEqual(self._run("1 |> (a -> a + 2)"), Int(3))
+
+    def test_pipe_nested(self) -> None:
+        self.assertEqual(self._run("(1 |> (a -> a + 2)) |> (b -> b * 2)"), Int(6))
+
+    def test_reverse_pipe(self) -> None:
+        self.assertEqual(self._run("(a -> a + 2) <| 1"), Int(3))
+
+    def test_reverse_pipe_nested(self) -> None:
+        self.assertEqual(self._run("(b -> b * 2) <| (a -> a + 2) <| 1"), Int(6))
 
 
 def eval_command(args: argparse.Namespace) -> None:

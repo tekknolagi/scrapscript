@@ -196,7 +196,7 @@ PS = {
     "->": lp(5),
     "|": rp(4.5),
     ":": lp(4.5),
-    "|>": lp(4.11),
+    "|>": rp(4.11),
     "<|": lp(4.11),
     "=": rp(4),
     "@": rp(4),
@@ -982,7 +982,7 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_nested_pipe(self) -> None:
         self.assertEqual(
-            parse(["(", "1", "|>", "f", ")", "|>", "g"]),
+            parse(["1", "|>", "f", "|>", "g"]),
             Apply(Var("g"), Apply(Var("f"), Int(1))),
         )
 
@@ -1495,7 +1495,7 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(self._run("1 |> (a -> a + 2)"), Int(3))
 
     def test_pipe_nested(self) -> None:
-        self.assertEqual(self._run("(1 |> (a -> a + 2)) |> (b -> b * 2)"), Int(6))
+        self.assertEqual(self._run("1 |> (a -> a + 2) |> (b -> b * 2)"), Int(6))
 
     def test_reverse_pipe(self) -> None:
         self.assertEqual(self._run("(a -> a + 2) <| 1"), Int(3))

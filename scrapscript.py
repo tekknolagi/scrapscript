@@ -348,13 +348,16 @@ class Object:
     def serialize(self) -> dict[bytes, object]:
         raise NotImplementedError("{type(self).__name__}.serialize()")
 
+    def _serialize(self, **kwargs: object) -> dict[bytes, object]:
+        return {key.encode("utf-8"): value for key, value in kwargs.items()}
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Int(Object):
     value: int
 
     def serialize(self) -> dict[bytes, object]:
-        return {b"type": b"Int", b"value": self.value}
+        return self._serialize(type=b"Int", value=self.value)
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -446,10 +449,21 @@ class Binop(Object):
     left: Object
     right: Object
 
+    def serialize(self) -> dict[bytes, object]:
+        return {
+            b"type": b"Binop",
+            b"op": self.op.name.encode("utf-8"),
+            b"left": self.left.serialize(),
+            b"right": self.right.serialize(),
+        }
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class List(Object):
     items: typing.List[Object]
+
+    def serialize(self) -> dict[bytes, object]:
+        return {b"type": b"List", b"items": [item.serialize() for item in self.items]}
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -457,11 +471,17 @@ class Assign(Object):
     name: Var
     value: Object
 
+    def serialize(self) -> dict[bytes, object]:
+        return self._serialize(type=b"Assign", value=self.value.serialize())
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Function(Object):
     arg: Object
     body: Object
+
+    def serialize(self) -> dict[bytes, object]:
+        return self._serialize(type=b"Function", arg=self.arg.serialize(), body=self.body.serialize())
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -469,11 +489,17 @@ class Apply(Object):
     func: Object
     arg: Object
 
+    def serialize(self) -> dict[bytes, object]:
+        return self._serialize(type=b"Apply", func=self.func.serialize(), arg=self.arg.serialize())
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Compose(Object):
     inner: Object
     outer: Object
+
+    def serialize(self) -> dict[bytes, object]:
+        return self._serialize(type=b"Compose", inner=self.inner.serialize(), outer=self.outer.serialize())
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -481,16 +507,27 @@ class Where(Object):
     body: Object
     binding: Object
 
+    def serialize(self) -> dict[bytes, object]:
+        return self._serialize(type=b"Where", body=self.body.serialize(), binding=self.binding.serialize())
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Assert(Object):
     value: Object
     cond: Object
 
+    def serialize(self) -> dict[bytes, object]:
+        return self._serialize(type=b"Assert", value=self.value.serialize(), cond=self.cond.serialize())
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class EnvObject(Object):
     env: Env
+
+    def serialize(self) -> dict[bytes, object]:
+        return self._serialize(
+            type=b"EnvObject", value={key.encode("utf-8"): value.serialize() for key, value in self.env.items()}
+        )
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -498,10 +535,16 @@ class MatchCase(Object):
     pattern: Object
     body: Object
 
+    def serialize(self) -> dict[bytes, object]:
+        return self._serialize(type=b"MatchCase", pattern=self.pattern.serialize(), body=self.pattern.serialize())
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class MatchFunction(Object):
     cases: typing.List[MatchCase]
+
+    def serialize(self) -> dict[bytes, object]:
+        return self._serialize(type=b"MatchFunction", cases=[case.serialize() for case in self.cases])
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -1840,6 +1883,29 @@ class ObjectSerializeTests(unittest.TestCase):
     def test_serialize_bool(self) -> None:
         obj = Bool(True)
         self.assertEqual(obj.serialize(), {b"type": b"Bool", b"value": True})
+
+    def test_serialize_binary_add(self) -> None:
+        obj = Binop(BinopKind.ADD, Int(123), Int(456))
+        self.assertEqual(
+            obj.serialize(),
+            {
+                b"left": {b"type": b"Int", b"value": 123},
+                b"op": b"ADD",
+                b"right": {b"type": b"Int", b"value": 456},
+                b"type": b"Binop",
+            },
+        )
+
+    def test_serialize_list(self) -> None:
+        obj = List([Int(1), Int(2)])
+        self.assertEqual(
+            obj.serialize(),
+            {b"type": b"List", b"items": [{b"type": b"Int", b"value": 1}, {b"type": b"Int", b"value": 2}]},
+        )
+
+    def test_serialize_assign(self) -> None:
+        obj = Assign(Var("x"), Int(2))
+        self.assertEqual(obj.serialize(), {b"type": b"Assign", b"value": {b"type": b"Int", b"value": 2}})
 
 
 class SerializeTests(unittest.TestCase):

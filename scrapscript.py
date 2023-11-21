@@ -336,11 +336,8 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
         elif op == "?":
             l = Assert(l, parse(tokens, pr))
         elif op == "@":
-            # TODO: revisit whether to use @ or . for record field access
-            access_var = parse(tokens, pr)
-            if not isinstance(access_var, Var):
-                raise ParseError(f"cannot access record with non-name {access_var!r}")
-            l = Access(l, access_var)
+            # TODO: revisit whether to use @ or . for field access
+            l = Access(l, parse(tokens, pr))
         else:
             l = Binop(BinopKind.from_str(op), l, parse(tokens, pr))
     return l
@@ -501,8 +498,8 @@ class Record(Object):
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Access(Object):
-    record: Object
-    field: Var
+    obj: Object
+    at: Object
 
 
 def eval_int(env: Env, exp: Object) -> int:
@@ -614,10 +611,14 @@ def eval(env: Env, exp: Object) -> Object:
         else:
             raise TypeError(f"attempted to apply a non-function of type {type(callee.func).__name__}")
     if isinstance(exp, Access):
-        record = eval(env, exp.record)
-        if not isinstance(record, Record):
-            raise TypeError(f"attempted to access from a non-record of type {type(record).__name__}")
-        return record.data[exp.field.name]
+        obj = eval(env, exp.obj)
+        if isinstance(obj, Record):
+            if not isinstance(exp.at, Var):
+                raise TypeError(f"cannot access record field using {type(exp.at).__name__}, expected a field name")
+            if exp.at.name not in obj.data:
+                raise NameError(f"no assignment to {exp.at.name} found in record")
+            return obj.data[exp.at.name]
+        raise TypeError(f"attempted to access from type {type(obj).__name__}")
     if isinstance(exp, Compose):
         clo_inner = eval(env, exp.inner)
         clo_outer = eval(env, exp.outer)
@@ -1012,11 +1013,6 @@ class ParserTests(unittest.TestCase):
             parse(["3", "=", "4"])
         self.assertEqual(ctx.exception.args[0], "expected variable in assignment Int(value=3)")
 
-    def test_record_access_with_non_name_raises_parse_error(self) -> None:
-        with self.assertRaises(ParseError) as ctx:
-            parse(["r", "@", "1"])
-        self.assertEqual(ctx.exception.args[0], "cannot access record with non-name Int(value=1)")
-
     def test_non_assign_in_record_constructor_raises_parse_error(self) -> None:
         with self.assertRaises(ParseError) as ctx:
             parse(["{", "1", ",", "2", "}"])
@@ -1267,10 +1263,26 @@ class EvalTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, re.escape("attempted to apply a non-closure of type Int")):
             eval({}, exp)
 
-    def test_eval_access_from_non_record_raises_type_error(self) -> None:
-        exp = Access(Int(4), Var("x"))
-        with self.assertRaisesRegex(TypeError, re.escape("attempted to access from a non-record of type Int")):
+    def test_eval_access_from_invalid_object_raises_type_error(self) -> None:
+        exp = Access(Int(4), String("x"))
+        with self.assertRaisesRegex(TypeError, re.escape("attempted to access from type Int")):
             eval({}, exp)
+
+    def test_eval_record_access_with_invalid_accessor_raises_type_error(self) -> None:
+        exp = Access(Record({"a": Int(4)}), Int(0))
+        with self.assertRaisesRegex(
+            TypeError, re.escape("cannot access record field using Int, expected a field name")
+        ):
+            eval({}, exp)
+
+    def test_eval_record_access_with_unknown_accessor_raises_name_error(self) -> None:
+        exp = Access(Record({"a": Int(4)}), Var("b"))
+        with self.assertRaisesRegex(NameError, re.escape("no assignment to b found in record")):
+            eval({}, exp)
+
+    def test_eval_record_access(self) -> None:
+        exp = Access(Record({"a": Int(4)}), Var("a"))
+        self.assertEqual(eval({}, exp), Int(4))
 
     def test_right_eval_evaluates_right_hand_side(self) -> None:
         exp = Binop(BinopKind.RIGHT_EVAL, Int(1), Int(2))

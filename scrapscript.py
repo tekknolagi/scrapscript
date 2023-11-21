@@ -1287,6 +1287,10 @@ class EvalTests(unittest.TestCase):
         with self.assertRaisesRegex(NameError, re.escape("no assignment to b found in record")):
             eval({}, exp)
 
+    def test_eval_record_access(self) -> None:
+        exp = Access(Record({"a": Int(4)}), Var("a"))
+        self.assertEqual(eval({}, exp), Int(4))
+
     def test_eval_list_access_with_invalid_accessor_raises_type_error(self) -> None:
         exp = Access(List([Int(4)]), String("hello"))
         with self.assertRaisesRegex(TypeError, re.escape("cannot index into list using type String, expected integer")):
@@ -1300,10 +1304,6 @@ class EvalTests(unittest.TestCase):
     def test_eval_list_access(self) -> None:
         exp = Access(List([String("a"), String("b"), String("c")]), Int(2))
         self.assertEqual(eval({}, exp), String("c"))
-
-    def test_eval_record_access(self) -> None:
-        exp = Access(Record({"a": Int(4)}), Var("a"))
-        self.assertEqual(eval({}, exp), Int(4))
 
     def test_right_eval_evaluates_right_hand_side(self) -> None:
         exp = Binop(BinopKind.RIGHT_EVAL, Int(1), Int(2))

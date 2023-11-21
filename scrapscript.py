@@ -197,6 +197,7 @@ PS = {
     "|": rp(4.5),
     ":": lp(4.5),
     "|>": lp(4.11),
+    "<|": lp(4.11),
     "=": rp(4),
     "@": rp(4),
     "!": lp(3),
@@ -324,6 +325,8 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
             l = Apply(l, parse(tokens, pr))
         elif op == "|>":
             l = Apply(parse(tokens, pr), l)
+        elif op == "<|":
+            l = Apply(l, parse(tokens, pr))
         elif op == ">>":
             l = Compose(l, parse(tokens, pr))
         elif op == "<<":
@@ -396,6 +399,7 @@ class BinopKind(enum.Enum):
     GREATER_EQUAL = auto()
     HASTYPE = auto()
     PIPE = auto()
+    RIGHT_PIPE = auto()
     RIGHT_EVAL = auto()
 
     @classmethod
@@ -415,6 +419,7 @@ class BinopKind(enum.Enum):
             ">=": cls.GREATER_EQUAL,
             ":": cls.HASTYPE,
             "|>": cls.PIPE,
+            "<|": cls.RIGHT_PIPE,
             "!": cls.RIGHT_EVAL,
         }[x]
 
@@ -746,6 +751,12 @@ class TokenizerTests(unittest.TestCase):
             ["1", "|>", "f", ".", "f", "=", "a", "->", "a", "+", "1"],
         )
 
+    def test_tokenize_right_pipe(self) -> None:
+        self.assertEqual(
+            tokenize("f <| 1 . f = a -> a + 1"),
+            ["f", "<|", "1", ".", "f", "=", "a", "->", "a", "+", "1"],
+        )
+
     def test_tokenize_record_no_fields(self) -> None:
         self.assertEqual(
             tokenize("{ }"),
@@ -956,6 +967,18 @@ class ParserTests(unittest.TestCase):
     def test_parse_pipe(self) -> None:
         self.assertEqual(
             parse(["1", "|>", "f", ".", "f", "=", "a", "->", "a", "+", "1"]),
+            Where(
+                Apply(Var("f"), Int(1)),
+                Assign(
+                    Var("f"),
+                    Function(Var("a"), Binop(BinopKind.ADD, Var("a"), Int(1))),
+                ),
+            ),
+        )
+
+    def test_parse_right_pipe(self) -> None:
+        self.assertEqual(
+            parse(["f", "<|", "1", ".", "f", "=", "a", "->", "a", "+", "1"]),
             Where(
                 Apply(Var("f"), Int(1)),
                 Assign(

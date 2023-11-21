@@ -540,9 +540,11 @@ class MatchError(Exception):
     pass
 
 
-def match(obj: Object, pattern: Object) -> bool:
+def match(obj: Object, pattern: Object) -> bool | Env:
     if isinstance(pattern, Int):
         return isinstance(obj, Int) and obj.value == pattern.value
+    if isinstance(pattern, Var):
+        return {pattern.name: obj}
     # TODO: Handle match condition with var pattern
     raise NotImplementedError("TODO: match")
 
@@ -601,8 +603,13 @@ def eval(env: Env, exp: Object) -> Object:
             # TODO(max): Implement MatchClosure
             arg = eval(env, exp.arg)
             for case in callee.func.cases:
-                if match(arg, case.pattern):
+                match_or_env = match(arg, case.pattern)
+                if isinstance(match_or_env, bool) and match_or_env:
                     return eval(env, case.body)
+                if match_or_env:
+                    # It's an env
+                    return eval({**env, **match_or_env}, case.body)
+                # Fallthrough
             raise MatchError("no matching cases")
         else:
             raise TypeError(f"attempted to apply a non-function of type {type(callee.func).__name__}")
@@ -1421,6 +1428,33 @@ class EndToEndTests(unittest.TestCase):
                   """
             ),
             Int(3),
+        )
+
+    def test_var_match(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                f 3
+                . f =
+                  | 1 -> 2
+                  | 2 -> 3
+                  | x -> x + 1
+                  """
+            ),
+            Int(4),
+        )
+
+    def test_var_match_first(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                f 3
+                . f =
+                  | x -> x + 1
+                  | y -> y * 3
+                  """
+            ),
+            Int(4),
         )
 
 

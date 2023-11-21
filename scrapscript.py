@@ -235,6 +235,7 @@ def parse(tokens: list[str], p: float = 0) -> "Object":
     if token.isnumeric() or (token[0] == "-" and token[1:].isnumeric()):
         l = Int(int(token))
     elif token.isidentifier():
+        # TODO: Handle kebab case vars
         l = Var(token)
     elif token.startswith(sha_prefix) and token[len(sha_prefix) :].isidentifier():
         l = Var(token)
@@ -542,6 +543,7 @@ class MatchError(Exception):
 def match(obj: Object, pattern: Object) -> bool:
     if isinstance(pattern, Int):
         return isinstance(obj, Int) and obj.value == pattern.value
+    # TODO: Handle match condition with var pattern
     raise NotImplementedError("TODO: match")
 
 

@@ -520,14 +520,16 @@ class Assert(Object):
         return self._serialize(type=b"Assert", value=self.value.serialize(), cond=self.cond.serialize())
 
 
+def serialize_env(env: Env) -> dict[bytes, object]:
+    return {key.encode("utf-8"): value.serialize() for key, value in env.items()}
+
+
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class EnvObject(Object):
     env: Env
 
     def serialize(self) -> dict[bytes, object]:
-        return self._serialize(
-            type=b"EnvObject", value={key.encode("utf-8"): value.serialize() for key, value in self.env.items()}
-        )
+        return self._serialize(type=b"EnvObject", value=serialize_env(self.env))
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -557,16 +559,27 @@ class Closure(Object):
     env: Env
     func: Union[Function, MatchFunction]
 
+    def serialize(self) -> dict[bytes, object]:
+        return self._serialize(type=b"Closure", env=serialize_env(self.env), func=self.func.serialize())
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Record(Object):
     data: Dict[str, Object]
+
+    def serialize(self) -> dict[bytes, object]:
+        return self._serialize(
+            type=b"Record", data={key.encode("utf-8"): value.serialize() for key, value in self.data.items()}
+        )
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Access(Object):
     obj: Object
     at: Object
+
+    def serialize(self) -> dict[bytes, object]:
+        return self._serialize(type=b"Access", obj=self.obj.serialize(), at=self.at.serialize())
 
 
 def unpack_int(obj: Object) -> int:

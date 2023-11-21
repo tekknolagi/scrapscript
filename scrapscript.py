@@ -618,6 +618,13 @@ def eval(env: Env, exp: Object) -> Object:
             if exp.at.name not in obj.data:
                 raise NameError(f"no assignment to {exp.at.name} found in record")
             return obj.data[exp.at.name]
+        elif isinstance(obj, List):
+            access_at = eval(env, exp.at)
+            if not isinstance(access_at, Int):
+                raise TypeError(f"cannot index into list using type {type(access_at).__name__}, expected integer")
+            if access_at.value < 0 or access_at.value >= len(obj.items):
+                raise ValueError(f"index {access_at.value} out of bounds for list")
+            return obj.items[access_at.value]
         raise TypeError(f"attempted to access from type {type(obj).__name__}")
     if isinstance(exp, Compose):
         clo_inner = eval(env, exp.inner)
@@ -1280,6 +1287,20 @@ class EvalTests(unittest.TestCase):
         with self.assertRaisesRegex(NameError, re.escape("no assignment to b found in record")):
             eval({}, exp)
 
+    def test_eval_list_access_with_invalid_accessor_raises_type_error(self) -> None:
+        exp = Access(List([Int(4)]), String("hello"))
+        with self.assertRaisesRegex(TypeError, re.escape("cannot index into list using type String, expected integer")):
+            eval({}, exp)
+
+    def test_eval_list_access_with_out_of_bounds_accessor_raises_value_error(self) -> None:
+        exp = Access(List([Int(1), Int(2), Int(3)]), Int(4))
+        with self.assertRaisesRegex(ValueError, re.escape("index 4 out of bounds for list")):
+            eval({}, exp)
+
+    def test_eval_list_access(self) -> None:
+        exp = Access(List([String("a"), String("b"), String("c")]), Int(2))
+        self.assertEqual(eval({}, exp), String("c"))
+
     def test_eval_record_access(self) -> None:
         exp = Access(Record({"a": Int(4)}), Var("a"))
         self.assertEqual(eval({}, exp), Int(4))
@@ -1432,6 +1453,9 @@ class EndToEndTests(unittest.TestCase):
 
     def test_access_record(self) -> None:
         self.assertEqual(self._run('rec@b . rec = { a = 1, b = "x" }'), String("x"))
+
+    def test_access_list(self) -> None:
+        self.assertEqual(self._run("xs@1 . xs = [1, 2, 3]"), Int(2))
 
     def test_functions_eval_arguments(self) -> None:
         self.assertEqual(self._run("(x -> x) c . c = 1"), Int(1))

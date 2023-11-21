@@ -543,6 +543,8 @@ class MatchError(Exception):
 def match(obj: Object, pattern: Object) -> bool:
     if isinstance(pattern, Int):
         return isinstance(obj, Int) and obj.value == pattern.value
+    if isinstance(pattern, String):
+        return isinstance(obj, String) and obj.value == pattern.value
     # TODO: Handle match condition with var pattern
     raise NotImplementedError("TODO: match")
 
@@ -1051,6 +1053,15 @@ class MatchTests(unittest.TestCase):
     def test_match_int_with_non_int_returns_false(self) -> None:
         self.assertFalse(match(String("abc"), pattern=Int(1)))
 
+    def test_match_with_equal_strings_returns_true(self) -> None:
+        self.assertTrue(match(String("a"), pattern=String("a")))
+
+    def test_match_with_inequal_strings_returns_false(self) -> None:
+        self.assertFalse(match(String("b"), pattern=String("a")))
+
+    def test_match_string_with_non_string_returns_false(self) -> None:
+        self.assertFalse(match(Int(1), pattern=String("abc")))
+
 
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:
@@ -1253,6 +1264,15 @@ class EvalTests(unittest.TestCase):
 
     def test_match_int_with_inequal_int_raises_match_error(self) -> None:
         exp = Apply(MatchFunction([MatchCase(pattern=Int(1), body=Int(2))]), Int(3))
+        with self.assertRaisesRegex(MatchError, "no matching cases"):
+            eval({}, exp)
+
+    def test_match_string_with_equal_string_matches(self) -> None:
+        exp = Apply(MatchFunction([MatchCase(pattern=String("a"), body=String("b"))]), String("a"))
+        self.assertEqual(eval({}, exp), String("b"))
+
+    def test_match_string_with_inequal_string_raises_match_error(self) -> None:
+        exp = Apply(MatchFunction([MatchCase(pattern=String("a"), body=String("b"))]), String("c"))
         with self.assertRaisesRegex(MatchError, "no matching cases"):
             eval({}, exp)
 

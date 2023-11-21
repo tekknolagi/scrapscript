@@ -345,37 +345,54 @@ def parse(tokens: typing.List[str], p: float = 0) -> "Object":
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Object:
-    pass
+    def serialize(self) -> dict[bytes, object]:
+        raise NotImplementedError("{type(self).__name__}.serialize()")
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Int(Object):
     value: int
 
+    def serialize(self) -> dict[bytes, object]:
+        return {b"type": b"Int", b"value": self.value}
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class String(Object):
     value: str
+
+    def serialize(self) -> dict[bytes, object]:
+        return {b"type": b"String", b"value": self.value.encode("utf-8")}
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Bytes(Object):
     value: bytes
 
+    def serialize(self) -> dict[bytes, object]:
+        return {b"type": b"Bytes", b"value": self.value}
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Var(Object):
     name: str
+
+    def serialize(self) -> dict[bytes, object]:
+        return {b"type": b"Var", b"name": self.name.encode("utf-8")}
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Bool(Object):
     value: bool
 
+    def serialize(self) -> dict[bytes, object]:
+        return {b"type": b"Bool", b"value": self.value}
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Hole(Object):
-    pass
+    def serialize(self) -> dict[bytes, object]:
+        return {b"type": b"Hole"}
 
 
 Env = Mapping[str, Object]
@@ -662,6 +679,23 @@ def eval_exp(env: Env, exp: Object) -> Object:
         clo_outer = eval_exp(env, exp.outer)
         return Closure({}, Function(Var("x"), Apply(clo_outer, Apply(clo_inner, Var("x")))))
     raise NotImplementedError(f"eval_exp not implemented for {exp}")
+
+
+def bencode(obj: object) -> bytes:
+    if isinstance(obj, int):
+        return b"i" + str(int(obj)).encode("ascii") + b"e"
+    if isinstance(obj, bytes):
+        return str(len(obj)).encode("ascii") + b":" + obj
+    if isinstance(obj, list):
+        return b"l" + b"".join(bencode(x) for x in obj) + b"e"
+    if isinstance(obj, dict):
+        sorted_items = sorted(obj.items(), key=lambda x: x[0])
+        return b"d" + b"".join(bencode(k) + bencode(v) for k, v in sorted_items) + b"e"
+    raise NotImplementedError(f"bencode not implemented for {type(obj)}")
+
+
+def serialize(obj: Object) -> bytes:
+    return bencode(obj.serialize())
 
 
 class TokenizerTests(unittest.TestCase):
@@ -1748,6 +1782,86 @@ class EndToEndTests(unittest.TestCase):
 
     def test_stdlib_quote_reverse_pipe(self) -> None:
         self.assertEqual(self._run("$$quote <| 3 + 4"), Binop(BinopKind.ADD, Int(3), Int(4)))
+
+
+class BencodeTests(unittest.TestCase):
+    def test_bencode_int(self) -> None:
+        self.assertEqual(bencode(123), b"i123e")
+
+    def test_bencode_bool(self) -> None:
+        self.assertEqual(bencode(True), b"i1e")
+
+    def test_bencode_negative_int(self) -> None:
+        self.assertEqual(bencode(-123), b"i-123e")
+
+    def test_serialize_bytes(self) -> None:
+        self.assertEqual(bencode(b"abc"), b"3:abc")
+
+    def test_bencode_empty_list(self) -> None:
+        self.assertEqual(bencode([]), b"le")
+
+    def test_bencode_list_of_ints(self) -> None:
+        self.assertEqual(bencode([1, 2, 3]), b"li1ei2ei3ee")
+
+    def test_bencode_list_of_lists(self) -> None:
+        self.assertEqual(bencode([[1, 2], [3, 4]]), b"lli1ei2eeli3ei4eee")
+
+    def test_bencode_dict_sorts_keys(self) -> None:
+        d = {}
+        d[b"b"] = 1
+        d[b"a"] = 2
+        # It's sorted by insertion order (guaranteed Python 3.6+)
+        self.assertEqual([*d], [b"b", b"a"])
+        # It's sorted lexicographically
+        self.assertEqual(bencode(d), b"d1:ai2e1:bi1ee")
+
+
+class ObjectSerializeTests(unittest.TestCase):
+    def test_serialize_int(self) -> None:
+        obj = Int(123)
+        self.assertEqual(obj.serialize(), {b"type": b"Int", b"value": 123})
+
+    def test_serialize_negative_int(self) -> None:
+        obj = Int(-123)
+        self.assertEqual(obj.serialize(), {b"type": b"Int", b"value": -123})
+
+    def test_serialize_str(self) -> None:
+        obj = String("abc")
+        self.assertEqual(obj.serialize(), {b"type": b"String", b"value": b"abc"})
+
+    def test_serialize_bytes(self) -> None:
+        obj = Bytes(b"abc")
+        self.assertEqual(obj.serialize(), {b"type": b"Bytes", b"value": b"abc"})
+
+    def test_serialize_var(self) -> None:
+        obj = Var("abc")
+        self.assertEqual(obj.serialize(), {b"type": b"Var", b"name": b"abc"})
+
+    def test_serialize_bool(self) -> None:
+        obj = Bool(True)
+        self.assertEqual(obj.serialize(), {b"type": b"Bool", b"value": True})
+
+
+class SerializeTests(unittest.TestCase):
+    def test_serialize_int(self) -> None:
+        obj = Int(3)
+        self.assertEqual(serialize(obj), b"d4:type3:Int5:valuei3ee")
+
+    def test_serialize_str(self) -> None:
+        obj = String("abc")
+        self.assertEqual(serialize(obj), b"d4:type6:String5:value3:abce")
+
+    def test_serialize_bytes(self) -> None:
+        obj = Bytes(b"abc")
+        self.assertEqual(serialize(obj), b"d4:type5:Bytes5:value3:abce")
+
+    def test_serialize_var(self) -> None:
+        obj = Var("abc")
+        self.assertEqual(serialize(obj), b"d4:name3:abc4:type3:Vare")
+
+    def test_serialize_bool(self) -> None:
+        obj = Bool(True)
+        self.assertEqual(serialize(obj), b"d4:type4:Bool5:valuei1ee")
 
 
 def eval_command(args: argparse.Namespace) -> None:

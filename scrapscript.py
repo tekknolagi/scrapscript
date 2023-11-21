@@ -1045,7 +1045,7 @@ class MatchTests(unittest.TestCase):
     def test_match_with_equal_ints_returns_true(self) -> None:
         self.assertTrue(match(Int(1), pattern=Int(1)))
 
-    def test_match_with_inequal_ints_returns_true(self) -> None:
+    def test_match_with_inequal_ints_returns_false(self) -> None:
         self.assertFalse(match(Int(2), pattern=Int(1)))
 
     def test_match_int_with_non_int_returns_false(self) -> None:
@@ -1258,18 +1258,12 @@ class EvalTests(unittest.TestCase):
 
     def test_match_falls_through_to_next(self) -> None:
         exp = Apply(
-            MatchFunction(
-                [MatchCase(pattern=Int(3), body=Int(4)), MatchCase(pattern=Int(1), body=Int(2))],
-            ),
-            Int(1),
+            MatchFunction([MatchCase(pattern=Int(3), body=Int(4)), MatchCase(pattern=Int(1), body=Int(2))]), Int(1)
         )
         self.assertEqual(eval({}, exp), Int(2))
 
-    def test_match_int_with_inequal_int_returns_true(self) -> None:
-        exp = Apply(
-            MatchFunction([MatchCase(pattern=Int(1), body=Int(2))]),
-            Int(3),
-        )
+    def test_match_int_with_inequal_int_raises_match_error(self) -> None:
+        exp = Apply(MatchFunction([MatchCase(pattern=Int(1), body=Int(2))]), Int(3))
         with self.assertRaisesRegex(MatchError, "no matching cases"):
             eval({}, exp)
 

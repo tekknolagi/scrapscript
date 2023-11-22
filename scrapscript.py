@@ -1481,6 +1481,11 @@ class EvalTests(unittest.TestCase):
         exp = Apply(NativeFunction(lambda x: Int(x.value * 2)), Int(3))  # type: ignore [attr-defined]
         self.assertEqual(eval({}, exp), Int(6))
 
+    def test_eval_apply_quote_returns_ast(self) -> None:
+        ast = Binop(BinopKind.ADD, Int(1), Int(2))
+        exp = Apply(Var("$$quote"), ast)
+        self.assertIs(eval({}, exp), ast)
+
 
 class EndToEndTests(unittest.TestCase):
     def _run(self, text: str, env: Optional[Env] = None) -> Object:
@@ -1732,6 +1737,15 @@ class EndToEndTests(unittest.TestCase):
 
     def test_stdlib_add(self) -> None:
         self.assertEqual(self._run("$$add 3 4", STDLIB), Int(7))
+
+    def test_stdlib_quote(self) -> None:
+        self.assertEqual(self._run("$$quote (3 + 4)"), Binop(BinopKind.ADD, Int(3), Int(4)))
+
+    def test_stdlib_quote_pipe(self) -> None:
+        self.assertEqual(self._run("3 + 4 |> $$quote"), Binop(BinopKind.ADD, Int(3), Int(4)))
+
+    def test_stdlib_quote_reverse_pipe(self) -> None:
+        self.assertEqual(self._run("$$quote <| 3 + 4"), Binop(BinopKind.ADD, Int(3), Int(4)))
 
 
 def eval_command(args: argparse.Namespace) -> None:

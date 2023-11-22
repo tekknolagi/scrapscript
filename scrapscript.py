@@ -1769,6 +1769,8 @@ def fetch(url: Object) -> Object:
 
 def make_object(pyobj: object) -> Object:
     assert not isinstance(pyobj, Object)
+    if isinstance(pyobj, bool):
+        return Bool(pyobj)
     if isinstance(pyobj, int):
         return Int(pyobj)
     if isinstance(pyobj, str):

@@ -349,7 +349,10 @@ class Object:
         raise NotImplementedError("{type(self).__name__}.serialize()")
 
     def _serialize(self, **kwargs: object) -> dict[bytes, object]:
-        return {key.encode("utf-8"): value for key, value in kwargs.items()}
+        return {
+            b"type": type(self).__name__.encode("utf-8"),
+            **{key.encode("utf-8"): value for key, value in kwargs.items()},
+        }
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -357,7 +360,7 @@ class Int(Object):
     value: int
 
     def serialize(self) -> dict[bytes, object]:
-        return self._serialize(type=b"Int", value=self.value)
+        return self._serialize(value=self.value)
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -472,7 +475,7 @@ class Assign(Object):
     value: Object
 
     def serialize(self) -> dict[bytes, object]:
-        return self._serialize(type=b"Assign", value=self.value.serialize())
+        return self._serialize(value=self.value.serialize())
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -481,7 +484,7 @@ class Function(Object):
     body: Object
 
     def serialize(self) -> dict[bytes, object]:
-        return self._serialize(type=b"Function", arg=self.arg.serialize(), body=self.body.serialize())
+        return self._serialize(arg=self.arg.serialize(), body=self.body.serialize())
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -490,7 +493,7 @@ class Apply(Object):
     arg: Object
 
     def serialize(self) -> dict[bytes, object]:
-        return self._serialize(type=b"Apply", func=self.func.serialize(), arg=self.arg.serialize())
+        return self._serialize(func=self.func.serialize(), arg=self.arg.serialize())
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -499,7 +502,7 @@ class Compose(Object):
     outer: Object
 
     def serialize(self) -> dict[bytes, object]:
-        return self._serialize(type=b"Compose", inner=self.inner.serialize(), outer=self.outer.serialize())
+        return self._serialize(inner=self.inner.serialize(), outer=self.outer.serialize())
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -508,7 +511,7 @@ class Where(Object):
     binding: Object
 
     def serialize(self) -> dict[bytes, object]:
-        return self._serialize(type=b"Where", body=self.body.serialize(), binding=self.binding.serialize())
+        return self._serialize(body=self.body.serialize(), binding=self.binding.serialize())
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -517,7 +520,7 @@ class Assert(Object):
     cond: Object
 
     def serialize(self) -> dict[bytes, object]:
-        return self._serialize(type=b"Assert", value=self.value.serialize(), cond=self.cond.serialize())
+        return self._serialize(value=self.value.serialize(), cond=self.cond.serialize())
 
 
 def serialize_env(env: Env) -> dict[bytes, object]:
@@ -529,7 +532,7 @@ class EnvObject(Object):
     env: Env
 
     def serialize(self) -> dict[bytes, object]:
-        return self._serialize(type=b"EnvObject", value=serialize_env(self.env))
+        return self._serialize(value=serialize_env(self.env))
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -538,7 +541,7 @@ class MatchCase(Object):
     body: Object
 
     def serialize(self) -> dict[bytes, object]:
-        return self._serialize(type=b"MatchCase", pattern=self.pattern.serialize(), body=self.pattern.serialize())
+        return self._serialize(pattern=self.pattern.serialize(), body=self.pattern.serialize())
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -546,7 +549,7 @@ class MatchFunction(Object):
     cases: typing.List[MatchCase]
 
     def serialize(self) -> dict[bytes, object]:
-        return self._serialize(type=b"MatchFunction", cases=[case.serialize() for case in self.cases])
+        return self._serialize(cases=[case.serialize() for case in self.cases])
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -560,7 +563,7 @@ class Closure(Object):
     func: Union[Function, MatchFunction]
 
     def serialize(self) -> dict[bytes, object]:
-        return self._serialize(type=b"Closure", env=serialize_env(self.env), func=self.func.serialize())
+        return self._serialize(env=serialize_env(self.env), func=self.func.serialize())
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -568,9 +571,7 @@ class Record(Object):
     data: Dict[str, Object]
 
     def serialize(self) -> dict[bytes, object]:
-        return self._serialize(
-            type=b"Record", data={key.encode("utf-8"): value.serialize() for key, value in self.data.items()}
-        )
+        return self._serialize(data={key.encode("utf-8"): value.serialize() for key, value in self.data.items()})
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -579,7 +580,7 @@ class Access(Object):
     at: Object
 
     def serialize(self) -> dict[bytes, object]:
-        return self._serialize(type=b"Access", obj=self.obj.serialize(), at=self.at.serialize())
+        return self._serialize(obj=self.obj.serialize(), at=self.at.serialize())
 
 
 def unpack_int(obj: Object) -> int:

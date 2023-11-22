@@ -3,6 +3,7 @@ import argparse
 import base64
 import code
 import enum
+import json
 import logging
 import os
 import re
@@ -1761,14 +1762,36 @@ def apply_command(args: argparse.Namespace) -> None:
 
 def fetch(url: Object) -> Object:
     if not isinstance(url, String):
-        raise TypeError(f"url Expected String, but got {type(url).__name__}")
+        raise TypeError(f"fetch Expected String, but got {type(url).__name__}")
     with urllib.request.urlopen(url.value) as f:
         return String(f.read().decode("utf-8"))
+
+
+def make_object(pyobj: object) -> Object:
+    assert not isinstance(pyobj, Object)
+    if isinstance(pyobj, int):
+        return Int(pyobj)
+    if isinstance(pyobj, str):
+        return String(pyobj)
+    if isinstance(pyobj, list):
+        return List([make_object(o) for o in pyobj])
+    if isinstance(pyobj, dict):
+        # Assumed to only be called with JSON, so string keys.
+        return Record({key: make_object(value) for key, value in pyobj.items()})
+    raise NotImplementedError(type(pyobj))
+
+
+def jsondecode(obj: Object) -> Object:
+    if not isinstance(obj, String):
+        raise TypeError(f"jsondecode Expected String, but got {type(obj).__name__}")
+    data = json.loads(obj.value)
+    return make_object(data)
 
 
 STDLIB = {
     "$$add": NativeFunction(lambda x: NativeFunction(lambda y: Int(unpack_int(x) + unpack_int(y)))),
     "$$fetch": NativeFunction(fetch),
+    "$$jsondecode": NativeFunction(jsondecode),
 }
 
 

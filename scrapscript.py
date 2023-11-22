@@ -556,7 +556,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
     if isinstance(pattern, Record):
         if not isinstance(obj, Record):
             return None
-        result = {}
+        result: Env = {}
         for key, value in pattern.data.items():
             obj_value = obj.data.get(key)
             if obj_value is None:
@@ -564,7 +564,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
             part = match(obj_value, value)
             if part is None:
                 return None
-            assert isinstance(part, dict)
+            assert isinstance(result, dict)  # for .update()
             result.update(part)
         return result
     raise NotImplementedError("TODO: match")

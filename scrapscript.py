@@ -1808,8 +1808,6 @@ class ScrapRepl(code.InteractiveConsole):
         self.env: Env = STDLIB
 
     def runsource(self, source: str, filename: str = "<input>", symbol: str = "single") -> bool:
-        # TODO(max): Detect when the user is typing a multi-line expression and
-        # continue asking for more input for the same expression.
         try:
             tokens = tokenize(source)
             logger.debug("Tokens: %s", tokens)

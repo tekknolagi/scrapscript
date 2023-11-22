@@ -1486,7 +1486,7 @@ class EvalTests(unittest.TestCase):
     def test_eval_apply_quote_returns_ast(self) -> None:
         ast = Binop(BinopKind.ADD, Int(1), Int(2))
         exp = Apply(Var("$$quote"), ast)
-        self.assertIs(eval({}, exp), ast)
+        self.assertIs(eval_exp({}, exp), ast)
 
 
 class EndToEndTests(unittest.TestCase):

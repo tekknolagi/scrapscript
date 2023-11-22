@@ -1,0 +1,21 @@
+name: Run tests
+
+on:
+  push:
+    branches: [ trunk ]
+  pull_request:
+    branches: [ trunk ]
+
+
+jobs:
+  run_unit_tests:
+    strategy:
+      matrix:
+        PYTHON: [python3.8, python3.9, python3.10, python3.11, python3.12]
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install Python
+      run: sudo apt install -y ${{PYTHON}}
+    - name: Run tests
+      run: ${{PYTHON}} scrapscript.py test

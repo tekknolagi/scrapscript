@@ -16,6 +16,6 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Install Python
-      run: sudo apt install -y ${{PYTHON}}
+      run: sudo apt install -y ${{matrix.PYTHON}}
     - name: Run tests
-      run: ${{PYTHON}} scrapscript.py test
+      run: ${{matrix.PYTHON}} scrapscript.py test

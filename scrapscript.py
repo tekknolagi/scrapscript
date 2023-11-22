@@ -1457,6 +1457,9 @@ class EndToEndTests(unittest.TestCase):
     def test_access_list(self) -> None:
         self.assertEqual(self._run("xs@1 . xs = [1, 2, 3]"), Int(2))
 
+    def test_access_list_var(self) -> None:
+        self.assertEqual(self._run("xs@y . y = 2 . xs = [1, 2, 3]"), Int(3))
+
     def test_functions_eval_arguments(self) -> None:
         self.assertEqual(self._run("(x -> x) c . c = 1"), Int(1))
 

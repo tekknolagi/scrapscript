@@ -16,8 +16,8 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Get deadsnakes repo
-      run: sudo add-apt-repository ppa:deadsnakes/ppa
+      run: sudo add-apt-repository --yes ppa:deadsnakes/ppa
     - name: Install Python
-      run: sudo apt install -y ${{matrix.PYTHON}}
+      run: sudo apt install --yes ${{matrix.PYTHON}}
     - name: Run tests
       run: ${{matrix.PYTHON}} scrapscript.py test

@@ -346,9 +346,9 @@ def parse(tokens: typing.List[str], p: float = 0) -> "Object":
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Object:
-    def serialize(self) -> dict[bytes, object]:
+    def serialize(self) -> Dict[bytes, object]:
         cls = type(self)
-        result: dict[bytes, object] = {b"type": cls.__name__.encode("utf-8")}
+        result: Dict[bytes, object] = {b"type": cls.__name__.encode("utf-8")}
         for field in dataclasses.fields(cls):
             if issubclass(field.type, Object):
                 value = getattr(self, field.name)
@@ -357,7 +357,7 @@ class Object:
                 raise NotImplementedError("serializing non-Object fields; write your own serialize function")
         return result
 
-    def _serialize(self, **kwargs: object) -> dict[bytes, object]:
+    def _serialize(self, **kwargs: object) -> Dict[bytes, object]:
         return {
             b"type": type(self).__name__.encode("utf-8"),
             **{key.encode("utf-8"): value for key, value in kwargs.items()},
@@ -368,7 +368,7 @@ class Object:
 class Int(Object):
     value: int
 
-    def serialize(self) -> dict[bytes, object]:
+    def serialize(self) -> Dict[bytes, object]:
         return self._serialize(value=self.value)
 
 
@@ -376,7 +376,7 @@ class Int(Object):
 class String(Object):
     value: str
 
-    def serialize(self) -> dict[bytes, object]:
+    def serialize(self) -> Dict[bytes, object]:
         return {b"type": b"String", b"value": self.value.encode("utf-8")}
 
 
@@ -384,7 +384,7 @@ class String(Object):
 class Bytes(Object):
     value: bytes
 
-    def serialize(self) -> dict[bytes, object]:
+    def serialize(self) -> Dict[bytes, object]:
         return {b"type": b"Bytes", b"value": self.value}
 
 
@@ -392,7 +392,7 @@ class Bytes(Object):
 class Var(Object):
     name: str
 
-    def serialize(self) -> dict[bytes, object]:
+    def serialize(self) -> Dict[bytes, object]:
         return {b"type": b"Var", b"name": self.name.encode("utf-8")}
 
 
@@ -400,7 +400,7 @@ class Var(Object):
 class Bool(Object):
     value: bool
 
-    def serialize(self) -> dict[bytes, object]:
+    def serialize(self) -> Dict[bytes, object]:
         return {b"type": b"Bool", b"value": self.value}
 
 
@@ -460,7 +460,7 @@ class Binop(Object):
     left: Object
     right: Object
 
-    def serialize(self) -> dict[bytes, object]:
+    def serialize(self) -> Dict[bytes, object]:
         return {
             b"type": b"Binop",
             b"op": self.op.name.encode("utf-8"),
@@ -473,7 +473,7 @@ class Binop(Object):
 class List(Object):
     items: typing.List[Object]
 
-    def serialize(self) -> dict[bytes, object]:
+    def serialize(self) -> Dict[bytes, object]:
         return {b"type": b"List", b"items": [item.serialize() for item in self.items]}
 
 
@@ -513,7 +513,7 @@ class Assert(Object):
     cond: Object
 
 
-def serialize_env(env: Env) -> dict[bytes, object]:
+def serialize_env(env: Env) -> Dict[bytes, object]:
     return {key.encode("utf-8"): value.serialize() for key, value in env.items()}
 
 
@@ -521,7 +521,7 @@ def serialize_env(env: Env) -> dict[bytes, object]:
 class EnvObject(Object):
     env: Env
 
-    def serialize(self) -> dict[bytes, object]:
+    def serialize(self) -> Dict[bytes, object]:
         return self._serialize(value=serialize_env(self.env))
 
 
@@ -535,7 +535,7 @@ class MatchCase(Object):
 class MatchFunction(Object):
     cases: typing.List[MatchCase]
 
-    def serialize(self) -> dict[bytes, object]:
+    def serialize(self) -> Dict[bytes, object]:
         return self._serialize(cases=[case.serialize() for case in self.cases])
 
 
@@ -549,7 +549,7 @@ class Closure(Object):
     env: Env
     func: Union[Function, MatchFunction]
 
-    def serialize(self) -> dict[bytes, object]:
+    def serialize(self) -> Dict[bytes, object]:
         return self._serialize(env=serialize_env(self.env), func=self.func.serialize())
 
 
@@ -557,7 +557,7 @@ class Closure(Object):
 class Record(Object):
     data: Dict[str, Object]
 
-    def serialize(self) -> dict[bytes, object]:
+    def serialize(self) -> Dict[bytes, object]:
         return self._serialize(data={key.encode("utf-8"): value.serialize() for key, value in self.data.items()})
 
 

@@ -53,7 +53,7 @@ class Lexer:
 
     def peek_char(self) -> str:
         if not self.has_input():
-            raise ParseError("unexpected EOF while reading token")
+            raise UnexpectedEOFError("while reading token")
         return self.text[self.idx]
 
     def read_one(self) -> Optional[str]:
@@ -94,7 +94,7 @@ class Lexer:
                 break
             buf += c
         else:
-            raise ParseError("unexpected EOF while reading string")
+            raise UnexpectedEOFError("while reading string")
         return '"' + buf + '"'
 
     def read_comment(self) -> None:
@@ -219,6 +219,10 @@ class ParseError(Exception):
     pass
 
 
+class UnexpectedEOFError(ParseError):
+    pass
+
+
 def parse_assign(tokens: list[str], p: float = 0) -> "Assign":
     assign = parse(tokens, p)
     if not isinstance(assign, Assign):
@@ -228,7 +232,7 @@ def parse_assign(tokens: list[str], p: float = 0) -> "Assign":
 
 def parse(tokens: list[str], p: float = 0) -> "Object":
     if not tokens:
-        raise ParseError("unexpected end of input")
+        raise UnexpectedEOFError("unexpected end of input")
     token = tokens.pop(0)
     l: Object
     sha_prefix = "$sha1'"
@@ -713,7 +717,7 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(tokenize('"hello world"'), ['"hello world"'])
 
     def test_tokenize_string_missing_end_quote_raises_parse_error(self) -> None:
-        with self.assertRaisesRegex(ParseError, "unexpected EOF while reading string"):
+        with self.assertRaisesRegex(UnexpectedEOFError, "while reading string"):
             tokenize('"hello')
 
     def test_tokenize_with_trailing_whitespace(self) -> None:
@@ -856,7 +860,7 @@ class TokenizerTests(unittest.TestCase):
 
 class ParserTests(unittest.TestCase):
     def test_parse_with_empty_tokens_raises_parse_error(self) -> None:
-        with self.assertRaises(ParseError) as ctx:
+        with self.assertRaises(UnexpectedEOFError) as ctx:
             parse([])
         self.assertEqual(ctx.exception.args[0], "unexpected end of input")
 

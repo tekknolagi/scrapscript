@@ -489,6 +489,11 @@ class MatchFunction(Object):
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
+class NativeFunction(Object):
+    func: Callable[[Object], Object]
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Closure(Object):
     env: Env
     func: Function | MatchFunction
@@ -505,11 +510,15 @@ class Access(Object):
     at: Object
 
 
+def unpack_int(obj: Object) -> int:
+    if not isinstance(obj, Int):
+        raise TypeError(f"expected Int, got {type(obj).__name__}")
+    return obj.value
+
+
 def eval_int(env: Env, exp: Object) -> int:
     result = eval(env, exp)
-    if not isinstance(result, Int):
-        raise TypeError(f"expected Int, got {type(result).__name__}")
-    return result.value
+    return unpack_int(result)
 
 
 def eval_str(env: Env, exp: Object) -> str:
@@ -573,7 +582,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
 # pylint: disable=redefined-builtin
 def eval(env: Env, exp: Object) -> Object:
     logger.debug(exp)
-    if isinstance(exp, (Int, Bool, String, Bytes, Hole, Closure)):
+    if isinstance(exp, (Int, Bool, String, Bytes, Hole, Closure, NativeFunction)):
         return exp
     if isinstance(exp, Var):
         value = env.get(exp.name)
@@ -613,6 +622,9 @@ def eval(env: Env, exp: Object) -> Object:
         return Closure(env, exp)
     if isinstance(exp, Apply):
         callee = eval(env, exp.func)
+        if isinstance(callee, NativeFunction):
+            arg = eval(env, exp.arg)
+            return callee.func(arg)
         if not isinstance(callee, Closure):
             raise TypeError(f"attempted to apply a non-closure of type {type(callee).__name__}")
         arg = eval(env, exp.arg)
@@ -1460,6 +1472,14 @@ class EvalTests(unittest.TestCase):
             Int(14),
         )
 
+    def test_eval_native_function_returns_function(self) -> None:
+        exp = NativeFunction(lambda x: Int(x.value * 2))  # type: ignore [attr-defined]
+        self.assertIs(eval({}, exp), exp)
+
+    def test_eval_apply_native_function_calls_function(self) -> None:
+        exp = Apply(NativeFunction(lambda x: Int(x.value * 2)), Int(3))  # type: ignore [attr-defined]
+        self.assertEqual(eval({}, exp), Int(6))
+
 
 class EndToEndTests(unittest.TestCase):
     def _run(self, text: str, env: Optional[Env] = None) -> Object:
@@ -1709,6 +1729,9 @@ class EndToEndTests(unittest.TestCase):
             Int(120),
         )
 
+    def test_stdlib_add(self) -> None:
+        self.assertEqual(self._run("$$add 3 4", STDLIB), Int(7))
+
 
 def eval_command(args: argparse.Namespace) -> None:
     if args.debug:
@@ -1733,6 +1756,11 @@ def apply_command(args: argparse.Namespace) -> None:
     logger.debug("AST: %s", ast)
     result = eval({}, ast)
     print(result)
+
+
+STDLIB = {
+    "$$add": NativeFunction(lambda x: NativeFunction(lambda y: Int(unpack_int(x) + unpack_int(y)))),
+}
 
 
 class ScrapRepl(code.InteractiveConsole):

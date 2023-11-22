@@ -1,27 +1,40 @@
 # Scrapscript Interpreter
 
-## Install
+## Usage
+
+```bash
+# With a file
+python scrapscript.py eval examples/0_home/triangle.ss
+
+# With a string literal
+python scrapscript.py apply "1 + 2"
+
+# With a REPL
+python scrapscript.py repl
+```
+
+### CLI
+
+This step requires [Poetry](https://python-poetry.org/)
 
 ```bash
 poetry install
 poetry shell
-```
 
-## Usage
+# With a file
+scrap eval < examples/0_home/triangle.ss
 
-```bash
-# Evaluate a scrapscript file
-scrap eval < examples/0_home/a_example.scrap
-
-# Evaluate a scrapscript program literal
+# With a string literal
 echo "1 + 2" | scrap eval
-scrap apply "1 + 4"
+
+# or
+scrap apply "1 + 2"
 ```
 
-## Run Tests
+## Running Tests
 
 ```bash
-pytest tests
+python scrapscript.py test
 ```
 
 ## Questions
@@ -29,9 +42,6 @@ pytest tests
 - List indexing
   - Should it be supported?
   - We have cons. Do we want car/cdr?
-- Pattern matching
-  - Sure you want just matching?
-  - No ternary?
 - Alternatives
   - Has the syntax changed to hashes?
   - Hashes work pretty well since alternatives are like parameterized tags
@@ -40,4 +50,3 @@ pytest tests
   - Equals was nice to reuse Assign parsing
 - Where
   - Comma syntax stops being useful when you want 3 levels of wheres
-- Live repl?

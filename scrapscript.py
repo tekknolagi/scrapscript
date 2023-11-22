@@ -1766,7 +1766,7 @@ STDLIB = {
 class ScrapRepl(code.InteractiveConsole):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.env: Env = {}
+        self.env: Env = STDLIB
 
     def runsource(self, source: str, filename: str = "<input>", symbol: str = "single") -> bool:
         # TODO(max): Detect when the user is typing a multi-line expression and

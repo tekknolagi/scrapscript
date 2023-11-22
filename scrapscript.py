@@ -564,7 +564,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
             part = match(obj_value, value)
             if part is None:
                 return None
-            assert isinstance(part, dict), f"part is {part}"
+            assert isinstance(part, dict)
             result.update(part)
         return result
     raise NotImplementedError("TODO: match")

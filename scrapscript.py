@@ -553,6 +553,20 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
         return {} if isinstance(obj, String) and obj.value == pattern.value else None
     if isinstance(pattern, Var):
         return {pattern.name: obj}
+    if isinstance(pattern, Record):
+        if not isinstance(obj, Record):
+            return None
+        result = {}
+        for key, value in pattern.data.items():
+            obj_value = obj.data.get(key)
+            if obj_value is None:
+                return None
+            part = match(obj_value, value)
+            if part is None:
+                return None
+            assert isinstance(part, dict), f"part is {part}"
+            result.update(part)
+        return result
     raise NotImplementedError("TODO: match")
 
 
@@ -1104,6 +1118,63 @@ class MatchTests(unittest.TestCase):
     def test_match_var_returns_dict_with_var_name(self) -> None:
         self.assertEqual(match(String("abc"), pattern=Var("a")), {"a": String("abc")})
 
+    def test_match_record_with_non_record_returns_none(self) -> None:
+        self.assertEqual(
+            match(
+                Int(2),
+                pattern=Record({"x": Var("x"), "y": Var("y")}),
+            ),
+            None,
+        )
+
+    def test_match_record_with_more_fields_in_pattern_returns_none(self) -> None:
+        self.assertEqual(
+            match(
+                Record({"x": Int(1), "y": Int(2)}),
+                pattern=Record({"x": Var("x"), "y": Var("y"), "z": Var("z")}),
+            ),
+            None,
+        )
+
+    def test_match_record_with_fewer_fields_in_pattern_returns_intersection(self) -> None:
+        # TODO(max): Should this be the case? I feel like we should not match
+        # without explicitly using spread.
+        self.assertEqual(
+            match(
+                Record({"x": Int(1), "y": Int(2)}),
+                pattern=Record({"x": Var("x")}),
+            ),
+            {"x": Int(1)},
+        )
+
+    def test_match_record_with_vars_returns_dict_with_keys(self) -> None:
+        self.assertEqual(
+            match(
+                Record({"x": Int(1), "y": Int(2)}),
+                pattern=Record({"x": Var("x"), "y": Var("y")}),
+            ),
+            {"x": Int(1), "y": Int(2)},
+        )
+
+    def test_match_record_with_matching_const_returns_dict_with_other_keys(self) -> None:
+        # TODO(max): Should this be the case? I feel like we should return all
+        # the keys.
+        self.assertEqual(
+            match(
+                Record({"x": Int(1), "y": Int(2)}),
+                pattern=Record({"x": Int(1), "y": Var("y")}),
+            ),
+            {"y": Int(2)},
+        )
+
+    def test_match_record_with_non_matching_const_returns_empty_dict(self) -> None:
+        self.assertEqual(
+            match(
+                Record({"x": Int(1), "y": Int(2)}),
+                pattern=Record({"x": Int(3), "y": Var("y")}),
+            ),
+            None,
+        )
 
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:
@@ -1550,6 +1621,67 @@ class EndToEndTests(unittest.TestCase):
             ),
             Int(3),
         )
+
+    def test_match_record_binds_var(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                get_x rec
+                . rec = { x = 3 }
+                . get_x =
+                  | { x = x } -> x
+                """
+            ),
+            Int(3),
+        )
+
+    def test_match_record_binds_vars(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                mult rec
+                . rec = { x = 3, y = 4 }
+                . mult =
+                  | { x = x, y = y } -> x * y
+                """
+            ),
+            Int(12),
+        )
+
+    def test_match_record_with_extra_fields_does_not_match(self) -> None:
+        with self.assertRaises(MatchError):
+            self._run(
+                """
+                mult rec
+                . rec = { x = 3 }
+                . mult =
+                  | { x = x, y = y } -> x * y
+                """
+            )
+
+    def test_match_record_with_constant(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                mult rec
+                . rec = { x = 4, y = 5 }
+                . mult =
+                  | { x = 3, y = y } -> 1
+                  | { x = 4, y = y } -> 2
+                """
+            ),
+            Int(2),
+        )
+
+    def test_match_record_with_non_record_fails(self) -> None:
+        with self.assertRaises(MatchError):
+            self._run(
+                """
+                get_x 3
+                . get_x =
+                  | { x = x } -> x
+                """
+            )
 
     def test_pipe(self) -> None:
         self.assertEqual(self._run("1 |> (a -> a + 2)"), Int(3))

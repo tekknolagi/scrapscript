@@ -8,12 +8,13 @@ import logging
 import os
 import re
 import sys
+import typing
 import unittest
 import urllib.request
 from dataclasses import dataclass
 from enum import auto
 from types import ModuleType
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Dict, Mapping, Optional, Union
 
 readline: Optional[ModuleType]
 try:
@@ -128,7 +129,7 @@ class Lexer:
         return "~~" + buf
 
 
-def tokenize(x: str) -> list[str]:
+def tokenize(x: str) -> typing.List[str]:
     lexer = Lexer(x)
     tokens = []
     while lexer.has_input():
@@ -215,14 +216,14 @@ class UnexpectedEOFError(ParseError):
     pass
 
 
-def parse_assign(tokens: list[str], p: float = 0) -> "Assign":
+def parse_assign(tokens: typing.List[str], p: float = 0) -> "Assign":
     assign = parse(tokens, p)
     if not isinstance(assign, Assign):
         raise ParseError("failed to parse variable assignment in record constructor")
     return assign
 
 
-def parse(tokens: list[str], p: float = 0) -> "Object":
+def parse(tokens: typing.List[str], p: float = 0) -> "Object":
     if not tokens:
         raise UnexpectedEOFError("unexpected end of input")
     token = tokens.pop(0)
@@ -431,7 +432,7 @@ class Binop(Object):
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class List(Object):
-    items: list[Object]
+    items: typing.List[Object]
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -483,7 +484,7 @@ class MatchCase(Object):
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class MatchFunction(Object):
-    cases: list[MatchCase]
+    cases: typing.List[MatchCase]
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -494,12 +495,12 @@ class NativeFunction(Object):
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Closure(Object):
     env: Env
-    func: Function | MatchFunction
+    func: Union[Function, MatchFunction]
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Record(Object):
-    data: dict[str, Object]
+    data: Dict[str, Object]
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -526,14 +527,14 @@ def eval_str(env: Env, exp: Object) -> str:
     return result.value
 
 
-def eval_list(env: Env, exp: Object) -> list[Object]:
+def eval_list(env: Env, exp: Object) -> typing.List[Object]:
     result = eval(env, exp)
     if not isinstance(result, List):
         raise TypeError(f"expected List, got {type(result).__name__}")
     return result.items
 
 
-BINOP_HANDLERS: dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
+BINOP_HANDLERS: Dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.ADD: lambda env, x, y: Int(eval_int(env, x) + eval_int(env, y)),
     BinopKind.STRING_CONCAT: lambda env, x, y: String(eval_str(env, x) + eval_str(env, y)),
     # We have type: ignore because we haven't (re)defined eval yet.

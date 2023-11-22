@@ -11,7 +11,8 @@ import unittest
 from dataclasses import dataclass
 from enum import auto
 from types import ModuleType
-from typing import Callable, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional
+
 
 readline: Optional[ModuleType]
 try:
@@ -1568,6 +1569,10 @@ def apply_command(args: argparse.Namespace) -> None:
 
 
 class ScrapRepl(code.InteractiveConsole):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.env: Env = {}
+
     def runsource(self, source: str, filename: str = "<input>", symbol: str = "single") -> bool:
         # TODO(max): Detect when the user is typing a multi-line expression and
         # continue asking for more input for the same expression.
@@ -1576,7 +1581,10 @@ class ScrapRepl(code.InteractiveConsole):
             logger.debug("Tokens: %s", tokens)
             ast = parse(tokens)
             logger.debug("AST: %s", ast)
-            result = eval({}, ast)
+            result = eval(self.env, ast)
+            if isinstance(result, EnvObject):
+                assert isinstance(self.env, dict)  # for .update()
+                self.env.update(result.env)
             print(result)
         except ParseError as e:
             print(f"Parse error: {e}", file=sys.stderr)

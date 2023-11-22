@@ -516,19 +516,19 @@ def unpack_int(obj: Object) -> int:
 
 
 def eval_int(env: Env, exp: Object) -> int:
-    result = eval(env, exp)
+    result = eval_exp(env, exp)
     return unpack_int(result)
 
 
 def eval_str(env: Env, exp: Object) -> str:
-    result = eval(env, exp)
+    result = eval_exp(env, exp)
     if not isinstance(result, String):
         raise TypeError(f"expected String, got {type(result).__name__}")
     return result.value
 
 
 def eval_list(env: Env, exp: Object) -> typing.List[Object]:
-    result = eval(env, exp)
+    result = eval_exp(env, exp)
     if not isinstance(result, List):
         raise TypeError(f"expected List, got {type(result).__name__}")
     return result.items
@@ -537,16 +537,13 @@ def eval_list(env: Env, exp: Object) -> typing.List[Object]:
 BINOP_HANDLERS: Dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.ADD: lambda env, x, y: Int(eval_int(env, x) + eval_int(env, y)),
     BinopKind.STRING_CONCAT: lambda env, x, y: String(eval_str(env, x) + eval_str(env, y)),
-    # We have type: ignore because we haven't (re)defined eval yet.
-    BinopKind.LIST_CONS: lambda env, x, y: List([eval(env, x)] + eval_list(env, y)),  # type: ignore [arg-type]
-    BinopKind.LIST_APPEND: lambda env, x, y: List(eval_list(env, x) + [eval(env, y)]),  # type: ignore [arg-type]
+    BinopKind.LIST_CONS: lambda env, x, y: List([eval_exp(env, x)] + eval_list(env, y)),
+    BinopKind.LIST_APPEND: lambda env, x, y: List(eval_list(env, x) + [eval_exp(env, y)]),
     BinopKind.SUB: lambda env, x, y: Int(eval_int(env, x) - eval_int(env, y)),
     BinopKind.MUL: lambda env, x, y: Int(eval_int(env, x) * eval_int(env, y)),
     BinopKind.DIV: lambda env, x, y: Int(eval_int(env, x) // eval_int(env, y)),
-    # We have type: ignore because we haven't (re)defined eval yet.
-    BinopKind.EQUAL: lambda env, x, y: Bool(eval(env, x) == eval(env, y)),  # type: ignore [arg-type]
-    # We have type: ignore because we haven't (re)defined eval yet.
-    BinopKind.RIGHT_EVAL: lambda env, x, y: eval(env, y),  # type: ignore [arg-type]
+    BinopKind.EQUAL: lambda env, x, y: Bool(eval_exp(env, x) == eval_exp(env, y)),
+    BinopKind.RIGHT_EVAL: lambda env, x, y: eval_exp(env, y),
 }
 
 
@@ -579,7 +576,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
 
 
 # pylint: disable=redefined-builtin
-def eval(env: Env, exp: Object) -> Object:
+def eval_exp(env: Env, exp: Object) -> Object:
     logger.debug(exp)
     if isinstance(exp, (Int, Bool, String, Bytes, Hole, Closure, NativeFunction)):
         return exp
@@ -594,25 +591,25 @@ def eval(env: Env, exp: Object) -> Object:
             raise NotImplementedError(f"no handler for {exp.op}")
         return handler(env, exp.left, exp.right)
     if isinstance(exp, List):
-        return List([eval(env, item) for item in exp.items])
+        return List([eval_exp(env, item) for item in exp.items])
     if isinstance(exp, Record):
-        return Record({k: eval(env, exp.data[k]) for k in exp.data})
+        return Record({k: eval_exp(env, exp.data[k]) for k in exp.data})
     if isinstance(exp, Assign):
         # TODO(max): Rework this. There's something about matching that we need
         # to figure out and implement.
         assert isinstance(exp.name, Var)
-        value = eval(env, exp.value)
+        value = eval_exp(env, exp.value)
         return EnvObject({**env, exp.name.name: value})
     if isinstance(exp, Where):
-        res_env = eval(env, exp.binding)
+        res_env = eval_exp(env, exp.binding)
         assert isinstance(res_env, EnvObject)
         new_env = {**env, **res_env.env}
-        return eval(new_env, exp.body)
+        return eval_exp(new_env, exp.body)
     if isinstance(exp, Assert):
-        cond = eval(env, exp.cond)
+        cond = eval_exp(env, exp.cond)
         if cond != Bool(True):
             raise AssertionError(f"condition {exp.cond} failed")
-        return eval(env, exp.value)
+        return eval_exp(env, exp.value)
     if isinstance(exp, Function):
         if not isinstance(exp.arg, Var):
             raise RuntimeError(f"expected variable in function definition {exp.arg}")
@@ -622,30 +619,30 @@ def eval(env: Env, exp: Object) -> Object:
     if isinstance(exp, Apply):
         if isinstance(exp.func, Var) and exp.func.name == "$$quote":
             return exp.arg
-        callee = eval(env, exp.func)
+        callee = eval_exp(env, exp.func)
         if isinstance(callee, NativeFunction):
-            arg = eval(env, exp.arg)
+            arg = eval_exp(env, exp.arg)
             return callee.func(arg)
         if not isinstance(callee, Closure):
             raise TypeError(f"attempted to apply a non-closure of type {type(callee).__name__}")
-        arg = eval(env, exp.arg)
+        arg = eval_exp(env, exp.arg)
         if isinstance(callee.func, Function):
             assert isinstance(callee.func.arg, Var)
             new_env = {**callee.env, callee.func.arg.name: arg}
-            return eval(new_env, callee.func.body)
+            return eval_exp(new_env, callee.func.body)
         elif isinstance(callee.func, MatchFunction):
             # TODO(max): Implement MatchClosure
-            arg = eval(env, exp.arg)
+            arg = eval_exp(env, exp.arg)
             for case in callee.func.cases:
                 m = match(arg, case.pattern)
                 if m is None:
                     continue
-                return eval({**env, **m}, case.body)
+                return eval_exp({**env, **m}, case.body)
             raise MatchError("no matching cases")
         else:
             raise TypeError(f"attempted to apply a non-function of type {type(callee.func).__name__}")
     if isinstance(exp, Access):
-        obj = eval(env, exp.obj)
+        obj = eval_exp(env, exp.obj)
         if isinstance(obj, Record):
             if not isinstance(exp.at, Var):
                 raise TypeError(f"cannot access record field using {type(exp.at).__name__}, expected a field name")
@@ -653,7 +650,7 @@ def eval(env: Env, exp: Object) -> Object:
                 raise NameError(f"no assignment to {exp.at.name} found in record")
             return obj.data[exp.at.name]
         elif isinstance(obj, List):
-            access_at = eval(env, exp.at)
+            access_at = eval_exp(env, exp.at)
             if not isinstance(access_at, Int):
                 raise TypeError(f"cannot index into list using type {type(access_at).__name__}, expected integer")
             if access_at.value < 0 or access_at.value >= len(obj.items):
@@ -661,10 +658,10 @@ def eval(env: Env, exp: Object) -> Object:
             return obj.items[access_at.value]
         raise TypeError(f"attempted to access from type {type(obj).__name__}")
     if isinstance(exp, Compose):
-        clo_inner = eval(env, exp.inner)
-        clo_outer = eval(env, exp.outer)
+        clo_inner = eval_exp(env, exp.inner)
+        clo_outer = eval_exp(env, exp.outer)
         return Closure({}, Function(Var("x"), Apply(clo_outer, Apply(clo_inner, Var("x")))))
-    raise NotImplementedError(f"eval not implemented for {exp}")
+    raise NotImplementedError(f"eval_exp not implemented for {exp}")
 
 
 class TokenizerTests(unittest.TestCase):
@@ -1197,100 +1194,100 @@ class MatchTests(unittest.TestCase):
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:
         exp = Int(5)
-        self.assertEqual(eval({}, exp), Int(5))
+        self.assertEqual(eval_exp({}, exp), Int(5))
 
     def test_eval_str_returns_str(self) -> None:
         exp = String("xyz")
-        self.assertEqual(eval({}, exp), String("xyz"))
+        self.assertEqual(eval_exp({}, exp), String("xyz"))
 
     def test_eval_bytes_returns_bytes(self) -> None:
         exp = Bytes(b"xyz")
-        self.assertEqual(eval({}, exp), Bytes(b"xyz"))
+        self.assertEqual(eval_exp({}, exp), Bytes(b"xyz"))
 
     def test_eval_true_returns_true(self) -> None:
-        self.assertEqual(eval({}, Bool(True)), Bool(True))
+        self.assertEqual(eval_exp({}, Bool(True)), Bool(True))
 
     def test_eval_false_returns_false(self) -> None:
-        self.assertEqual(eval({}, Bool(False)), Bool(False))
+        self.assertEqual(eval_exp({}, Bool(False)), Bool(False))
 
     def test_eval_with_non_existent_var_raises_name_error(self) -> None:
         exp = Var("no")
         with self.assertRaises(NameError) as ctx:
-            eval({}, exp)
+            eval_exp({}, exp)
         self.assertEqual(ctx.exception.args[0], "name 'no' is not defined")
 
     def test_eval_with_bound_var_returns_value(self) -> None:
         exp = Var("yes")
         env = {"yes": Int(123)}
-        self.assertEqual(eval(env, exp), Int(123))
+        self.assertEqual(eval_exp(env, exp), Int(123))
 
     def test_eval_with_binop_add_returns_sum(self) -> None:
         exp = Binop(BinopKind.ADD, Int(1), Int(2))
-        self.assertEqual(eval({}, exp), Int(3))
+        self.assertEqual(eval_exp({}, exp), Int(3))
 
     def test_eval_with_nested_binop(self) -> None:
         exp = Binop(BinopKind.ADD, Binop(BinopKind.ADD, Int(1), Int(2)), Int(3))
-        self.assertEqual(eval({}, exp), Int(6))
+        self.assertEqual(eval_exp({}, exp), Int(6))
 
     def test_eval_with_binop_add_with_int_string_raises_type_error(self) -> None:
         exp = Binop(BinopKind.ADD, Int(1), String("hello"))
         with self.assertRaises(TypeError) as ctx:
-            eval({}, exp)
+            eval_exp({}, exp)
         self.assertEqual(ctx.exception.args[0], "expected Int, got String")
 
     def test_eval_with_binop_sub(self) -> None:
         exp = Binop(BinopKind.SUB, Int(1), Int(2))
-        self.assertEqual(eval({}, exp), Int(-1))
+        self.assertEqual(eval_exp({}, exp), Int(-1))
 
     def test_eval_with_binop_mul(self) -> None:
         exp = Binop(BinopKind.MUL, Int(2), Int(3))
-        self.assertEqual(eval({}, exp), Int(6))
+        self.assertEqual(eval_exp({}, exp), Int(6))
 
     def test_eval_with_binop_div(self) -> None:
         exp = Binop(BinopKind.DIV, Int(2), Int(3))
-        self.assertEqual(eval({}, exp), Int(0))
+        self.assertEqual(eval_exp({}, exp), Int(0))
 
     def test_eval_with_binop_equal_with_equal_returns_true(self) -> None:
         exp = Binop(BinopKind.EQUAL, Int(1), Int(1))
-        self.assertEqual(eval({}, exp), Bool(True))
+        self.assertEqual(eval_exp({}, exp), Bool(True))
 
     def test_eval_with_binop_equal_with_inequal_returns_false(self) -> None:
         exp = Binop(BinopKind.EQUAL, Int(1), Int(2))
-        self.assertEqual(eval({}, exp), Bool(False))
+        self.assertEqual(eval_exp({}, exp), Bool(False))
 
     def test_eval_with_binop_concat_with_strings_returns_string(self) -> None:
         exp = Binop(BinopKind.STRING_CONCAT, String("hello"), String(" world"))
-        self.assertEqual(eval({}, exp), String("hello world"))
+        self.assertEqual(eval_exp({}, exp), String("hello world"))
 
     def test_eval_with_binop_concat_with_int_string_raises_type_error(self) -> None:
         exp = Binop(BinopKind.STRING_CONCAT, Int(123), String(" world"))
         with self.assertRaises(TypeError) as ctx:
-            eval({}, exp)
+            eval_exp({}, exp)
         self.assertEqual(ctx.exception.args[0], "expected String, got Int")
 
     def test_eval_with_binop_concat_with_string_int_raises_type_error(self) -> None:
         exp = Binop(BinopKind.STRING_CONCAT, String(" world"), Int(123))
         with self.assertRaises(TypeError) as ctx:
-            eval({}, exp)
+            eval_exp({}, exp)
         self.assertEqual(ctx.exception.args[0], "expected String, got Int")
 
     def test_eval_with_binop_cons_with_int_list_returns_list(self) -> None:
         exp = Binop(BinopKind.LIST_CONS, Int(1), List([Int(2), Int(3)]))
-        self.assertEqual(eval({}, exp), List([Int(1), Int(2), Int(3)]))
+        self.assertEqual(eval_exp({}, exp), List([Int(1), Int(2), Int(3)]))
 
     def test_eval_with_binop_cons_with_list_list_returns_nested_list(self) -> None:
         exp = Binop(BinopKind.LIST_CONS, List([]), List([]))
-        self.assertEqual(eval({}, exp), List([List([])]))
+        self.assertEqual(eval_exp({}, exp), List([List([])]))
 
     def test_eval_with_binop_cons_with_list_int_raises_type_error(self) -> None:
         exp = Binop(BinopKind.LIST_CONS, List([]), Int(123))
         with self.assertRaises(TypeError) as ctx:
-            eval({}, exp)
+            eval_exp({}, exp)
         self.assertEqual(ctx.exception.args[0], "expected List, got Int")
 
     def test_eval_with_list_append(self) -> None:
         exp = Binop(BinopKind.LIST_APPEND, List([Int(1), Int(2)]), Int(3))
-        self.assertEqual(eval({}, exp), List([Int(1), Int(2), Int(3)]))
+        self.assertEqual(eval_exp({}, exp), List([Int(1), Int(2), Int(3)]))
 
     def test_eval_with_list_evaluates_elements(self) -> None:
         exp = List(
@@ -1299,28 +1296,28 @@ class EvalTests(unittest.TestCase):
                 Binop(BinopKind.ADD, Int(3), Int(4)),
             ]
         )
-        self.assertEqual(eval({}, exp), List([Int(3), Int(7)]))
+        self.assertEqual(eval_exp({}, exp), List([Int(3), Int(7)]))
 
     def test_eval_with_function_returns_function(self) -> None:
         exp = Function(Var("x"), Var("x"))
-        self.assertEqual(eval({}, exp), Closure({}, Function(Var("x"), Var("x"))))
+        self.assertEqual(eval_exp({}, exp), Closure({}, Function(Var("x"), Var("x"))))
 
     def test_eval_assign_returns_env_object(self) -> None:
         exp = Assign(Var("a"), Int(1))
         env: Env = {}
-        result = eval(env, exp)
+        result = eval_exp(env, exp)
         self.assertEqual(result, EnvObject({"a": Int(1)}))
 
     def test_eval_assign_does_not_modify_env(self) -> None:
         exp = Assign(Var("a"), Int(1))
         env: Env = {}
-        eval(env, exp)
+        eval_exp(env, exp)
         self.assertEqual(env, {})
 
     def test_eval_where_evaluates_in_order(self) -> None:
         exp = Where(Binop(BinopKind.ADD, Var("a"), Int(2)), Assign(Var("a"), Int(1)))
         env: Env = {}
-        self.assertEqual(eval(env, exp), Int(3))
+        self.assertEqual(eval_exp(env, exp), Int(3))
         self.assertEqual(env, {})
 
     def test_eval_nested_where(self) -> None:
@@ -1332,120 +1329,120 @@ class EvalTests(unittest.TestCase):
             Assign(Var("b"), Int(2)),
         )
         env: Env = {}
-        self.assertEqual(eval(env, exp), Int(3))
+        self.assertEqual(eval_exp(env, exp), Int(3))
         self.assertEqual(env, {})
 
     def test_eval_assert_with_truthy_cond_returns_value(self) -> None:
         exp = Assert(Int(123), Bool(True))
-        self.assertEqual(eval({}, exp), Int(123))
+        self.assertEqual(eval_exp({}, exp), Int(123))
 
     def test_eval_assert_with_falsey_cond_raises_assertion_error(self) -> None:
         exp = Assert(Int(123), Bool(False))
         with self.assertRaisesRegex(AssertionError, re.escape("condition Bool(value=False) failed")):
-            eval({}, exp)
+            eval_exp({}, exp)
 
     def test_eval_nested_assert(self) -> None:
         exp = Assert(Assert(Int(123), Bool(True)), Bool(True))
-        self.assertEqual(eval({}, exp), Int(123))
+        self.assertEqual(eval_exp({}, exp), Int(123))
 
     def test_eval_hole(self) -> None:
         exp = Hole()
-        self.assertEqual(eval({}, exp), Hole())
+        self.assertEqual(eval_exp({}, exp), Hole())
 
     def test_eval_function_application_one_arg(self) -> None:
         exp = Apply(Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(1))), Int(2))
-        self.assertEqual(eval({}, exp), Int(3))
+        self.assertEqual(eval_exp({}, exp), Int(3))
 
     def test_eval_function_application_two_args(self) -> None:
         exp = Apply(
             Apply(Function(Var("a"), Function(Var("b"), Binop(BinopKind.ADD, Var("a"), Var("b")))), Int(3)),
             Int(2),
         )
-        self.assertEqual(eval({}, exp), Int(5))
+        self.assertEqual(eval_exp({}, exp), Int(5))
 
     def test_eval_function_returns_closure_with_captured_env(self) -> None:
         exp = Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Var("y")))
-        res = eval({"y": Int(5)}, exp)
+        res = eval_exp({"y": Int(5)}, exp)
         self.assertIsInstance(res, Closure)
         assert isinstance(res, Closure)  # for mypy
         self.assertEqual(res.env, {"y": Int(5)})
 
     def test_eval_function_capture_env(self) -> None:
         exp = Apply(Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Var("y"))), Int(2))
-        self.assertEqual(eval({"y": Int(5)}, exp), Int(7))
+        self.assertEqual(eval_exp({"y": Int(5)}, exp), Int(7))
 
     def test_eval_non_function_raises_type_error(self) -> None:
         exp = Apply(Int(3), Int(4))
         with self.assertRaisesRegex(TypeError, re.escape("attempted to apply a non-closure of type Int")):
-            eval({}, exp)
+            eval_exp({}, exp)
 
     def test_eval_access_from_invalid_object_raises_type_error(self) -> None:
         exp = Access(Int(4), String("x"))
         with self.assertRaisesRegex(TypeError, re.escape("attempted to access from type Int")):
-            eval({}, exp)
+            eval_exp({}, exp)
 
     def test_eval_record_access_with_invalid_accessor_raises_type_error(self) -> None:
         exp = Access(Record({"a": Int(4)}), Int(0))
         with self.assertRaisesRegex(
             TypeError, re.escape("cannot access record field using Int, expected a field name")
         ):
-            eval({}, exp)
+            eval_exp({}, exp)
 
     def test_eval_record_access_with_unknown_accessor_raises_name_error(self) -> None:
         exp = Access(Record({"a": Int(4)}), Var("b"))
         with self.assertRaisesRegex(NameError, re.escape("no assignment to b found in record")):
-            eval({}, exp)
+            eval_exp({}, exp)
 
     def test_eval_record_access(self) -> None:
         exp = Access(Record({"a": Int(4)}), Var("a"))
-        self.assertEqual(eval({}, exp), Int(4))
+        self.assertEqual(eval_exp({}, exp), Int(4))
 
     def test_eval_list_access_with_invalid_accessor_raises_type_error(self) -> None:
         exp = Access(List([Int(4)]), String("hello"))
         with self.assertRaisesRegex(TypeError, re.escape("cannot index into list using type String, expected integer")):
-            eval({}, exp)
+            eval_exp({}, exp)
 
     def test_eval_list_access_with_out_of_bounds_accessor_raises_value_error(self) -> None:
         exp = Access(List([Int(1), Int(2), Int(3)]), Int(4))
         with self.assertRaisesRegex(ValueError, re.escape("index 4 out of bounds for list")):
-            eval({}, exp)
+            eval_exp({}, exp)
 
     def test_eval_list_access(self) -> None:
         exp = Access(List([String("a"), String("b"), String("c")]), Int(2))
-        self.assertEqual(eval({}, exp), String("c"))
+        self.assertEqual(eval_exp({}, exp), String("c"))
 
     def test_right_eval_evaluates_right_hand_side(self) -> None:
         exp = Binop(BinopKind.RIGHT_EVAL, Int(1), Int(2))
-        self.assertEqual(eval({}, exp), Int(2))
+        self.assertEqual(eval_exp({}, exp), Int(2))
 
     def test_match_no_cases_raises_match_error(self) -> None:
         exp = Apply(MatchFunction([]), Int(1))
         with self.assertRaisesRegex(MatchError, "no matching cases"):
-            eval({}, exp)
+            eval_exp({}, exp)
 
     def test_match_int_with_equal_int_matches(self) -> None:
         exp = Apply(MatchFunction([MatchCase(pattern=Int(1), body=Int(2))]), Int(1))
-        self.assertEqual(eval({}, exp), Int(2))
+        self.assertEqual(eval_exp({}, exp), Int(2))
 
     def test_match_int_with_inequal_int_raises_match_error(self) -> None:
         exp = Apply(MatchFunction([MatchCase(pattern=Int(1), body=Int(2))]), Int(3))
         with self.assertRaisesRegex(MatchError, "no matching cases"):
-            eval({}, exp)
+            eval_exp({}, exp)
 
     def test_match_string_with_equal_string_matches(self) -> None:
         exp = Apply(MatchFunction([MatchCase(pattern=String("a"), body=String("b"))]), String("a"))
-        self.assertEqual(eval({}, exp), String("b"))
+        self.assertEqual(eval_exp({}, exp), String("b"))
 
     def test_match_string_with_inequal_string_raises_match_error(self) -> None:
         exp = Apply(MatchFunction([MatchCase(pattern=String("a"), body=String("b"))]), String("c"))
         with self.assertRaisesRegex(MatchError, "no matching cases"):
-            eval({}, exp)
+            eval_exp({}, exp)
 
     def test_match_falls_through_to_next(self) -> None:
         exp = Apply(
             MatchFunction([MatchCase(pattern=Int(3), body=Int(4)), MatchCase(pattern=Int(1), body=Int(2))]), Int(1)
         )
-        self.assertEqual(eval({}, exp), Int(2))
+        self.assertEqual(eval_exp({}, exp), Int(2))
 
     def test_eval_compose(self) -> None:
         exp = Compose(
@@ -1463,7 +1460,7 @@ class EvalTests(unittest.TestCase):
                 ),
             ),
         )
-        self.assertEqual(eval(env, exp), expected)
+        self.assertEqual(eval_exp(env, exp), expected)
 
     def test_eval_compose_apply(self) -> None:
         exp = Apply(
@@ -1474,17 +1471,17 @@ class EvalTests(unittest.TestCase):
             Int(4),
         )
         self.assertEqual(
-            eval({}, exp),
+            eval_exp({}, exp),
             Int(14),
         )
 
     def test_eval_native_function_returns_function(self) -> None:
         exp = NativeFunction(lambda x: Int(x.value * 2))  # type: ignore [attr-defined]
-        self.assertIs(eval({}, exp), exp)
+        self.assertIs(eval_exp({}, exp), exp)
 
     def test_eval_apply_native_function_calls_function(self) -> None:
         exp = Apply(NativeFunction(lambda x: Int(x.value * 2)), Int(3))  # type: ignore [attr-defined]
-        self.assertEqual(eval({}, exp), Int(6))
+        self.assertEqual(eval_exp({}, exp), Int(6))
 
     def test_eval_apply_quote_returns_ast(self) -> None:
         ast = Binop(BinopKind.ADD, Int(1), Int(2))
@@ -1496,7 +1493,7 @@ class EndToEndTests(unittest.TestCase):
     def _run(self, text: str, env: Optional[Env] = None) -> Object:
         tokens = tokenize(text)
         ast = parse(tokens)
-        return eval(env or {}, ast)
+        return eval_exp(env or {}, ast)
 
     def test_int_returns_int(self) -> None:
         self.assertEqual(self._run("1"), Int(1))
@@ -1762,7 +1759,7 @@ def eval_command(args: argparse.Namespace) -> None:
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
-    result = eval({}, ast)
+    result = eval_exp({}, ast)
     print(result)
 
 
@@ -1774,7 +1771,7 @@ def apply_command(args: argparse.Namespace) -> None:
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
-    result = eval({}, ast)
+    result = eval_exp({}, ast)
     print(result)
 
 
@@ -1826,7 +1823,7 @@ class ScrapRepl(code.InteractiveConsole):
             logger.debug("Tokens: %s", tokens)
             ast = parse(tokens)
             logger.debug("AST: %s", ast)
-            result = eval(self.env, ast)
+            result = eval_exp(self.env, ast)
             assert isinstance(self.env, dict)  # for .update()/__setitem__
             if isinstance(result, EnvObject):
                 self.env.update(result.env)

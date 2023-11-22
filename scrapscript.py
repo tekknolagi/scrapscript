@@ -1617,9 +1617,11 @@ class ScrapRepl(code.InteractiveConsole):
             ast = parse(tokens)
             logger.debug("AST: %s", ast)
             result = eval(self.env, ast)
+            assert isinstance(self.env, dict)  # for .update()/__setitem__
             if isinstance(result, EnvObject):
-                assert isinstance(self.env, dict)  # for .update()
                 self.env.update(result.env)
+            else:
+                self.env["_"] = result
             print(result)
         except ParseError as e:
             print(f"Parse error: {e}", file=sys.stderr)

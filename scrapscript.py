@@ -1824,6 +1824,15 @@ class EndToEndTests(unittest.TestCase):
     def test_stdlib_quote_reverse_pipe(self) -> None:
         self.assertEqual(self._run("$$quote <| 3 + 4"), Binop(BinopKind.ADD, Int(3), Int(4)))
 
+    def test_stdlib_serialize(self) -> None:
+        self.assertEqual(self._run("$$serialize 3", STDLIB), Bytes(value=b"d4:type3:Int5:valuei3ee"))
+
+    def test_stdlib_serialize_expr(self) -> None:
+        self.assertEqual(
+            self._run("(1+2) |> $$quote |> $$serialize", STDLIB),
+            Bytes(value=b"d4:leftd4:type3:Int5:valuei1ee2:op3:ADD5:rightd4:type3:Int5:valuei2ee4:type5:Binope"),
+        )
+
 
 class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:
@@ -2001,6 +2010,7 @@ STDLIB = {
     "$$add": NativeFunction(lambda x: NativeFunction(lambda y: Int(unpack_int(x) + unpack_int(y)))),
     "$$fetch": NativeFunction(fetch),
     "$$jsondecode": NativeFunction(jsondecode),
+    "$$serialize": NativeFunction(lambda obj: Bytes(serialize(obj))),
 }
 
 

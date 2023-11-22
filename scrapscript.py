@@ -25,14 +25,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-FULL_TEST_OUTPUT = False
-
-
-if FULL_TEST_OUTPUT:
-    # pylint: disable=protected-access
-    __import__("sys").modules["unittest.util"]._MAX_LENGTH = 999999999
-
-
 def is_identifier_char(c: str) -> bool:
     return c.isalnum() or c in ("$", "'", "_")
 
@@ -1847,7 +1839,10 @@ def repl_command(args: argparse.Namespace) -> None:
         readline.write_history_file(histfile)
 
 
-def test_command(_args: argparse.Namespace) -> None:
+def test_command(args: argparse.Namespace) -> None:
+    if args.debug:
+        # pylint: disable=protected-access
+        __import__("sys").modules["unittest.util"]._MAX_LENGTH = 999999999
     unittest.main(argv=[__file__])
 
 

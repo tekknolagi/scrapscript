@@ -15,7 +15,7 @@ python scrapscript.py repl
 
 ### CLI
 
-This step requires [Poetry](https://python-poetry.org/)
+This step requires [Poetry](https://python-poetry.org/) when installing from source.
 
 ```bash
 poetry install

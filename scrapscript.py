@@ -1934,6 +1934,13 @@ class SerializeTests(unittest.TestCase):
         obj = Bool(True)
         self.assertEqual(serialize(obj), b"d4:type4:Bool5:valuei1ee")
 
+    def test_serialize_function(self) -> None:
+        obj = Function(Var("x"), Binop(BinopKind.ADD, Int(1), Var("x")))
+        self.assertEqual(
+            serialize(obj),
+            b"d3:argd4:name1:x4:type3:Vare4:bodyd4:leftd4:type3:Int5:valuei1ee2:op3:ADD5:rightd4:name1:x4:type3:Vare4:type5:Binope4:type8:Functione",
+        )
+
 
 def eval_command(args: argparse.Namespace) -> None:
     if args.debug:

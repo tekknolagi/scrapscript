@@ -627,6 +627,8 @@ def eval(env: Env, exp: Object) -> Object:
     if isinstance(exp, MatchFunction):
         return Closure(env, exp)
     if isinstance(exp, Apply):
+        if isinstance(exp.func, Var) and exp.func.name == "$$quote":
+            return exp.arg
         callee = eval(env, exp.func)
         if isinstance(callee, NativeFunction):
             arg = eval(env, exp.arg)

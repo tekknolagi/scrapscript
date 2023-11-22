@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import unittest
+import urllib.request
 from dataclasses import dataclass
 from enum import auto
 from types import ModuleType
@@ -1758,8 +1759,16 @@ def apply_command(args: argparse.Namespace) -> None:
     print(result)
 
 
+def fetch(url: Object) -> Object:
+    if not isinstance(url, String):
+        raise TypeError(f"url Expected String, but got {type(url).__name__}")
+    with urllib.request.urlopen(url.value) as f:
+        return String(f.read().decode("utf-8"))
+
+
 STDLIB = {
     "$$add": NativeFunction(lambda x: NativeFunction(lambda y: Int(unpack_int(x) + unpack_int(y)))),
+    "$$fetch": NativeFunction(fetch),
 }
 
 

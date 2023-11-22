@@ -542,12 +542,13 @@ class MatchError(Exception):
     pass
 
 
-def match(obj: Object, pattern: Object) -> bool:
+def match(obj: Object, pattern: Object) -> bool | Env:
     if isinstance(pattern, Int):
         return isinstance(obj, Int) and obj.value == pattern.value
     if isinstance(pattern, String):
         return isinstance(obj, String) and obj.value == pattern.value
-    # TODO: Handle match condition with var pattern
+    if isinstance(pattern, Var):
+        return {pattern.name: obj}
     raise NotImplementedError("TODO: match")
 
 
@@ -605,8 +606,14 @@ def eval(env: Env, exp: Object) -> Object:
             # TODO(max): Implement MatchClosure
             arg = eval(env, exp.arg)
             for case in callee.func.cases:
-                if match(arg, case.pattern):
-                    return eval(env, case.body)
+                m = match(arg, case.pattern)
+                if isinstance(m, bool):
+                    if m:
+                        return eval(env, case.body)
+                    else:
+                        continue
+                assert isinstance(m, dict)
+                return eval({**env, **m}, case.body)
             raise MatchError("no matching cases")
         else:
             raise TypeError(f"attempted to apply a non-function of type {type(callee.func).__name__}")
@@ -1493,6 +1500,31 @@ class EndToEndTests(unittest.TestCase):
                   | 1 -> 2
                   | 2 -> 3
                   """
+            ),
+            Int(3),
+        )
+
+    def test_match_var_binds_var(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                id 3
+                . id =
+                  | x -> x
+                """
+            ),
+            Int(3),
+        )
+
+    def test_match_var_binds_first_arm(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                id 3
+                . id =
+                  | x -> x
+                  | y -> y * 2
+                """
             ),
             Int(3),
         )

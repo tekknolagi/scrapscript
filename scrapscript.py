@@ -1822,6 +1822,9 @@ class ScrapRepl(code.InteractiveConsole):
             else:
                 self.env["_"] = result
             print(result)
+        except UnexpectedEOFError:
+            # Need to read more text
+            return True
         except ParseError as e:
             print(f"Parse error: {e}", file=sys.stderr)
         except Exception as e:

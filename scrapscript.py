@@ -682,6 +682,10 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_binop_no_spaces(self) -> None:
         self.assertEqual(tokenize("1+2"), ["1", "+", "2"])
 
+    @unittest.skip("TODO(max): Move negative integers into the parser")
+    def test_tokenize_binary_sub_no_spaces(self) -> None:
+        self.assertEqual(tokenize("1-2"), ["1", "-", "2"])
+
     def test_tokenize_binop_var(self) -> None:
         ops = ["+", "-", "*", "/", "==", "/=", "<", ">", "<=", ">=", "++", ">+", "+<"]
         for op in ops:

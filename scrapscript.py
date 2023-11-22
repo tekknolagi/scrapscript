@@ -1541,6 +1541,20 @@ class EndToEndTests(unittest.TestCase):
     def test_reverse_pipe_nested(self) -> None:
         self.assertEqual(self._run("(b -> b * 2) <| (a -> a + 2) <| 1"), Int(6))
 
+    def test_recursive_function(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        fac 5
+        . fac =
+          | 0 -> 1
+          | 1 -> 1
+          | n -> n * fac (n - 1)
+        """
+            ),
+            Int(120),
+        )
+
 
 def eval_command(args: argparse.Namespace) -> None:
     if args.debug:

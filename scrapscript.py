@@ -1190,6 +1190,7 @@ class MatchTests(unittest.TestCase):
             None,
         )
 
+
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:
         exp = Int(5)

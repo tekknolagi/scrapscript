@@ -2018,6 +2018,8 @@ def jsondecode(obj: Object) -> Object:
 
 
 def listlength(obj: Object) -> Object:
+    # TODO(max): Implement in scrapscript once list pattern matching is
+    # implemented.
     if not isinstance(obj, List):
         raise TypeError(f"listlength Expected List, but got {type(obj).__name__}")
     return Int(len(obj.items))

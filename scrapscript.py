@@ -14,7 +14,7 @@ import unittest
 import urllib.request
 from dataclasses import dataclass
 from enum import auto
-from types import ModuleType, FunctionType
+from types import FunctionType, ModuleType
 from typing import Any, Callable, Dict, Mapping, Optional, Union
 
 readline: Optional[ModuleType]
@@ -325,6 +325,8 @@ class UnexpectedEOFError(ParseError):
 
 def parse_assign(tokens: typing.List[Token], p: float = 0) -> "Assign":
     assign = parse(tokens, p)
+    if isinstance(assign, Spread):
+        return Assign(Var("..."), assign)
     if not isinstance(assign, Assign):
         raise ParseError("failed to parse variable assignment in record constructor")
     return assign
@@ -354,6 +356,8 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
             raise ParseError(f"unexpected base {base!r} in {token!r}")
     elif isinstance(token, StringLit):
         l = String(token.value)
+    elif token == Operator("..."):
+        l = Spread()
     elif token == Operator("|"):
         expr = parse(tokens, PS["|"].pr)  # TODO: make this work for larger arities
         if not isinstance(expr, Function):
@@ -380,7 +384,9 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         else:
             l.items.append(parse(tokens, 2))
             while not isinstance(tokens.pop(0), RightBracket):
-                # TODO: Implement .. and ... operators
+                if isinstance(l.items[-1], Spread):
+                    raise ParseError("spread must come at end of list match")
+                # TODO: Implement .. operator
                 l.items.append(parse(tokens, 2))
     elif isinstance(token, LeftBrace):
         l = Record({})
@@ -391,7 +397,9 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
             assign = parse_assign(tokens, 2)
             l.data[assign.name.name] = assign.value
             while not isinstance(tokens.pop(0), RightBrace):
-                # TODO: Implement .. and ... operators
+                if isinstance(assign.value, Spread):
+                    raise ParseError("spread must come at end of record match")
+                # TODO: Implement .. operator
                 assign = parse_assign(tokens, 2)
                 l.data[assign.name.name] = assign.value
     elif token == Operator("-"):
@@ -578,6 +586,11 @@ class Bool(Object):
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Hole(Object):
+    pass
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Spread(Object):
     pass
 
 
@@ -890,33 +903,41 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
         if not isinstance(obj, Record):
             return None
         result: Env = {}
-        if len(pattern.data) != len(obj.data):
-            # TODO: Remove this check when implementing ... operator
-            return None
-        for key, value in pattern.data.items():
-            obj_value = obj.data.get(key)
-            if obj_value is None:
+        use_spread = False
+        for key, pattern_item in pattern.data.items():
+            if isinstance(pattern_item, Spread):
+                use_spread = True
+                break
+            obj_item = obj.data.get(key)
+            if obj_item is None:
                 return None
-            part = match(obj_value, value)
+            part = match(obj_item, pattern_item)
             if part is None:
                 return None
             assert isinstance(result, dict)  # for .update()
             result.update(part)
+        if not use_spread and len(pattern.data) != len(obj.data):
+            return None
         return result
     if isinstance(pattern, List):
         if not isinstance(obj, List):
             return None
-        if len(pattern.items) != len(obj.items):
-            # TODO: Remove this check when implementing ... operator
-            return None
         result: Env = {}  # type: ignore
+        use_spread = False
         for i, pattern_item in enumerate(pattern.items):
+            if isinstance(pattern_item, Spread):
+                use_spread = True
+                break
+            if i >= len(obj.items):
+                return None
             obj_item = obj.items[i]
             part = match(obj_item, pattern_item)
             if part is None:
                 return None
             assert isinstance(result, dict)  # for .update()
             result.update(part)
+        if not use_spread and len(pattern.items) != len(obj.items):
+            return None
         return result
     raise NotImplementedError(f"match not implemented for {type(pattern).__name__}")
 
@@ -1013,6 +1034,8 @@ def eval_exp(env: Env, exp: Object) -> Object:
         clo_inner = eval_exp(env, exp.inner)
         clo_outer = eval_exp(env, exp.outer)
         return Closure({}, Function(Var("x"), Apply(clo_outer, Apply(clo_inner, Var("x")))))
+    elif isinstance(exp, Spread):
+        raise RuntimeError("cannot evaluate a spread")
     raise NotImplementedError(f"eval_exp not implemented for {exp}")
 
 
@@ -1402,6 +1425,71 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(c.lineno, 2)
         self.assertEqual(d.lineno, 2)
 
+    def test_tokenize_list_with_only_spread(self) -> None:
+        self.assertEqual(tokenize("[ ... ]"), [LeftBracket(), Operator("..."), RightBracket()])
+
+    def test_tokenize_list_with_spread(self) -> None:
+        self.assertEqual(
+            tokenize("[ 1 , ... ]"),
+            [
+                LeftBracket(),
+                NumLit(1),
+                Operator(","),
+                Operator("..."),
+                RightBracket(),
+            ],
+        )
+
+    def test_tokenize_list_with_spread_no_spaces(self) -> None:
+        self.assertEqual(
+            tokenize("[ 1,... ]"),
+            [
+                LeftBracket(),
+                NumLit(1),
+                Operator(","),
+                Operator("..."),
+                RightBracket(),
+            ],
+        )
+
+    def test_tokenize_record_with_only_spread(self) -> None:
+        self.assertEqual(
+            tokenize("{ ... }"),
+            [
+                LeftBrace(),
+                Operator("..."),
+                RightBrace(),
+            ],
+        )
+
+    def test_tokenize_record_with_spread(self) -> None:
+        self.assertEqual(
+            tokenize("{ x = 1, ...}"),
+            [
+                LeftBrace(),
+                Name("x"),
+                Operator("="),
+                NumLit(1),
+                Operator(","),
+                Operator("..."),
+                RightBrace(),
+            ],
+        )
+
+    def test_tokenize_record_with_spread_no_spaces(self) -> None:
+        self.assertEqual(
+            tokenize("{x=1,...}"),
+            [
+                LeftBrace(),
+                Name("x"),
+                Operator("="),
+                NumLit(1),
+                Operator(","),
+                Operator("..."),
+                RightBrace(),
+            ],
+        )
+
 
 class ParserTests(unittest.TestCase):
     def test_parse_with_empty_tokens_raises_parse_error(self) -> None:
@@ -1543,6 +1631,18 @@ class ParserTests(unittest.TestCase):
             parse([LeftBracket(), NumLit(1), Operator(","), NumLit(2), RightBracket()]),
             List([Int(1), Int(2)]),
         )
+
+    def test_parse_list_with_only_comma_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token Operator(lineno=-1, value=',')")):
+            parse([LeftBracket(), Operator(","), RightBracket()])
+
+    def test_parse_list_with_two_commas_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token Operator(lineno=-1, value=',')")):
+            parse([LeftBracket(), Operator(","), Operator(","), RightBracket()])
+
+    def test_parse_list_with_trailing_comma_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token RightBracket(lineno=-1)")):
+            parse([LeftBracket(), NumLit(1), Operator(","), RightBracket()])
 
     def test_parse_assign(self) -> None:
         self.assertEqual(
@@ -1740,6 +1840,60 @@ class ParserTests(unittest.TestCase):
             Binop(BinopKind.BOOL_OR, Var("true"), Binop(BinopKind.BOOL_AND, Var("true"), Var("false"))),
         )
 
+    def test_parse_list_spread(self) -> None:
+        self.assertEqual(
+            parse([LeftBracket(), NumLit(1), Operator(","), Operator("..."), RightBracket()]),
+            List([Int(1), Spread()]),
+        )
+
+    def test_parse_list_spread_beginning_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of list match")):
+            parse([LeftBracket(), Operator("..."), Operator(","), NumLit(1), RightBracket()])
+
+    def test_parse_list_spread_middle_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of list match")):
+            parse([LeftBracket(), NumLit(1), Operator(","), Operator("..."), Operator(","), NumLit(1), RightBracket()])
+
+    def test_parse_record_spread(self) -> None:
+        self.assertEqual(
+            parse([LeftBrace(), Name("x"), Operator("="), NumLit(1), Operator(","), Operator("..."), RightBrace()]),
+            Record({"x": Int(1), "...": Spread()}),
+        )
+
+    def test_parse_record_spread_beginning_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of record match")):
+            parse([LeftBrace(), Operator("..."), Operator(","), Name("x"), Operator("="), NumLit(1), RightBrace()])
+
+    def test_parse_record_spread_middle_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of record match")):
+            parse(
+                [
+                    LeftBrace(),
+                    Name("x"),
+                    Operator("="),
+                    NumLit(1),
+                    Operator(","),
+                    Operator("..."),
+                    Operator(","),
+                    Name("y"),
+                    Operator("="),
+                    NumLit(2),
+                    RightBrace(),
+                ]
+            )
+
+    def test_parse_record_with_only_comma_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token Operator(lineno=-1, value=',')")):
+            parse([LeftBrace(), Operator(","), RightBrace()])
+
+    def test_parse_record_with_two_commas_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token Operator(lineno=-1, value=',')")):
+            parse([LeftBrace(), Operator(","), Operator(","), RightBrace()])
+
+    def test_parse_record_with_trailing_comma_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token RightBrace(lineno=-1)")):
+            parse([LeftBrace(), Name("x"), Operator("="), NumLit(1), Operator(","), RightBrace()])
+
 
 class MatchTests(unittest.TestCase):
     def test_match_with_equal_ints_returns_empty_dict(self) -> None:
@@ -1781,8 +1935,8 @@ class MatchTests(unittest.TestCase):
             None,
         )
 
-    def test_match_record_with_fewer_fields_in_pattern_none(self) -> None:
-        self.assertIs(
+    def test_match_record_with_fewer_fields_in_pattern_returns_none(self) -> None:
+        self.assertEqual(
             match(
                 Record({"x": Int(1), "y": Int(2)}),
                 pattern=Record({"x": Var("x")}),
@@ -1928,6 +2082,51 @@ class MatchTests(unittest.TestCase):
                     ),
                 ]
             ),
+        )
+
+    def test_match_list_with_spread_returns_empty_dict(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2), Int(3), Int(4), Int(5)]),
+                pattern=List([Int(1), Spread()]),
+            ),
+            {},
+        )
+
+    def test_match_list_with_mismatched_spread_returns_none(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2), Int(3), Int(4), Int(5)]),
+                pattern=List([Int(1), Int(6), Spread()]),
+            ),
+            None,
+        )
+
+    def test_match_record_with_constant_and_spread_returns_empty_dict(self) -> None:
+        self.assertEqual(
+            match(
+                Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
+                pattern=Record({"a": Int(1), "...": Spread()}),
+            ),
+            {},
+        )
+
+    def test_match_record_with_var_and_spread_returns_match(self) -> None:
+        self.assertEqual(
+            match(
+                Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
+                pattern=Record({"a": Var("x"), "...": Spread()}),
+            ),
+            {"x": Int(1)},
+        )
+
+    def test_match_record_with_mismatched_spread_returns_none(self) -> None:
+        self.assertEqual(
+            match(
+                Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
+                pattern=Record({"d": Var("x"), "...": Spread()}),
+            ),
+            None,
         )
 
 
@@ -2336,6 +2535,11 @@ class EvalTests(unittest.TestCase):
     def test_boolean_or_on_int_raises_type_error(self) -> None:
         exp = Binop(BinopKind.BOOL_OR, Int(1), Int(2))
         with self.assertRaisesRegex(TypeError, re.escape("expected Bool, got Int")):
+            eval_exp({}, exp)
+
+    def test_eval_record_with_spread_fails(self) -> None:
+        exp = Record({"x": Spread()})
+        with self.assertRaisesRegex(RuntimeError, "cannot evaluate a spread"):
             eval_exp({}, exp)
 
 
@@ -2751,6 +2955,34 @@ class EndToEndTests(unittest.TestCase):
 
     def test_compare_binds_tighter_than_boolean_and(self) -> None:
         self.assertEqual(self._run("1 < 2 && 2 < 1"), Bool(False))
+
+    def test_match_list_spread(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        f [2, 4, 6]
+        . f =
+          | [] -> 0
+          | [x, ...] -> x
+          | c -> 1
+        """
+            ),
+            Int(2),
+        )
+
+    def test_match_record_spread(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        f {x = 4, y = 5} 
+        . f =
+          | {} -> 0
+          | {x = a, ...} -> a
+          | c -> 1
+        """
+            ),
+            Int(4),
+        )
 
 
 class BencodeTests(unittest.TestCase):

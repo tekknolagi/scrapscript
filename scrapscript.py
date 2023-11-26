@@ -1256,7 +1256,7 @@ class MatchTests(unittest.TestCase):
             {"y": Int(2)},
         )
 
-    def test_match_record_with_non_matching_const_returns_empty_dict(self) -> None:
+    def test_match_record_with_non_matching_const_returns_none(self) -> None:
         self.assertEqual(
             match(
                 Record({"x": Int(1), "y": Int(2)}),

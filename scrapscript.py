@@ -296,7 +296,7 @@ def parse(tokens: typing.List[str], p: float = 0) -> "Object":
                 tokens.pop(0)
             elif tokens[0] == "...":
                 # TODO(chris): Revisit how spread is saved to record
-                l.data["_"] = Spread()
+                l.data["__spread"] = Spread()
                 tokens.pop(0)
             else:
                 next_item = parse(tokens, 2)
@@ -1241,7 +1241,7 @@ class ParserTests(unittest.TestCase):
     def test_parse_record_spread(self) -> None:
         self.assertEqual(
             parse(["{", "x", "=", "1", ",", "...", "}"]),
-            Record({"x": Int(1), "_": Spread()}),
+            Record({"x": Int(1), "__spread": Spread()}),
         )
 
     def test_parse_list_spread_beginning(self) -> None:
@@ -1409,7 +1409,7 @@ class MatchTests(unittest.TestCase):
         self.assertEqual(
             match(
                 Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
-                pattern=Record({"a": Var("a"), "_": Spread()}),
+                pattern=Record({"a": Var("a"), "__spread": Spread()}),
             ),
             {},
         )
@@ -1419,7 +1419,7 @@ class MatchTests(unittest.TestCase):
         self.assertEqual(
             match(
                 Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
-                pattern=Record({"a": Var("x"), "_": Spread()}),
+                pattern=Record({"a": Var("x"), "__spread": Spread()}),
             ),
             {"x": Int(1)},
         )
@@ -1428,7 +1428,7 @@ class MatchTests(unittest.TestCase):
         self.assertEqual(
             match(
                 Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
-                pattern=Record({"d": Var("x"), "_": Spread()}),
+                pattern=Record({"d": Var("x"), "__spread": Spread()}),
             ),
             None,
         )

@@ -630,7 +630,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
             assert isinstance(result, dict)  # for .update()
             result.update(part)
         return result
-    raise NotImplementedError("TODO: match")
+    raise NotImplementedError(f"match not implemented for {type(pattern).__name__}")
 
 
 # pylint: disable=redefined-builtin

@@ -1786,6 +1786,19 @@ class EndToEndTests(unittest.TestCase):
                 """
             )
 
+    def test_match_record_doubly_binds_vars(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                get_x rec
+                . rec = { a = 3, b = 3 }
+                . get_x =
+                  | { a = x, b = x } -> x
+                """
+            ),
+            Int(3),
+        )
+
     def test_pipe(self) -> None:
         self.assertEqual(self._run("1 |> (a -> a + 2)"), Int(3))
 

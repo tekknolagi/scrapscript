@@ -5,7 +5,7 @@ import click
 from click import File
 
 # pylint: disable=redefined-builtin
-from scrapscript.lib.scrapscript import eval, parse, tokenize
+from scrapscript.lib.scrapscript import eval_exp, parse, tokenize
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def eval_command(program_file: File, debug: bool) -> None:
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
-    result = eval({}, ast)
+    result = eval_exp({}, ast)
     print(result)
 
 
@@ -42,7 +42,7 @@ def apply_command(program: str, debug: bool) -> None:
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
-    result = eval({}, ast)
+    result = eval_exp({}, ast)
     print(result)
 
 

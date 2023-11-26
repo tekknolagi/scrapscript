@@ -286,6 +286,7 @@ def parse(tokens: typing.List[str], p: float = 0) -> "Object":
         else:
             l.items.append(parse(tokens, 2))
             while tokens.pop(0) != "]":
+                # TODO: Implement .. and ... operators
                 l.items.append(parse(tokens, 2))
     elif token == "{":
         l = Record({})
@@ -625,6 +626,21 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
             if obj_value is None:
                 return None
             part = match(obj_value, value)
+            if part is None:
+                return None
+            assert isinstance(result, dict)  # for .update()
+            result.update(part)
+        return result
+    if isinstance(pattern, List):
+        if not isinstance(obj, List):
+            return None
+        if len(pattern.items) != len(obj.items):
+            # TODO: Remove this check when implementing ... operator
+            return None
+        result: Env = {}  # type: ignore
+        for i, pattern_item in enumerate(pattern.items):
+            obj_item = obj.items[i]
+            part = match(obj_item, pattern_item)
             if part is None:
                 return None
             assert isinstance(result, dict)  # for .update()
@@ -1265,6 +1281,60 @@ class MatchTests(unittest.TestCase):
             None,
         )
 
+    def test_match_list_with_non_list_returns_none(self) -> None:
+        self.assertEqual(
+            match(
+                Int(2),
+                pattern=List([Var("x"), Var("y")]),
+            ),
+            None,
+        )
+
+    def test_match_list_with_more_fields_in_pattern_returns_none(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2)]),
+                pattern=List([Var("x"), Var("y"), Var("z")]),
+            ),
+            None,
+        )
+
+    def test_match_list_with_fewer_fields_in_pattern_returns_none(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2)]),
+                pattern=List([Var("x")]),
+            ),
+            None,
+        )
+
+    def test_match_list_with_vars_returns_dict_with_keys(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2)]),
+                pattern=List([Var("x"), Var("y")]),
+            ),
+            {"x": Int(1), "y": Int(2)},
+        )
+
+    def test_match_list_with_matching_const_returns_dict_with_other_keys(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2)]),
+                pattern=List([Int(1), Var("y")]),
+            ),
+            {"y": Int(2)},
+        )
+
+    def test_match_list_with_non_matching_const_returns_none(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2)]),
+                pattern=List([Int(3), Var("y")]),
+            ),
+            None,
+        )
+
 
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:
@@ -1797,6 +1867,70 @@ class EndToEndTests(unittest.TestCase):
                 """
             ),
             Int(3),
+        )
+
+    def test_match_list_binds_vars(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                mult xs
+                . xs = [1, 2, 3, 4, 5]
+                . mult =
+                  | [1, x, 3, y, 5] -> x * y
+                """
+            ),
+            Int(8),
+        )
+
+    def test_match_list_incorrect_length_does_not_match(self) -> None:
+        with self.assertRaises(MatchError):
+            self._run(
+                """
+                mult xs
+                . xs = [1, 2, 3]
+                . mult =
+                  | [1, 2] -> 1
+                  | [1, 2, 3, 4] -> 1
+                  | [1, 3] -> 1
+                """
+            )
+
+    def test_match_list_with_constant(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                middle xs
+                . xs = [4, 5, 6]
+                . middle =
+                  | [1, x, 3] -> x
+                  | [4, x, 6] -> x
+                  | [7, x, 9] -> x
+                """
+            ),
+            Int(5),
+        )
+
+    def test_match_list_with_non_list_fails(self) -> None:
+        with self.assertRaises(MatchError):
+            self._run(
+                """
+                get_x 3
+                . get_x =
+                  | [2, x] -> x
+                """
+            )
+
+    def test_match_list_doubly_binds_vars(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                mult xs
+                . xs = [1, 2, 3, 2, 1]
+                . mult =
+                  | [1, x, 3, x, 1] -> x
+                """
+            ),
+            Int(2),
         )
 
     def test_pipe(self) -> None:

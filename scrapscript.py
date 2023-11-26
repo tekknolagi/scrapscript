@@ -819,7 +819,7 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_empty_list(self) -> None:
         self.assertEqual(tokenize("[ ]"), ["[", "]"])
 
-    def test_tokenize_empty_list_with_no_spaces(self) -> None:
+    def test_tokenize_empty_list_with_spaces(self) -> None:
         self.assertEqual(tokenize("[ ]"), ["[", "]"])
 
     def test_tokenize_list_with_items(self) -> None:

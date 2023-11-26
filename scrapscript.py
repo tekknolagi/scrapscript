@@ -217,13 +217,6 @@ class UnexpectedEOFError(ParseError):
     pass
 
 
-def parse_assign(tokens: typing.List[str], p: float = 0) -> "Assign":
-    assign = parse(tokens, p)
-    if not isinstance(assign, Assign):
-        raise ParseError("failed to parse variable assignment in record constructor")
-    return assign
-
-
 def parse(tokens: typing.List[str], p: float = 0) -> "Object":
     if not tokens:
         raise UnexpectedEOFError("unexpected end of input")
@@ -280,26 +273,36 @@ def parse(tokens: typing.List[str], p: float = 0) -> "Object":
         tokens.pop(0)
     elif token == "[":
         l = List([])
-        token = tokens[0]
-        if token == "]":
-            tokens.pop(0)
-        else:
-            l.items.append(parse(tokens, 2))
-            while tokens.pop(0) != "]":
-                # TODO: Implement .. and ... operators
+        while True:
+            # TODO: Implement .. operator
+            if tokens[0] == "]":
+                tokens.pop(0)
+                break
+            elif tokens[0] == ",":
+                tokens.pop(0)
+            elif tokens[0] == "...":
+                l.items.append(Spread())
+                tokens.pop(0)
+            else:
                 l.items.append(parse(tokens, 2))
     elif token == "{":
         l = Record({})
-        token = tokens[0]
-        if token == "}":
-            tokens.pop(0)
-        else:
-            assign = parse_assign(tokens, 2)
-            l.data[assign.name.name] = assign.value
-            while tokens.pop(0) != "}":
-                # TODO: Implement .. and ... operators
-                assign = parse_assign(tokens, 2)
-                l.data[assign.name.name] = assign.value
+        while True:
+            # TODO: Implement .. operator
+            if tokens[0] == "}":
+                tokens.pop(0)
+                break
+            elif tokens[0] == ",":
+                tokens.pop(0)
+            elif tokens[0] == "...":
+                # TODO(chris): Revisit how spread is saved to record
+                l.data["_"] = Spread()
+                tokens.pop(0)
+            else:
+                next_item = parse(tokens, 2)
+                if not isinstance(next_item, Assign):
+                    raise ParseError("failed to parse variable assignment in record constructor")
+                l.data[next_item.name.name] = next_item.value
     else:
         raise ParseError(f"unexpected token {token!r}")
 
@@ -407,6 +410,11 @@ class Bool(Object):
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Hole(Object):
+    pass
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Spread(Object):
     pass
 
 
@@ -735,6 +743,8 @@ def eval_exp(env: Env, exp: Object) -> Object:
         clo_inner = eval_exp(env, exp.inner)
         clo_outer = eval_exp(env, exp.outer)
         return Closure({}, Function(Var("x"), Apply(clo_outer, Apply(clo_inner, Var("x")))))
+    elif isinstance(exp, Spread):
+        raise RuntimeError("cannot evaluate a spread")
     raise NotImplementedError(f"eval_exp not implemented for {exp}")
 
 
@@ -943,6 +953,28 @@ class TokenizerTests(unittest.TestCase):
             tokenize("f << g"),
             ["f", "<<", "g"],
         )
+
+    def test_tokenize_list_with_only_spread(self) -> None:
+        self.assertEqual(tokenize("[ ... ]"), ["[", "...", "]"])
+
+    def test_tokenize_list_with_spread(self) -> None:
+        self.assertEqual(tokenize("[ 1 , ... ]"), ["[", "1", ",", "...", "]"])
+
+    # TODO(chris): Tokenize spread next to list comma
+    @unittest.expectedFailure
+    def test_tokenize_list_with_spread_no_spaces(self) -> None:
+        self.assertEqual(tokenize("[1,...]"), ["[", "1", ",", "...", "]"])
+
+    def test_tokenize_record_with_only_spread(self) -> None:
+        self.assertEqual(tokenize("{ ... }"), ["{", "...", "}"])
+
+    def test_tokenize_record_with_spread(self) -> None:
+        self.assertEqual(tokenize("{ x = 1, ...}"), ["{", "x", "=", "1", ",", "...", "}"])
+
+    # TODO(chris): Tokenize spread next to record comma
+    @unittest.expectedFailure
+    def test_tokenize_record_with_spread_no_spaces(self) -> None:
+        self.assertEqual(tokenize("{x=1,...}"), ["{", "x", "=", "1", ",", "...", "}"])
 
 
 class ParserTests(unittest.TestCase):
@@ -1200,6 +1232,24 @@ class ParserTests(unittest.TestCase):
             Compose(Compose(Var("h"), Var("g")), Var("f")),
         )
 
+    def test_parse_list_spread(self) -> None:
+        self.assertEqual(
+            parse(["[", "1", ",", "...", "]"]),
+            List([Int(1), Spread()]),
+        )
+
+    def test_parse_record_spread(self) -> None:
+        self.assertEqual(
+            parse(["{", "x", "=", "1", ",", "...", "}"]),
+            Record({"x": Int(1), "_": Spread()}),
+        )
+
+    def test_parse_list_spread_beginning(self) -> None:
+        self.assertEqual(
+            parse(["[", "...", ",", "1", "]"]),
+            List([Spread(), Int(1)]),
+        )
+
 
 class MatchTests(unittest.TestCase):
     def test_match_with_equal_ints_returns_empty_dict(self) -> None:
@@ -1331,6 +1381,54 @@ class MatchTests(unittest.TestCase):
             match(
                 List([Int(1), Int(2)]),
                 pattern=List([Int(3), Var("y")]),
+            ),
+            None,
+        )
+
+    @unittest.expectedFailure
+    def test_match_list_with_spread_returns_empty_dict(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2), Int(3), Int(4), Int(5)]),
+                pattern=List([Int(1), Spread()]),
+            ),
+            {},
+        )
+
+    def test_match_list_with_mismatched_spread_returns_none(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2), Int(3), Int(4), Int(5)]),
+                pattern=List([Int(1), Int(6), Spread()]),
+            ),
+            None,
+        )
+
+    @unittest.expectedFailure
+    def test_match_record_with_spread_returns_empty_dict(self) -> None:
+        self.assertEqual(
+            match(
+                Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
+                pattern=Record({"a": Var("a"), "_": Spread()}),
+            ),
+            {},
+        )
+
+    @unittest.expectedFailure
+    def test_match_record_with_spread_returns_match(self) -> None:
+        self.assertEqual(
+            match(
+                Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
+                pattern=Record({"a": Var("x"), "_": Spread()}),
+            ),
+            {"x": Int(1)},
+        )
+
+    def test_match_record_with_mismatched_spread_returns_none(self) -> None:
+        self.assertEqual(
+            match(
+                Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
+                pattern=Record({"d": Var("x"), "_": Spread()}),
             ),
             None,
         )
@@ -1632,6 +1730,11 @@ class EvalTests(unittest.TestCase):
         ast = Binop(BinopKind.ADD, Int(1), Int(2))
         exp = Apply(Var("$$quote"), ast)
         self.assertIs(eval_exp({}, exp), ast)
+
+    def test_eval_record_with_spread_fails(self) -> None:
+        exp = Record({"x": Spread()})
+        with self.assertRaisesRegex(RuntimeError, "cannot evaluate a spread"):
+            eval_exp({}, exp)
 
 
 class EndToEndTests(unittest.TestCase):

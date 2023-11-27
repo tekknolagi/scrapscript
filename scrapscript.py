@@ -293,14 +293,14 @@ def parse(tokens: typing.List[str], p: float = 0) -> "Object":
                 break
             elif tokens[0] == ",":
                 tokens.pop(0)
+            elif tokens[0] == "...":
+                tokens.pop(0)
+                l.data["..."] = Spread()
             else:
                 next_item = parse(tokens, 2)
-                if isinstance(next_item, Spread):
-                    l.data[next_item.name] = next_item
-                elif not isinstance(next_item, Assign):
+                if not isinstance(next_item, Assign):
                     raise ParseError("failed to parse variable assignment in record constructor")
-                else:
-                    l.data[next_item.name.name] = next_item.value
+                l.data[next_item.name.name] = next_item.value
     else:
         raise ParseError(f"unexpected token {token!r}")
 
@@ -412,8 +412,8 @@ class Hole(Object):
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
-class Spread(Var):
-    name: str = "..."
+class Spread(Object):
+    pass
 
 
 Env = Mapping[str, Object]
@@ -628,6 +628,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
             return None
         result: Env = {}
         use_spread = False
+        assert "..." not in obj.data
         for key, pattern_item in pattern.data.items():
             if isinstance(pattern_item, Spread):
                 use_spread = True
@@ -648,6 +649,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
             return None
         result: Env = {}  # type: ignore
         use_spread = False
+        assert not any(isinstance(x, Spread) for x in obj.items)
         for i, pattern_item in enumerate(pattern.items):
             if isinstance(pattern_item, Spread):
                 use_spread = True

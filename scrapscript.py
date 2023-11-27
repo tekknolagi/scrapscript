@@ -1308,6 +1308,15 @@ class MatchTests(unittest.TestCase):
             None,
         )
 
+    def test_match_record_with_more_fields_in_pattern_and_spread_returns_none(self) -> None:
+        self.assertEqual(
+            match(
+                Record({"x": Int(1), "y": Int(2)}),
+                pattern=Record({"x": Var("x"), "y": Var("y"), "z": Var("z"), "...": Spread()}),
+            ),
+            None,
+        )
+
     def test_match_record_with_fewer_fields_in_pattern_returns_none(self) -> None:
         self.assertEqual(
             match(
@@ -1322,6 +1331,15 @@ class MatchTests(unittest.TestCase):
             match(
                 Record({"x": Int(1), "y": Int(2)}),
                 pattern=Record({"x": Var("x"), "y": Var("y")}),
+            ),
+            {"x": Int(1), "y": Int(2)},
+        )
+
+    def test_match_record_with_vars_and_spread_returns_dict_with_keys(self) -> None:
+        self.assertEqual(
+            match(
+                Record({"x": Int(1), "y": Int(2)}),
+                pattern=Record({"x": Var("x"), "y": Var("y"), "...": Spread()}),
             ),
             {"x": Int(1), "y": Int(2)},
         )
@@ -1364,6 +1382,15 @@ class MatchTests(unittest.TestCase):
             None,
         )
 
+    def test_match_list_with_more_fields_in_pattern_and_spread_returns_none(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2)]),
+                pattern=List([Var("x"), Var("y"), Var("z"), Spread()]),
+            ),
+            None,
+        )
+
     def test_match_list_with_fewer_fields_in_pattern_returns_none(self) -> None:
         self.assertEqual(
             match(
@@ -1378,6 +1405,15 @@ class MatchTests(unittest.TestCase):
             match(
                 List([Int(1), Int(2)]),
                 pattern=List([Var("x"), Var("y")]),
+            ),
+            {"x": Int(1), "y": Int(2)},
+        )
+
+    def test_match_list_with_vars_and_spread_returns_dict_with_keys(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2)]),
+                pattern=List([Var("x"), Var("y"), Spread()]),
             ),
             {"x": Int(1), "y": Int(2)},
         )

@@ -2184,7 +2184,7 @@ STDLIB = {
 class ScrapRepl(code.InteractiveConsole):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.env: Env = STDLIB
+        self.env: Env = STDLIB.copy()
 
     def runsource(self, source: str, filename: str = "<input>", symbol: str = "single") -> bool:
         try:

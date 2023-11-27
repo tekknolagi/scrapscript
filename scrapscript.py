@@ -631,7 +631,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
         for key, pattern_item in pattern.data.items():
             if isinstance(pattern_item, Spread):
                 use_spread = True
-                continue
+                break
             obj_item = obj.data.get(key)
             if obj_item is None:
                 return None
@@ -651,7 +651,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
         for i, pattern_item in enumerate(pattern.items):
             if isinstance(pattern_item, Spread):
                 use_spread = True
-                continue
+                break
             if i >= len(obj.items):
                 return None
             obj_item = obj.items[i]
@@ -1414,7 +1414,7 @@ class MatchTests(unittest.TestCase):
         self.assertEqual(
             match(
                 Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
-                pattern=Record({"a": Int(1), "__spread": Spread()}),
+                pattern=Record({"a": Int(1), "...": Spread()}),
             ),
             {},
         )
@@ -1423,7 +1423,7 @@ class MatchTests(unittest.TestCase):
         self.assertEqual(
             match(
                 Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
-                pattern=Record({"a": Var("x"), "__spread": Spread()}),
+                pattern=Record({"a": Var("x"), "...": Spread()}),
             ),
             {"x": Int(1)},
         )
@@ -1432,7 +1432,7 @@ class MatchTests(unittest.TestCase):
         self.assertEqual(
             match(
                 Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
-                pattern=Record({"d": Var("x"), "__spread": Spread()}),
+                pattern=Record({"d": Var("x"), "...": Spread()}),
             ),
             None,
         )

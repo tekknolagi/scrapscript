@@ -629,30 +629,41 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
         if not isinstance(obj, Record):
             return None
         result: Env = {}
-        for key, value in pattern.data.items():
-            obj_value = obj.data.get(key)
-            if obj_value is None:
+        use_spread = False
+        for key, pattern_item in pattern.data.items():
+            if isinstance(pattern_item, Spread):
+                use_spread = True
+                continue
+            obj_item = obj.data.get(key)
+            if obj_item is None:
                 return None
-            part = match(obj_value, value)
+            part = match(obj_item, pattern_item)
             if part is None:
                 return None
             assert isinstance(result, dict)  # for .update()
             result.update(part)
+        if not use_spread and len(pattern.data) != len(obj.data):
+            return None
         return result
     if isinstance(pattern, List):
         if not isinstance(obj, List):
             return None
-        if len(pattern.items) != len(obj.items):
-            # TODO: Remove this check when implementing ... operator
-            return None
         result: Env = {}  # type: ignore
+        use_spread = False
         for i, pattern_item in enumerate(pattern.items):
+            if isinstance(pattern_item, Spread):
+                use_spread = True
+                continue
+            if i >= len(obj.items):
+                return None
             obj_item = obj.items[i]
             part = match(obj_item, pattern_item)
             if part is None:
                 return None
             assert isinstance(result, dict)  # for .update()
             result.update(part)
+        if not use_spread and len(pattern.items) != len(obj.items):
+            return None
         return result
     raise NotImplementedError(f"match not implemented for {type(pattern).__name__}")
 
@@ -1291,15 +1302,13 @@ class MatchTests(unittest.TestCase):
             None,
         )
 
-    def test_match_record_with_fewer_fields_in_pattern_returns_intersection(self) -> None:
-        # TODO(max): Should this be the case? I feel like we should not match
-        # without explicitly using spread.
+    def test_match_record_with_fewer_fields_in_pattern_returns_none(self) -> None:
         self.assertEqual(
             match(
                 Record({"x": Int(1), "y": Int(2)}),
                 pattern=Record({"x": Var("x")}),
             ),
-            {"x": Int(1)},
+            None,
         )
 
     def test_match_record_with_vars_returns_dict_with_keys(self) -> None:
@@ -1385,7 +1394,6 @@ class MatchTests(unittest.TestCase):
             None,
         )
 
-    @unittest.expectedFailure
     def test_match_list_with_spread_returns_empty_dict(self) -> None:
         self.assertEqual(
             match(
@@ -1404,18 +1412,16 @@ class MatchTests(unittest.TestCase):
             None,
         )
 
-    @unittest.expectedFailure
-    def test_match_record_with_spread_returns_empty_dict(self) -> None:
+    def test_match_record_with_constant_and_spread_returns_empty_dict(self) -> None:
         self.assertEqual(
             match(
                 Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
-                pattern=Record({"a": Var("a"), "__spread": Spread()}),
+                pattern=Record({"a": Int(1), "__spread": Spread()}),
             ),
             {},
         )
 
-    @unittest.expectedFailure
-    def test_match_record_with_spread_returns_match(self) -> None:
+    def test_match_record_with_var_and_spread_returns_match(self) -> None:
         self.assertEqual(
             match(
                 Record({"a": Int(1), "b": Int(2), "c": Int(3)}),

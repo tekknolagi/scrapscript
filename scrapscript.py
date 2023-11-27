@@ -275,14 +275,13 @@ def parse(tokens: typing.List[str], p: float = 0) -> "Object":
         tokens.pop(0)
     elif token == "[":
         l = List([])
-        while True:
-            # TODO: Implement .. operator
-            if tokens[0] == "]":
-                tokens.pop(0)
-                break
-            elif tokens[0] == ",":
-                tokens.pop(0)
-            else:
+        token = tokens[0]
+        if token == "]":
+            tokens.pop(0)
+        else:
+            l.items.append(parse(tokens, 2))
+            while tokens.pop(0) != "]":
+                # TODO: Implement .. operator
                 l.items.append(parse(tokens, 2))
     elif token == "{":
         l = Record({})

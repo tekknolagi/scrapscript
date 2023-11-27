@@ -673,8 +673,6 @@ def eval_exp(env: Env, exp: Object) -> Object:
     logger.debug(exp)
     if isinstance(exp, (Int, Bool, String, Bytes, Hole, Closure, NativeFunction)):
         return exp
-    if isinstance(exp, Spread):
-        raise RuntimeError("cannot evaluate a spread")
     if isinstance(exp, Var):
         value = env.get(exp.name)
         if value is None:
@@ -756,6 +754,8 @@ def eval_exp(env: Env, exp: Object) -> Object:
         clo_inner = eval_exp(env, exp.inner)
         clo_outer = eval_exp(env, exp.outer)
         return Closure({}, Function(Var("x"), Apply(clo_outer, Apply(clo_inner, Var("x")))))
+    if isinstance(exp, Spread):
+        raise RuntimeError("cannot evaluate a spread")
     raise NotImplementedError(f"eval_exp not implemented for {exp}")
 
 

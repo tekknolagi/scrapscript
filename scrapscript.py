@@ -626,12 +626,10 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
         if not isinstance(obj, Record):
             return None
         result: Env = {}
-        use_spread = False
         assert "__spread" not in obj.data
         for key, pattern_item in pattern.data.items():
             if isinstance(pattern_item, Spread):
-                use_spread = True
-                break
+                return result
             obj_item = obj.data.get(key)
             if obj_item is None:
                 return None
@@ -640,19 +638,17 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
                 return None
             assert isinstance(result, dict)  # for .update()
             result.update(part)
-        if not use_spread and len(pattern.data) != len(obj.data):
+        if len(pattern.data) != len(obj.data):
             return None
         return result
     if isinstance(pattern, List):
         if not isinstance(obj, List):
             return None
         result: Env = {}  # type: ignore
-        use_spread = False
         assert not any(isinstance(x, Spread) for x in obj.items)
         for i, pattern_item in enumerate(pattern.items):
             if isinstance(pattern_item, Spread):
-                use_spread = True
-                break
+                return result
             if i >= len(obj.items):
                 return None
             obj_item = obj.items[i]
@@ -661,7 +657,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
                 return None
             assert isinstance(result, dict)  # for .update()
             result.update(part)
-        if not use_spread and len(pattern.items) != len(obj.items):
+        if len(pattern.items) != len(obj.items):
             return None
         return result
     raise NotImplementedError(f"match not implemented for {type(pattern).__name__}")

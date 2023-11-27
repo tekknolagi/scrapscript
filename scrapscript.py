@@ -294,8 +294,8 @@ def parse(tokens: typing.List[str], p: float = 0) -> "Object":
             elif tokens[0] == ",":
                 tokens.pop(0)
             elif tokens[0] == "...":
+                l.data["__spread"] = Spread()
                 tokens.pop(0)
-                l.data["..."] = Spread()
             else:
                 next_item = parse(tokens, 2)
                 if not isinstance(next_item, Assign):
@@ -628,7 +628,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
             return None
         result: Env = {}
         use_spread = False
-        assert "..." not in obj.data
+        assert "__spread" not in obj.data
         for key, pattern_item in pattern.data.items():
             if isinstance(pattern_item, Spread):
                 use_spread = True
@@ -1258,7 +1258,7 @@ class ParserTests(unittest.TestCase):
     def test_parse_record_spread(self) -> None:
         self.assertEqual(
             parse(["{", "x", "=", "1", ",", "...", "}"]),
-            Record({"x": Int(1), "...": Spread()}),
+            Record({"x": Int(1), "__spread": Spread()}),
         )
 
     def test_parse_list_spread_beginning(self) -> None:
@@ -1312,7 +1312,7 @@ class MatchTests(unittest.TestCase):
         self.assertEqual(
             match(
                 Record({"x": Int(1), "y": Int(2)}),
-                pattern=Record({"x": Var("x"), "y": Var("y"), "z": Var("z"), "...": Spread()}),
+                pattern=Record({"x": Var("x"), "y": Var("y"), "z": Var("z"), "__spread": Spread()}),
             ),
             None,
         )
@@ -1339,7 +1339,7 @@ class MatchTests(unittest.TestCase):
         self.assertEqual(
             match(
                 Record({"x": Int(1), "y": Int(2)}),
-                pattern=Record({"x": Var("x"), "y": Var("y"), "...": Spread()}),
+                pattern=Record({"x": Var("x"), "y": Var("y"), "__spread": Spread()}),
             ),
             {"x": Int(1), "y": Int(2)},
         )
@@ -1458,7 +1458,7 @@ class MatchTests(unittest.TestCase):
         self.assertEqual(
             match(
                 Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
-                pattern=Record({"a": Int(1), "...": Spread()}),
+                pattern=Record({"a": Int(1), "__spread": Spread()}),
             ),
             {},
         )
@@ -1467,7 +1467,7 @@ class MatchTests(unittest.TestCase):
         self.assertEqual(
             match(
                 Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
-                pattern=Record({"a": Var("x"), "...": Spread()}),
+                pattern=Record({"a": Var("x"), "__spread": Spread()}),
             ),
             {"x": Int(1)},
         )
@@ -1476,7 +1476,7 @@ class MatchTests(unittest.TestCase):
         self.assertEqual(
             match(
                 Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
-                pattern=Record({"d": Var("x"), "...": Spread()}),
+                pattern=Record({"d": Var("x"), "__spread": Spread()}),
             ),
             None,
         )

@@ -274,6 +274,7 @@ def parse(tokens: typing.List[str], p: float = 0) -> "Object":
             l = parse(tokens, 0)
         tokens.pop(0)
     elif token == "[":
+        # TODO(max): Assert spread comes last?
         l = List([])
         token = tokens[0]
         if token == "]":
@@ -284,6 +285,7 @@ def parse(tokens: typing.List[str], p: float = 0) -> "Object":
                 # TODO: Implement .. operator
                 l.items.append(parse(tokens, 2))
     elif token == "{":
+        # TODO(max): Assert spread comes last?
         l = Record({})
         while True:
             # TODO: Implement .. operator

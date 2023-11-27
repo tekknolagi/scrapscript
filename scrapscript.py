@@ -253,6 +253,8 @@ def parse(tokens: typing.List[str], p: float = 0) -> "Object":
             raise ParseError(f"unexpected base {base!r} in {token!r}")
     elif token.startswith('"') and token.endswith('"'):
         l = String(token[1:-1])
+    elif token == "...":
+        l = Spread()
     elif token == "|":
         expr = parse(tokens, 5)  # TODO: make this work for larger arities
         if not isinstance(expr, Function):
@@ -280,9 +282,6 @@ def parse(tokens: typing.List[str], p: float = 0) -> "Object":
                 break
             elif tokens[0] == ",":
                 tokens.pop(0)
-            elif tokens[0] == "...":
-                l.items.append(Spread())
-                tokens.pop(0)
             else:
                 l.items.append(parse(tokens, 2))
     elif token == "{":
@@ -294,15 +293,14 @@ def parse(tokens: typing.List[str], p: float = 0) -> "Object":
                 break
             elif tokens[0] == ",":
                 tokens.pop(0)
-            elif tokens[0] == "...":
-                # TODO(chris): Revisit how spread is saved to record
-                l.data["__spread"] = Spread()
-                tokens.pop(0)
             else:
                 next_item = parse(tokens, 2)
-                if not isinstance(next_item, Assign):
+                if isinstance(next_item, Spread):
+                    l.data[next_item.name] = next_item
+                elif not isinstance(next_item, Assign):
                     raise ParseError("failed to parse variable assignment in record constructor")
-                l.data[next_item.name.name] = next_item.value
+                else:
+                    l.data[next_item.name.name] = next_item.value
     else:
         raise ParseError(f"unexpected token {token!r}")
 
@@ -414,8 +412,8 @@ class Hole(Object):
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
-class Spread(Object):
-    pass
+class Spread(Var):
+    name: str = "..."
 
 
 Env = Mapping[str, Object]
@@ -673,6 +671,8 @@ def eval_exp(env: Env, exp: Object) -> Object:
     logger.debug(exp)
     if isinstance(exp, (Int, Bool, String, Bytes, Hole, Closure, NativeFunction)):
         return exp
+    if isinstance(exp, Spread):
+        raise RuntimeError("cannot evaluate a spread")
     if isinstance(exp, Var):
         value = env.get(exp.name)
         if value is None:
@@ -754,8 +754,6 @@ def eval_exp(env: Env, exp: Object) -> Object:
         clo_inner = eval_exp(env, exp.inner)
         clo_outer = eval_exp(env, exp.outer)
         return Closure({}, Function(Var("x"), Apply(clo_outer, Apply(clo_inner, Var("x")))))
-    elif isinstance(exp, Spread):
-        raise RuntimeError("cannot evaluate a spread")
     raise NotImplementedError(f"eval_exp not implemented for {exp}")
 
 
@@ -1252,7 +1250,7 @@ class ParserTests(unittest.TestCase):
     def test_parse_record_spread(self) -> None:
         self.assertEqual(
             parse(["{", "x", "=", "1", ",", "...", "}"]),
-            Record({"x": Int(1), "__spread": Spread()}),
+            Record({"x": Int(1), "...": Spread()}),
         )
 
     def test_parse_list_spread_beginning(self) -> None:

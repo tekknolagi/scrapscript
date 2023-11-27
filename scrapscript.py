@@ -2217,7 +2217,8 @@ class ScrapRepl(code.InteractiveConsole):
         readline.set_completer_delims(" \t\n;")
         # TODO(max): Add completion per scope, not just for global environment.
         readline.set_completer(Completer(self.env).complete)
-        readline.parse_and_bind("tab: complete")
+        readline.parse_and_bind("set show-all-if-ambiguous on")
+        readline.parse_and_bind("tab: menu-complete")
 
     def finish_readline(self) -> None:
         assert readline, "Can't finish readline without readline module"

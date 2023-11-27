@@ -969,6 +969,9 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_list_with_spread(self) -> None:
         self.assertEqual(tokenize("[ 1 , ... ]"), ["[", "1", ",", "...", "]"])
 
+    def test_tokenize_spread(self) -> None:
+        self.assertEqual(tokenize("..."), ["..."])
+
     # TODO(chris): Tokenize spread next to list comma
     @unittest.expectedFailure
     def test_tokenize_list_with_spread_no_spaces(self) -> None:
@@ -1240,6 +1243,9 @@ class ParserTests(unittest.TestCase):
             parse(["f", "<<", "g", "<<", "h"]),
             Compose(Compose(Var("h"), Var("g")), Var("f")),
         )
+
+    def test_parse_spread(self) -> None:
+        self.assertEqual(parse(["..."]), Spread())
 
     def test_parse_list_spread(self) -> None:
         self.assertEqual(
@@ -1734,6 +1740,11 @@ class EvalTests(unittest.TestCase):
         ast = Binop(BinopKind.ADD, Int(1), Int(2))
         exp = Apply(Var("$$quote"), ast)
         self.assertIs(eval_exp({}, exp), ast)
+
+    def test_eval_spread_fails(self) -> None:
+        exp = Spread()
+        with self.assertRaisesRegex(RuntimeError, "cannot evaluate a spread"):
+            eval_exp({}, exp)
 
     def test_eval_record_with_spread_fails(self) -> None:
         exp = Record({"x": Spread()})

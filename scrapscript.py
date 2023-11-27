@@ -2181,10 +2181,24 @@ STDLIB = {
 }
 
 
+REPL_HISTFILE = os.path.expanduser(".scrap-history")
+
+
 class ScrapRepl(code.InteractiveConsole):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.env: Env = STDLIB.copy()
+
+    def enable_readline(self) -> None:
+        assert readline, "Can't enable readline without readline module"
+        if os.path.exists(REPL_HISTFILE):
+            readline.read_history_file(REPL_HISTFILE)
+
+    def finish_readline(self) -> None:
+        assert readline, "Can't finish readline without readline module"
+        histfile_size = 1000
+        readline.set_history_length(histfile_size)
+        readline.write_history_file(REPL_HISTFILE)
 
     def runsource(self, source: str, filename: str = "<input>", symbol: str = "single") -> bool:
         try:
@@ -2213,15 +2227,12 @@ def repl_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
-    histfile = os.path.expanduser(".scrap-history")
-    histfile_size = 1000
-    if readline and os.path.exists(histfile):
-        readline.read_history_file(histfile)
     repl = ScrapRepl()
+    if readline:
+        repl.enable_readline()
     repl.interact(banner="")
     if readline:
-        readline.set_history_length(histfile_size)
-        readline.write_history_file(histfile)
+        repl.finish_readline()
 
 
 def test_command(args: argparse.Namespace) -> None:

@@ -2181,6 +2181,25 @@ STDLIB = {
 }
 
 
+class Completer:
+    def __init__(self, env: Env) -> None:
+        self.env: Env = env
+        self.matches: typing.List[str] = []
+
+    def complete(self, text: str, state: int) -> Optional[str]:
+        assert "@" not in text, "TODO: handle attr/index access"
+        if state == 0:
+            options = sorted(self.env.keys())
+            if not text:
+                self.matches = options[:]
+            else:
+                self.matches = [key for key in options if key.startswith(text)]
+        try:
+            return self.matches[state]
+        except IndexError:
+            return None
+
+
 REPL_HISTFILE = os.path.expanduser(".scrap-history")
 
 
@@ -2193,6 +2212,12 @@ class ScrapRepl(code.InteractiveConsole):
         assert readline, "Can't enable readline without readline module"
         if os.path.exists(REPL_HISTFILE):
             readline.read_history_file(REPL_HISTFILE)
+        # what determines the end of a word; need to set so $ can be part of a
+        # variable name
+        readline.set_completer_delims(" \t\n;")
+        # TODO(max): Add completion per scope, not just for global environment.
+        readline.set_completer(Completer(self.env).complete)
+        readline.parse_and_bind("tab: complete")
 
     def finish_readline(self) -> None:
         assert readline, "Can't finish readline without readline module"

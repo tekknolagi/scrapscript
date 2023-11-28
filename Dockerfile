@@ -12,6 +12,8 @@ RUN bin/ape.elf bin/python -m compileall Lib
 RUN mv Lib/__pycache__/scrapscript*.pyc Lib/scrapscript.pyc
 RUN rm Lib/scrapscript.py
 RUN cp bin/python bin/scrapscript.com
+COPY style.css Lib
+COPY repl.html Lib
 RUN sh bin/zip -A -r bin/scrapscript.com Lib .args
 RUN bin/ape.elf bin/assimilate bin/scrapscript.com
 

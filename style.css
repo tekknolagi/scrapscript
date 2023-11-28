@@ -1,0 +1,284 @@
+html {
+  font-size: 100%;
+  background-color: black;
+}
+body {
+  font-family: "Nunito Sans", sans-serif;
+  font-weight: 400;
+  line-height: 1.75;
+  margin: 0;
+  max-width: 55rem;
+}
+p {
+  margin-bottom: 1rem;
+}
+div {
+  color: #d4d4d4;
+}
+
+a:link {
+  text-decoration: none;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15rem;
+  text-decoration-style: dotted;
+}
+a {
+  color: #7ec699;
+}
+
+ul,
+ol {
+  padding-left: 1.5rem;
+}
+
+blockquote {
+  color: #d4d4d4;
+  border-left: 2px dotted #666;
+  margin-left: 0.5rem;
+  padding-left: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5 {
+  margin: 3rem 0 1.38rem;
+  font-family: "Rubik", sans-serif;
+  font-weight: 500;
+  line-height: 1.3;
+  text-transform: capitalize;
+}
+h1 {
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-top: 0;
+  letter-spacing: 1px;
+}
+h2 {
+  margin-top: 5rem;
+  padding-top: 2rem;
+  border-top: 2px dotted #666;
+}
+h3 {
+  margin-top: 3rem;
+}
+
+h1 {
+  font-size: 4.209rem;
+}
+h2 {
+  font-size: 3.157rem;
+}
+h3 {
+  font-size: 2.369rem;
+}
+h4 {
+  font-size: 1.777rem;
+}
+h5 {
+  font-size: 1.333rem;
+}
+small,
+.text_small {
+  font-size: 0.75rem;
+}
+
+header > div,
+footer > div {
+  padding: 2rem 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  text-transform: uppercase;
+  font-weight: 600;
+  line-height: 2;
+  font-size: 0.875rem;
+  max-width: 35rem;
+  margin: 0 auto;
+}
+header a,
+footer a {
+  color: #cc99cd;
+  text-decoration: none;
+  max-height: 1.75rem;
+}
+header img,
+footer img {
+  height: 1.75rem;
+  -webkit-filter: invert(1);
+  filter: invert(1);
+  padding-right: 0.5rem;
+}
+footer {
+  margin-bottom: 6rem;
+}
+
+main {
+  max-width: 35rem;
+  margin: 0 auto;
+  background-color: black;
+}
+
+a:hover {
+  opacity: 0.8;
+}
+
+pre {
+  overflow-x: scroll;
+}
+code,
+pre,
+code[class*="language-"],
+pre[class*="language-"] {
+  font-family: "Fira Code", Monaco, Menlo, Consolas, "Courier New", monospace;
+  position: relative;
+  font-size: 0.8rem;
+}
+pre[class*="language-"] {
+  border-radius: 5px;
+  padding: 0.5em 0.5em;
+  margin: 0em;
+  z-index: 2;
+}
+code,
+pre > code {
+  font-size: 0.8rem;
+  line-height: 1.42;
+  -webkit-text-size-adjust: 100%;
+}
+pre > code {
+  font-size: 0.8rem;
+  margin-left: 2.5%;
+  display: block;
+}
+
+:not(pre) > code[class*="language-"], pre[class*="language-"] {
+  background: #2d2d2d;
+}
+pre[class*="language-"] + pre[class*="language-"].result {
+  background-color: #202020;
+  position: relative;
+  opacity: 0.9;
+}
+
+pre[class*="language-"].result {
+  z-index: 1;
+}
+input[type="text"], textarea {
+  background-color: #2d2d2d;
+  outline: none;
+  color: #ccc;
+}
+
+/*
+main {
+  margin: 2rem;
+  max-width: 650px;
+}
+img {
+  max-width: 600px;
+  width: 95vw;
+}
+ul {
+  list-style-type: circle;
+  padding-left: 20px;
+}
+
+p, dl, ol, ul {
+  line-height: 1.8rem;
+  max-width: 50ch;
+  color: #CCC;
+}
+
+html {
+  background-color: #151515;
+  color: #eee;
+}
+a:link {
+  text-decoration: none;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15rem;
+  text-decoration-style: dotted;
+}
+a {
+  color: #A0D2A2;
+}
+a:visited {
+}
+a:active {
+}
+
+h1 {
+  font-weight: 900;
+  font-size: 3rem;
+  letter-spacing: 0.1rem;
+  text-transform: uppercase;
+}
+h1 a, h1 a:visited, h1 a:active {
+  color: white;
+}
+h2 {
+  font-size: 1.8rem;
+  margin-top: 4.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid #666;
+}
+h3 {
+  font-size: 1.4rem;
+  margin-top: 3rem;
+  font-weight: 600;
+}
+
+@media (min-width: 760px) {
+  main {
+    margin: 3rem auto;
+  }
+  h1, h2 {
+    margin-left: -1rem;
+  }
+}
+
+h1 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  justify-items: left;
+  justify-content: left;
+  line-height: 1.5;
+}
+h1 a {
+  line-height: 0;
+}
+h1 img {
+  width: 2.5rem;
+  height: 2.5rem;
+  -webkit-filter: invert(1);
+  filter: invert(1);
+}
+#coming {
+  font-weight: 500;
+  font-size: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid white;
+  border-radius: 5px;
+  display: inline-block;
+  order: 1;
+}
+@media (max-width: 505px) {
+  #title {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  h1 {
+    font-size: 2rem;
+  }
+}
+
+#table-of-contents, h2, h3 {
+  text-transform: capitalize;
+}
+*/

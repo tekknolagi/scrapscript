@@ -4,18 +4,21 @@ import base64
 import code
 import dataclasses
 import enum
+import http.server
 import json
 import logging
 import os
 import re
+import socketserver
 import sys
 import typing
 import unittest
 import urllib.request
+import urllib.parse
 from dataclasses import dataclass
 from enum import auto
 from types import FunctionType, ModuleType
-from typing import Any, Callable, Dict, Mapping, Optional, Union
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Union
 
 readline: Optional[ModuleType]
 try:
@@ -1318,6 +1321,96 @@ def deserialize(msg: str) -> Object:
     decoded = bdecode(msg)
     assert isinstance(decoded, dict)
     return Object.deserialize(decoded)
+
+
+class ScrapMonad:
+    def __init__(self, env: Env) -> None:
+        assert isinstance(env, dict)  # for .copy()
+        self.env: Env = env.copy()
+
+    def bind(self, exp: Object) -> Tuple[Object, "ScrapMonad"]:
+        env = self.env
+        result = eval_exp(env, exp)
+        if isinstance(result, EnvObject):
+            return result, ScrapMonad({**env, **result.env})
+        return result, ScrapMonad({**env, "_": result})
+
+
+ASSET_DIR = os.path.dirname(__file__)
+
+
+class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self) -> None:
+        logger.debug("GET %s", self.path)
+        parsed_path = urllib.parse.urlsplit(self.path)
+        query = urllib.parse.parse_qs(parsed_path.query)
+        logging.debug("PATH %s", parsed_path)
+        logging.debug("QUERY %s", query)
+        if parsed_path.path == "/repl":
+            return self.do_repl()
+        if parsed_path.path == "/eval":
+            try:
+                return self.do_eval(query)
+            except Exception as e:
+                self.send_response(400)
+                self.send_header("Content-type", "text/plain")
+                self.end_headers()
+                self.wfile.write(str(e).encode("utf-8"))
+                return
+        if parsed_path.path == "/style.css":
+            self.send_response(200)
+            self.send_header("Content-type", "text/css")
+            self.end_headers()
+            with open(os.path.join(ASSET_DIR, "style.css"), "rb") as f:
+                self.wfile.write(f.read())
+            return
+        return self.do_404()
+
+    def do_repl(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        with open(os.path.join(ASSET_DIR, "repl.html"), "rb") as f:
+            self.wfile.write(f.read())
+        return
+
+    def do_404(self) -> None:
+        self.send_response(404)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(b"""try hitting <a href="/repl">/repl</a>""")
+        return
+
+    def do_eval(self, query: Dict[str, Any]) -> None:
+        exp = query.get("exp")
+        if exp is None:
+            raise TypeError("Need expression to evaluate")
+        if len(exp) != 1:
+            raise TypeError("Need exactly one expression to evaluate")
+        exp = exp[0]
+        tokens = tokenize(exp)
+        ast = parse(tokens)
+        env = query.get("env")
+        if env is None:
+            env = STDLIB
+        else:
+            if len(env) != 1:
+                raise TypeError("Need exactly one env")
+            env_object = deserialize(env[0])
+            assert isinstance(env_object, EnvObject)
+            env = env_object.env
+        logging.debug("env is %s", env)
+        monad = ScrapMonad(env)
+        result, next_monad = monad.bind(ast)
+        serialized = EnvObject(next_monad.env).serialize()
+        encoded = bencode(serialized)
+        response = {"env": encoded.decode("utf-8"), "result": str(result)}
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.send_header("Cache-Control", "max-age=3600")
+        self.end_headers()
+        self.wfile.write(json.dumps(response).encode("utf-8"))
+        return
 
 
 class TokenizerTests(unittest.TestCase):
@@ -3918,6 +4011,21 @@ class SerializeTests(unittest.TestCase):
         )
 
 
+class ScrapMonadTests(unittest.TestCase):
+    def test_create_copies_env(self) -> None:
+        env = {"a": Int(123)}
+        result = ScrapMonad(env)
+        self.assertEqual(result.env, env)
+        self.assertIsNot(result.env, env)
+
+    def test_bind_returns_new_monad(self) -> None:
+        env = {"a": Int(123)}
+        orig = ScrapMonad(env)
+        result, next_monad = orig.bind(Assign(Var("b"), Int(456)))
+        self.assertEqual(orig.env, {"a": Int(123)})
+        self.assertEqual(next_monad.env, {"a": Int(123), "b": Int(456)})
+
+
 class PrettyPrintTests(unittest.TestCase):
     def test_pretty_print_int(self) -> None:
         obj = Int(1)
@@ -4254,6 +4362,21 @@ def test_command(args: argparse.Namespace) -> None:
     unittest.main(argv=[__file__, *args.unittest_args])
 
 
+def serve_command(args: argparse.Namespace) -> None:
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+    server: Union[type[socketserver.TCPServer], type[socketserver.ForkingTCPServer]]
+    if args.fork:
+        server = socketserver.ForkingTCPServer
+    else:
+        server = socketserver.TCPServer
+    server.allow_reuse_address = True
+    with server(("", args.port), ScrapReplServer) as httpd:
+        host, port = httpd.server_address
+        print(f"serving at http://{host!s}:{port}")
+        httpd.serve_forever()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="scrapscript")
     subparsers = parser.add_subparsers(dest="command")
@@ -4276,6 +4399,12 @@ def main() -> None:
     apply.set_defaults(func=apply_command)
     apply.add_argument("program")
     apply.add_argument("--debug", action="store_true")
+
+    serve = subparsers.add_parser("serve")
+    serve.set_defaults(func=serve_command)
+    serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument("--debug", action="store_true")
+    serve.add_argument("--fork", action="store_true")
 
     args = parser.parse_args()
     if not args.command:

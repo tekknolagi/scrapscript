@@ -756,6 +756,19 @@ def serialize(obj: Object) -> bytes:
     return bencode(obj.serialize())
 
 
+class ScrapMonad:
+    def __init__(self, env: Env):
+        assert isinstance(env, dict)  # for .copy()
+        self.env: Env = env.copy()
+
+    def bind(self, exp: Object) -> "ScrapMonad":
+        env = self.env
+        result = eval_exp(env, exp)
+        if isinstance(result, EnvObject):
+            return ScrapMonad({**env, **result.env})
+        return ScrapMonad({**env, "_": result})
+
+
 class TokenizerTests(unittest.TestCase):
     def test_tokenize_digit(self) -> None:
         self.assertEqual(tokenize("1"), ["1"])
@@ -2108,6 +2121,21 @@ class SerializeTests(unittest.TestCase):
             serialize(obj),
             b"d3:argd4:name1:x4:type3:Vare4:bodyd4:leftd4:type3:Int5:valuei1ee2:op3:ADD5:rightd4:name1:x4:type3:Vare4:type5:Binope4:type8:Functione",
         )
+
+
+class ScrapMonadTests(unittest.TestCase):
+    def test_create_copies_env(self) -> None:
+        env = {"a": Int(123)}
+        result = ScrapMonad(env)
+        self.assertEqual(result.env, env)
+        self.assertIsNot(result.env, env)
+
+    def test_bind_returns_new_monad(self) -> None:
+        env = {"a": Int(123)}
+        orig = ScrapMonad(env)
+        result = orig.bind(Assign(Var("b"), Int(456)))
+        self.assertEqual(orig.env, {"a": Int(123)})
+        self.assertEqual(result.env, {"a": Int(123), "b": Int(456)})
 
 
 def eval_command(args: argparse.Namespace) -> None:

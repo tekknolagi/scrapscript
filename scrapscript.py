@@ -991,10 +991,17 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
         html = rb"""
 <html>
 <head>
+<title>Scrapscript Web REPL</title>
 </head>
 <body>
-Output:
 <div>
+<p>See <a href="https://scrapscript.org/">scrapscript.org</a> for a slightly
+out of date language reference.</p>
+<p>This REPL sends programs to a server to be evaluated, but the server is
+completely stateless. All persistence is in the browser.</p>
+</div>
+<div>
+Output:
 <pre id="output">
 >>> </pre>
 </div>

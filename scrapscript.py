@@ -1060,6 +1060,13 @@ def serialize(obj: Object) -> bytes:
     return bencode(obj.serialize())
 
 
+def deserialize(msg: str) -> Object:
+    logging.debug("deserialize %s", msg)
+    decoded = bdecode(msg)
+    assert isinstance(decoded, dict)
+    return Object.deserialize(decoded)
+
+
 class ScrapMonad:
     def __init__(self, env: Env):
         assert isinstance(env, dict)  # for .copy()
@@ -1163,14 +1170,15 @@ input.addEventListener("keyup", async ({key}) => {
                 self.end_headers()
                 self.wfile.write(b"Need exactly one env")
                 return
-            env = env[0]
-            # TODO(max): Deserialize env
-        logging.debug("ast is %s and env is %s", ast, env)
+            env_object = deserialize(env[0])
+            assert isinstance(env_object, EnvObject)
+            env = env_object.env
+        logging.debug("env is %s", env)
         monad = ScrapMonad(env)
         try:
             result = monad.bind(ast)
         except Exception as e:
-            serialized = serialize_env(env)
+            serialized = EnvObject(env).serialize()
             encoded = bencode(serialized)
             response = {"env": encoded.decode("utf-8"), "result": str(e)}
             self.send_response(200)
@@ -1178,7 +1186,7 @@ input.addEventListener("keyup", async ({key}) => {
             self.end_headers()
             self.wfile.write(json.dumps(response).encode("utf-8"))
         else:
-            serialized = serialize_env(result.env)
+            serialized = EnvObject(result.env).serialize()
             encoded = bencode(serialized)
             expr_result = result.env.get("_")
             response = {"env": encoded.decode("utf-8"), "result": repr(expr_result) if expr_result is not None else ""}

@@ -53,3 +53,5 @@ jobs:
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
+    - name: Try a little hello world
+      run: docker run -i -t ${{ env.IMAGE_NAME }} apply "1 + 2"

@@ -4,14 +4,17 @@ import base64
 import code
 import dataclasses
 import enum
+import http.server
 import json
 import logging
 import os
 import re
+import socketserver
 import sys
 import typing
 import unittest
 import urllib.request
+import urllib.parse
 from dataclasses import dataclass
 from enum import auto
 from types import ModuleType
@@ -784,6 +787,122 @@ class ScrapMonad:
         if isinstance(result, EnvObject):
             return ScrapMonad({**env, **result.env})
         return ScrapMonad({**env, "_": result})
+
+
+class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self) -> None:
+        logger.debug("GET %s", self.path)
+        parsed_path = urllib.parse.urlsplit(self.path)
+        query = urllib.parse.parse_qs(parsed_path.query)
+        logging.debug("PATH %s", parsed_path)
+        logging.debug("QUERY %s", query)
+        if parsed_path.path == "/repl":
+            return self.do_repl()
+        if parsed_path.path == "/eval":
+            return self.do_eval(query)
+        return self.do_404()
+
+    def do_repl(self) -> None:
+        html = rb"""
+<html>
+<head>
+</head>
+<body>
+Output:
+<div>
+<pre id="output">
+>>> </pre>
+</div>
+<div>
+Input: <input id="input" onkeyup=""/>
+</div>
+<script type="module">
+"use strict";
+
+async function sendRequest(exp) {
+    const response = await fetch("/eval?" + new URLSearchParams({exp}));
+    return response.json();
+}
+
+const input = document.getElementById("input");
+const output = document.getElementById("output");
+input.addEventListener("keyup", async ({key}) => {
+    if (key == "Enter") {
+        const response = await sendRequest(input.value);
+        const {env, result} = response;
+        output.innerHTML += input.value + "\n";
+        output.innerHTML += result + "\n>>> ";
+        input.value = "";
+    }
+});
+</script>
+</body>
+</html>
+        """
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(html)
+        return
+
+    def do_404(self) -> None:
+        self.send_response(404)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(b"try hitting /eval?exp=EXP&env=ENV")
+        return
+
+    def do_eval(self, query: Dict[str, Any]) -> None:
+        exp = query.get("exp")
+        if exp is None:
+            self.send_response(400)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"Need expression to evaluate")
+            return
+        if len(exp) != 1:
+            self.send_response(400)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"Need exactly one expression to evaluate")
+            return
+        exp = exp[0]
+        tokens = tokenize(exp)
+        ast = parse(tokens)
+        env = query.get("env")
+        if env is None:
+            env = STDLIB
+        else:
+            if len(env) != 1:
+                self.send_response(400)
+                self.send_header("Content-type", "text/html")
+                self.end_headers()
+                self.wfile.write(b"Need exactly one env")
+                return
+            env = env[0]
+            # TODO(max): Deserialize env
+        logging.debug("ast is %s and env is %s", ast, env)
+        monad = ScrapMonad(env)
+        try:
+            result = monad.bind(ast)
+        except Exception as e:
+            serialized = serialize_env(env)
+            encoded = bencode(serialized)
+            response = {"env": encoded.decode("utf-8"), "result": str(e)}
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode("utf-8"))
+        else:
+            serialized = serialize_env(result.env)
+            encoded = bencode(serialized)
+            expr_result = result.env.get("_")
+            response = {"env": encoded.decode("utf-8"), "result": repr(expr_result) if expr_result is not None else ""}
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode("utf-8"))
+            return
 
 
 class TokenizerTests(unittest.TestCase):
@@ -2314,6 +2433,15 @@ def test_command(args: argparse.Namespace) -> None:
     unittest.main(argv=[__file__])
 
 
+def serve_command(args: argparse.Namespace) -> None:
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+
+    with socketserver.TCPServer(("", args.port), ScrapReplServer) as httpd:
+        print("serving at port", args.port)
+        httpd.serve_forever()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(required=True)
@@ -2335,6 +2463,11 @@ def main() -> None:
     apply.set_defaults(func=apply_command)
     apply.add_argument("program")
     apply.add_argument("--debug", action="store_true")
+
+    serve = subparsers.add_parser("serve")
+    serve.set_defaults(func=serve_command)
+    serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument("--debug", action="store_true")
 
     args = parser.parse_args()
     args.func(args)

@@ -1140,12 +1140,15 @@ out of date language reference.</p>
 completely stateless. All persistence is in the browser.</p>
 </div>
 <div>
+<button id="clear-local-storage">Clear LocalStorage</button>
+</div>
+<div>
 Output:
 <pre id="output" style="height: 200px; overflow: auto;">
 >>> </pre>
 </div>
 <div>
-Input: <input id="input" onkeyup=""/>
+Input: <input id="input" />
 </div>
 <script type="module">
 "use strict";
@@ -1161,14 +1164,22 @@ async function sendRequest(env, exp) {
 
 const input = document.getElementById("input");
 const output = document.getElementById("output");
-{
+const button = document.getElementById("clear-local-storage");
+
+function loadFromLocalStorage() {
     const hist = window.localStorage.getItem('history');
-    if (hist !== null) {
+    if (hist === null) {
+        output.innerHTML = ">>> ";
+    } else {
         output.innerHTML = hist;
     }
     output.scrollTop = output.scrollHeight;
+    document.env = window.localStorage.getItem('env');
 }
-document.env = window.localStorage.getItem('env');
+
+
+loadFromLocalStorage();
+input.focus();
 input.addEventListener("keyup", async ({key}) => {
     // TODO(max): Make up/down arrow keys navigate history
     if (key === "Enter") {
@@ -1183,7 +1194,11 @@ input.addEventListener("keyup", async ({key}) => {
         output.scrollTop = output.scrollHeight;
     }
 });
-input.focus();
+button.addEventListener("click", () => {
+    window.localStorage.clear();
+    loadFromLocalStorage();
+    input.focus();
+});
 </script>
 </body>
 </html>"""

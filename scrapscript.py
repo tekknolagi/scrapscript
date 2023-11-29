@@ -1140,6 +1140,7 @@ out of date language reference.</p>
 completely stateless. All persistence is in the browser.</p>
 </div>
 <div>
+<!-- TODO(max): Add button to save to/load from disk. -->
 <button id="clear-local-storage">Clear LocalStorage</button>
 </div>
 <div>

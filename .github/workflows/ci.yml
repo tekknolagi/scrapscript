@@ -4,7 +4,7 @@ on:
   push:
     branches: [ trunk ]
   pull_request:
-    branches: [ trunk ]
+    branches: [ trunk, mb-monadic ]
 
 
 env:

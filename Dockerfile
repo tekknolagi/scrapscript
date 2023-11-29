@@ -7,6 +7,9 @@ WORKDIR cosmo
 RUN unzip ../$COSMO bin/ape.elf bin/assimilate bin/bash bin/python bin/zip
 RUN mkdir Lib
 COPY scrapscript.py Lib
+RUN bin/ape.elf bin/python -m compileall Lib
+RUN mv Lib/__pycache__/scrapscript*.pyc Lib/scrapscript.pyc
+RUN rm Lib/scrapscript.py
 RUN sh bin/zip -A -r bin/python Lib
 RUN bin/ape.elf bin/assimilate bin/python
 

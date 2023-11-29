@@ -655,8 +655,25 @@ class MatchFunction(Object):
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Relocation(Object):
+    name: str
+
+    def serialize(self) -> Dict[bytes, object]:
+        return self._serialize(name=self.name.encode("utf-8"))
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class NativeFunctionRelocation(Relocation):
+    pass
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class NativeFunction(Object):
+    name: str
     func: Callable[[Object], Object]
+
+    def serialize(self) -> Dict[bytes, object]:
+        return NativeFunctionRelocation(self.name).serialize()
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -2043,11 +2060,11 @@ class EvalTests(unittest.TestCase):
         )
 
     def test_eval_native_function_returns_function(self) -> None:
-        exp = NativeFunction(lambda x: Int(x.value * 2))  # type: ignore [attr-defined]
+        exp = NativeFunction("times2", lambda x: Int(x.value * 2))  # type: ignore [attr-defined]
         self.assertIs(eval_exp({}, exp), exp)
 
     def test_eval_apply_native_function_calls_function(self) -> None:
-        exp = Apply(NativeFunction(lambda x: Int(x.value * 2)), Int(3))  # type: ignore [attr-defined]
+        exp = Apply(NativeFunction("times2", lambda x: Int(x.value * 2)), Int(3))  # type: ignore [attr-defined]
         self.assertEqual(eval_exp({}, exp), Int(6))
 
     def test_eval_apply_quote_returns_ast(self) -> None:
@@ -2752,11 +2769,11 @@ def listlength(obj: Object) -> Object:
 
 
 STDLIB = {
-    "$$add": NativeFunction(lambda x: NativeFunction(lambda y: Int(unpack_int(x) + unpack_int(y)))),
-    "$$fetch": NativeFunction(fetch),
-    "$$jsondecode": NativeFunction(jsondecode),
-    "$$serialize": NativeFunction(lambda obj: Bytes(serialize(obj))),
-    "$$listlength": NativeFunction(listlength),
+    "$$add": Closure({}, Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))),
+    "$$fetch": NativeFunction("$$fetch", fetch),
+    "$$jsondecode": NativeFunction("$$jsondecode", jsondecode),
+    "$$serialize": NativeFunction("$$serialize", lambda obj: Bytes(serialize(obj))),
+    "$$listlength": NativeFunction("$$listlength", listlength),
     "true": Bool(True),
     "false": Bool(False),
 }

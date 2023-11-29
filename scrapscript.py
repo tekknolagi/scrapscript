@@ -592,12 +592,24 @@ def serialize_env(env: Env) -> Dict[bytes, object]:
     return {key.encode("utf-8"): value.serialize() for key, value in env.items()}
 
 
+def deserialize_env(msg: Dict[str, Any]) -> Env:
+    return {key: Object.deserialize(value) for key, value in msg.items()}
+
+
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class EnvObject(Object):
     env: Env
 
     def serialize(self) -> Dict[bytes, object]:
-        return self._serialize(value=serialize_env(self.env))
+        return self._serialize(env=serialize_env(self.env))
+
+    @staticmethod
+    def _deserialize(msg: Dict[str, object]) -> "EnvObject":
+        assert msg["type"] == "EnvObject"
+        env_obj = msg["env"]
+        assert isinstance(env_obj, dict)
+        env = deserialize_env(env_obj)
+        return EnvObject(env)
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -2391,6 +2403,13 @@ class ObjectSerializeTests(unittest.TestCase):
         obj = Record({"x": Int(1)})
         self.assertEqual(obj.serialize(), {b"data": {b"x": {b"type": b"Int", b"value": 1}}, b"type": b"Record"})
 
+    def test_serialize_env_object(self) -> None:
+        obj = EnvObject({"x": Int(1)})
+        self.assertEqual(
+            obj.serialize(),
+            {b"env": {b"x": {b"type": b"Int", b"value": 1}}, b"type": b"EnvObject"},
+        )
+
 
 class ObjectDeserializeTests(unittest.TestCase):
     def test_deserialize_int(self) -> None:
@@ -2425,6 +2444,11 @@ class ObjectDeserializeTests(unittest.TestCase):
             "type": "Binop",
         }
         obj = Binop(BinopKind.ADD, Int(123), Int(456))
+        self.assertEqual(Object.deserialize(msg), obj)
+
+    def test_deserialize_env_object(self) -> None:
+        obj = EnvObject({"x": Int(1)})
+        msg = {"env": {"x": {"type": "Int", "value": 1}}, "type": "EnvObject"}
         self.assertEqual(Object.deserialize(msg), obj)
 
 

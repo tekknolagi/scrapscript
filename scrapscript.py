@@ -17,7 +17,7 @@ import urllib.request
 import urllib.parse
 from dataclasses import dataclass
 from enum import auto
-from types import ModuleType
+from types import ModuleType, FunctionType
 from typing import Any, Callable, Dict, Mapping, Optional, Union
 
 readline: Optional[ModuleType]
@@ -454,8 +454,17 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     return l
 
 
+OBJECT_DESERIALIZERS: Dict[str, FunctionType] = {}
+
+
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Object:
+    def __init_subclass__(cls, /, **kwargs: Dict[Any, Any]) -> None:
+        super().__init_subclass__(**kwargs)
+        deserializer = getattr(cls, "_deserialize", None)
+        if deserializer:
+            OBJECT_DESERIALIZERS[cls.__name__] = deserializer
+
     def serialize(self) -> Dict[bytes, object]:
         cls = type(self)
         result: Dict[bytes, object] = {b"type": cls.__name__.encode("utf-8")}
@@ -473,6 +482,21 @@ class Object:
             **{key.encode("utf-8"): value for key, value in kwargs.items()},
         }
 
+    @staticmethod
+    def _deserialize(msg: Dict[str, object]) -> "Object":
+        raise NotImplementedError(msg)
+
+    @staticmethod
+    def deserialize(msg: Dict[str, Any]) -> "Object":
+        ty = msg["type"]
+        assert isinstance(ty, str)
+        deserializer = OBJECT_DESERIALIZERS.get(ty)
+        if not deserializer:
+            raise NotImplementedError(f"unknown type {ty}")
+        result = deserializer(msg)
+        assert isinstance(result, Object)
+        return result
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Int(Object):
@@ -481,6 +505,12 @@ class Int(Object):
     def serialize(self) -> Dict[bytes, object]:
         return self._serialize(value=self.value)
 
+    @staticmethod
+    def _deserialize(msg: Dict[str, object]) -> "Int":
+        assert msg["type"] == "Int"
+        assert isinstance(msg["value"], int)
+        return Int(msg["value"])
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class String(Object):
@@ -488,6 +518,12 @@ class String(Object):
 
     def serialize(self) -> Dict[bytes, object]:
         return {b"type": b"String", b"value": self.value.encode("utf-8")}
+
+    @staticmethod
+    def _deserialize(msg: Dict[str, object]) -> "String":
+        assert msg["type"] == "String"
+        assert isinstance(msg["value"], str)
+        return String(msg["value"])
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -2870,6 +2906,20 @@ class ObjectSerializeTests(unittest.TestCase):
     def test_serialize_record(self) -> None:
         obj = Record({"x": Int(1)})
         self.assertEqual(obj.serialize(), {b"data": {b"x": {b"type": b"Int", b"value": 1}}, b"type": b"Record"})
+
+
+class ObjectDeserializeTests(unittest.TestCase):
+    def test_deserialize_int(self) -> None:
+        msg = {"type": "Int", "value": 123}
+        self.assertEqual(Object.deserialize(msg), Int(123))
+
+    def test_deserialize_negative_int(self) -> None:
+        msg = {"type": "Int", "value": -123}
+        self.assertEqual(Object.deserialize(msg), Int(-123))
+
+    def test_deserialize_str(self) -> None:
+        msg = {"type": "String", "value": "abc"}
+        self.assertEqual(Object.deserialize(msg), String("abc"))
 
 
 class SerializeTests(unittest.TestCase):

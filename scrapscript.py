@@ -461,7 +461,7 @@ OBJECT_DESERIALIZERS: Dict[str, FunctionType] = {}
 class Object:
     def __init_subclass__(cls, /, **kwargs: Dict[Any, Any]) -> None:
         super().__init_subclass__(**kwargs)
-        deserializer = getattr(cls, "deserialize", None)
+        deserializer = cls.__dict__.get("deserialize", None)
         if deserializer:
             OBJECT_DESERIALIZERS[cls.__name__] = deserializer
 

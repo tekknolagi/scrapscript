@@ -643,7 +643,17 @@ class Relocation(Object):
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class NativeFunctionRelocation(Relocation):
-    pass
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "NativeFunction":
+        # TODO(max): Should this return a Var or an actual
+        # NativeFunctionRelocation object instead of doing the relocation in
+        # the deserialization?
+        assert msg["type"] == "NativeFunctionRelocation"
+        name = msg["name"]
+        assert isinstance(name, str)
+        result = STDLIB[name]
+        assert isinstance(result, NativeFunction)
+        return result
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -2528,6 +2538,13 @@ class ObjectDeserializeTests(unittest.TestCase):
             "type": "Closure",
         }
         self.assertEqual(Object.deserialize(msg), obj)
+
+    def test_deserialize_native_function_relocation_returns_native_function_from_stdlib(self) -> None:
+        obj = STDLIB["$$fetch"]
+        msg = {"type": "NativeFunctionRelocation", "name": "$$fetch"}
+        result = Object.deserialize(msg)
+        self.assertEqual(result, obj)
+        self.assertIs(result, obj)
 
 
 class SerializeTests(unittest.TestCase):

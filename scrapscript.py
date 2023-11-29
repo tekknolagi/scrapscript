@@ -1012,7 +1012,7 @@ async function sendRequest(env, exp) {
 
 const input = document.getElementById("input");
 const output = document.getElementById("output");
-document.env = null;
+document.env = window.localStorage.getItem('env');
 input.addEventListener("keyup", async ({key}) => {
     if (key === "Enter") {
         const response = await sendRequest(document.env, input.value);
@@ -1021,6 +1021,7 @@ input.addEventListener("keyup", async ({key}) => {
         output.innerHTML += result + "\n>>> ";
         input.value = "";
         document.env = env;
+        window.localStorage.setItem('env', env)
     }
 });
 </script>

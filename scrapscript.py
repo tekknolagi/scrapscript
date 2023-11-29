@@ -484,10 +484,11 @@ class Object:
 
     @staticmethod
     def _deserialize(msg: Dict[str, object]) -> "Object":
-        raise NotImplementedError(msg)
+        raise NotImplementedError(msg["type"])
 
     @staticmethod
     def deserialize(msg: Dict[str, Any]) -> "Object":
+        assert "type" in msg, f"No idea what to do with {msg!r}"
         ty = msg["type"]
         assert isinstance(ty, str)
         deserializer = OBJECT_DESERIALIZERS.get(ty)

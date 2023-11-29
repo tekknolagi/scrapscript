@@ -358,7 +358,10 @@ class Object:
         super().__init_subclass__(**kwargs)
         deserializer = cls.__dict__.get("deserialize", None)
         if deserializer:
-            OBJECT_DESERIALIZERS[cls.__name__] = deserializer
+            assert isinstance(deserializer, staticmethod)
+            func = deserializer.__func__
+            assert isinstance(func, FunctionType)
+            OBJECT_DESERIALIZERS[cls.__name__] = func
 
     def serialize(self) -> Dict[bytes, object]:
         cls = type(self)

@@ -972,20 +972,23 @@ Input: <input id="input" onkeyup=""/>
 <script type="module">
 "use strict";
 
-async function sendRequest(exp) {
-    const response = await fetch("/eval?" + new URLSearchParams({exp}));
+async function sendRequest(env, exp) {
+    const params = env === null ? {exp} : {exp, env};
+    const response = await fetch("/eval?" + new URLSearchParams(params));
     return response.json();
 }
 
 const input = document.getElementById("input");
 const output = document.getElementById("output");
+document.env = null;
 input.addEventListener("keyup", async ({key}) => {
-    if (key == "Enter") {
-        const response = await sendRequest(input.value);
+    if (key === "Enter") {
+        const response = await sendRequest(document.env, input.value);
         const {env, result} = response;
         output.innerHTML += input.value + "\n";
         output.innerHTML += result + "\n>>> ";
         input.value = "";
+        document.env = env;
     }
 });
 </script>

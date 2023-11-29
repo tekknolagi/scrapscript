@@ -7,6 +7,7 @@ import enum
 import http.server
 import json
 import logging
+import multiprocessing
 import os
 import re
 import socketserver
@@ -3349,8 +3350,12 @@ def test_command(args: argparse.Namespace) -> None:
 def serve_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
-
-    with socketserver.TCPServer(("", args.port), ScrapReplServer) as httpd:
+    server: Union[type[socketserver.TCPServer], type[socketserver.ForkingTCPServer]]
+    if args.fork:
+        server = socketserver.ForkingTCPServer
+    else:
+        server = socketserver.TCPServer
+    with server(("", args.port), ScrapReplServer) as httpd:
         print("serving at port", args.port)
         httpd.serve_forever()
 
@@ -3382,6 +3387,7 @@ def main() -> None:
     serve.set_defaults(func=serve_command)
     serve.add_argument("--port", type=int, default=8000)
     serve.add_argument("--debug", action="store_true")
+    serve.add_argument("--fork", action="store_true")
 
     args = parser.parse_args()
     if not args.command:

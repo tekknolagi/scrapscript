@@ -3453,8 +3453,12 @@ def serve_command(args: argparse.Namespace) -> None:
 def serve_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
-
-    with socketserver.TCPServer(("", args.port), ScrapReplServer) as httpd:
+    server: Union[type[socketserver.TCPServer], type[socketserver.ForkingTCPServer]]
+    if args.fork:
+        server = socketserver.ForkingTCPServer
+    else:
+        server = socketserver.TCPServer
+    with server(("", args.port), ScrapReplServer) as httpd:
         print("serving at port", args.port)
         httpd.serve_forever()
 

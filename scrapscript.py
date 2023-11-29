@@ -533,6 +533,12 @@ class Bytes(Object):
     def serialize(self) -> Dict[bytes, object]:
         return {b"type": b"Bytes", b"value": self.value}
 
+    @staticmethod
+    def _deserialize(msg: Dict[str, object]) -> "Bytes":
+        assert msg["type"] == "Bytes"
+        assert isinstance(msg["value"], bytes)
+        return Bytes(msg["value"])
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Var(Object):
@@ -541,6 +547,12 @@ class Var(Object):
     def serialize(self) -> Dict[bytes, object]:
         return {b"type": b"Var", b"name": self.name.encode("utf-8")}
 
+    @staticmethod
+    def _deserialize(msg: Dict[str, object]) -> "Var":
+        assert msg["type"] == "Var"
+        assert isinstance(msg["name"], str)
+        return Var(msg["name"])
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Bool(Object):
@@ -548,6 +560,12 @@ class Bool(Object):
 
     def serialize(self) -> Dict[bytes, object]:
         return {b"type": b"Bool", b"value": self.value}
+
+    @staticmethod
+    def _deserialize(msg: Dict[str, object]) -> "Bool":
+        assert msg["type"] == "Bool"
+        assert isinstance(msg["value"], bool)
+        return Bool(msg["value"])
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -621,6 +639,21 @@ class Binop(Object):
             b"left": self.left.serialize(),
             b"right": self.right.serialize(),
         }
+
+    @staticmethod
+    def _deserialize(msg: Dict[str, object]) -> "Binop":
+        assert msg["type"] == "Binop"
+        opname = msg["op"]
+        assert isinstance(opname, str)
+        op = BinopKind[opname]
+        assert isinstance(op, BinopKind)
+        left_obj = msg["left"]
+        assert isinstance(left_obj, dict)
+        right_obj = msg["right"]
+        assert isinstance(right_obj, dict)
+        left = Object.deserialize(left_obj)
+        right = Object.deserialize(right_obj)
+        return Binop(op, left, right)
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -2920,6 +2953,28 @@ class ObjectDeserializeTests(unittest.TestCase):
     def test_deserialize_str(self) -> None:
         msg = {"type": "String", "value": "abc"}
         self.assertEqual(Object.deserialize(msg), String("abc"))
+
+    def test_deserialize_bytes(self) -> None:
+        msg = {"type": "Bytes", "value": b"abc"}
+        self.assertEqual(Object.deserialize(msg), Bytes(b"abc"))
+
+    def test_deserialize_var(self) -> None:
+        msg = {"type": "Var", "name": "abc"}
+        self.assertEqual(Object.deserialize(msg), Var("abc"))
+
+    def test_deserialize_bool(self) -> None:
+        msg = {"type": "Bool", "value": True}
+        self.assertEqual(Object.deserialize(msg), Bool(True))
+
+    def test_deserialize_binary_add(self) -> None:
+        msg = {
+            "left": {"type": "Int", "value": 123},
+            "op": "ADD",
+            "right": {"type": "Int", "value": 456},
+            "type": "Binop",
+        }
+        obj = Binop(BinopKind.ADD, Int(123), Int(456))
+        self.assertEqual(Object.deserialize(msg), obj)
 
 
 class SerializeTests(unittest.TestCase):

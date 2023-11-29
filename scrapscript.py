@@ -1031,6 +1031,7 @@ input.addEventListener("keyup", async ({key}) => {
         window.localStorage.setItem('history', output.innerHTML);
     }
 });
+input.focus();
 </script>
 </body>
 </html>

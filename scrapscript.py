@@ -1130,6 +1130,7 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
 <html>
 <head>
 <title>Scrapscript Web REPL</title>
+<link rel="shortcut icon"type="image/x-icon" href="data:image/x-icon;,">
 </head>
 <body>
 <div>

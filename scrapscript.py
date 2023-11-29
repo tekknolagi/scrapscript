@@ -461,7 +461,7 @@ OBJECT_DESERIALIZERS: Dict[str, FunctionType] = {}
 class Object:
     def __init_subclass__(cls, /, **kwargs: Dict[Any, Any]) -> None:
         super().__init_subclass__(**kwargs)
-        deserializer = getattr(cls, "_deserialize", None)
+        deserializer = getattr(cls, "deserialize", None)
         if deserializer:
             OBJECT_DESERIALIZERS[cls.__name__] = deserializer
 
@@ -481,10 +481,6 @@ class Object:
             b"type": type(self).__name__.encode("utf-8"),
             **{key.encode("utf-8"): value for key, value in kwargs.items()},
         }
-
-    @staticmethod
-    def _deserialize(msg: Dict[str, object]) -> "Object":
-        raise NotImplementedError(msg["type"])
 
     @staticmethod
     def deserialize(msg: Dict[str, Any]) -> "Object":
@@ -507,7 +503,7 @@ class Int(Object):
         return self._serialize(value=self.value)
 
     @staticmethod
-    def _deserialize(msg: Dict[str, object]) -> "Int":
+    def deserialize(msg: Dict[str, object]) -> "Int":
         assert msg["type"] == "Int"
         assert isinstance(msg["value"], int)
         return Int(msg["value"])
@@ -521,7 +517,7 @@ class String(Object):
         return {b"type": b"String", b"value": self.value.encode("utf-8")}
 
     @staticmethod
-    def _deserialize(msg: Dict[str, object]) -> "String":
+    def deserialize(msg: Dict[str, object]) -> "String":
         assert msg["type"] == "String"
         assert isinstance(msg["value"], str)
         return String(msg["value"])
@@ -535,7 +531,7 @@ class Bytes(Object):
         return {b"type": b"Bytes", b"value": self.value}
 
     @staticmethod
-    def _deserialize(msg: Dict[str, object]) -> "Bytes":
+    def deserialize(msg: Dict[str, object]) -> "Bytes":
         assert msg["type"] == "Bytes"
         assert isinstance(msg["value"], bytes)
         return Bytes(msg["value"])
@@ -549,7 +545,7 @@ class Var(Object):
         return {b"type": b"Var", b"name": self.name.encode("utf-8")}
 
     @staticmethod
-    def _deserialize(msg: Dict[str, object]) -> "Var":
+    def deserialize(msg: Dict[str, object]) -> "Var":
         assert msg["type"] == "Var"
         assert isinstance(msg["name"], str)
         return Var(msg["name"])
@@ -563,7 +559,7 @@ class Bool(Object):
         return {b"type": b"Bool", b"value": self.value}
 
     @staticmethod
-    def _deserialize(msg: Dict[str, object]) -> "Bool":
+    def deserialize(msg: Dict[str, object]) -> "Bool":
         assert msg["type"] == "Bool"
         assert isinstance(msg["value"], bool)
         return Bool(msg["value"])
@@ -642,7 +638,7 @@ class Binop(Object):
         }
 
     @staticmethod
-    def _deserialize(msg: Dict[str, object]) -> "Binop":
+    def deserialize(msg: Dict[str, object]) -> "Binop":
         assert msg["type"] == "Binop"
         opname = msg["op"]
         assert isinstance(opname, str)
@@ -677,7 +673,7 @@ class Function(Object):
     body: Object
 
     @staticmethod
-    def _deserialize(msg: Dict[str, object]) -> "Function":
+    def deserialize(msg: Dict[str, object]) -> "Function":
         assert msg["type"] == "Function"
         arg_obj = msg["arg"]
         assert isinstance(arg_obj, dict)
@@ -728,7 +724,7 @@ class EnvObject(Object):
         return self._serialize(env=serialize_env(self.env))
 
     @staticmethod
-    def _deserialize(msg: Dict[str, object]) -> "EnvObject":
+    def deserialize(msg: Dict[str, object]) -> "EnvObject":
         assert msg["type"] == "EnvObject"
         env_obj = msg["env"]
         assert isinstance(env_obj, dict)
@@ -781,7 +777,7 @@ class Closure(Object):
         return self._serialize(env=serialize_env(self.env), func=self.func.serialize())
 
     @staticmethod
-    def _deserialize(msg: Dict[str, object]) -> "Closure":
+    def deserialize(msg: Dict[str, object]) -> "Closure":
         assert msg["type"] == "Closure"
         env_obj = msg["env"]
         assert isinstance(env_obj, dict)

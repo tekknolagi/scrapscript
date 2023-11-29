@@ -1150,6 +1150,12 @@ async function sendRequest(env, exp) {
 
 const input = document.getElementById("input");
 const output = document.getElementById("output");
+{
+    const hist = window.localStorage.getItem('history');
+    if (hist !== null) {
+        output.innerHTML = window.localStorage.getItem('history');
+    }
+}
 document.env = window.localStorage.getItem('env');
 input.addEventListener("keyup", async ({key}) => {
     if (key === "Enter") {
@@ -1160,6 +1166,7 @@ input.addEventListener("keyup", async ({key}) => {
         input.value = "";
         document.env = env;
         window.localStorage.setItem('env', env)
+        window.localStorage.setItem('history', output.innerHTML);
     }
 });
 </script>

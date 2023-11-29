@@ -1018,7 +1018,7 @@ const output = document.getElementById("output");
 {
     const hist = window.localStorage.getItem('history');
     if (hist !== null) {
-        output.innerHTML = window.localStorage.getItem('history');
+        output.innerHTML = hist;
     }
 }
 document.env = window.localStorage.getItem('env');

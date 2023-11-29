@@ -4,7 +4,12 @@ on:
   push:
     branches: [ trunk ]
   pull_request:
-    branches: [ trunk ]
+    branches: [ trunk, mb-monadic ]
+
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 
 env:

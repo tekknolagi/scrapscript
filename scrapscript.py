@@ -1001,7 +1001,7 @@ completely stateless. All persistence is in the browser.</p>
 </div>
 <div>
 Output:
-<pre id="output">
+<pre id="output" style="height: 200px; overflow: auto;">
 >>> </pre>
 </div>
 <div>
@@ -1039,6 +1039,7 @@ input.addEventListener("keyup", async ({key}) => {
         document.env = env;
         window.localStorage.setItem('env', env)
         window.localStorage.setItem('history', output.innerHTML);
+        output.scrollTop = output.scrollHeight;
     }
 });
 input.focus();

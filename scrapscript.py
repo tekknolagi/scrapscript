@@ -1091,7 +1091,7 @@ def deserialize(msg: str) -> Object:
 
 
 class ScrapMonad:
-    def __init__(self, env: Env):
+    def __init__(self, env: Env) -> None:
         assert isinstance(env, dict)  # for .copy()
         self.env: Env = env.copy()
 

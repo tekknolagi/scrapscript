@@ -988,8 +988,7 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
         return self.do_404()
 
     def do_repl(self) -> None:
-        html = rb"""
-<html>
+        html = rb"""<html>
 <head>
 <title>Scrapscript Web REPL</title>
 </head>
@@ -1045,8 +1044,7 @@ input.addEventListener("keyup", async ({key}) => {
 input.focus();
 </script>
 </body>
-</html>
-        """
+</html>"""
         self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.end_headers()

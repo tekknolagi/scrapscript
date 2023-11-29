@@ -563,6 +563,17 @@ class Function(Object):
     arg: Object
     body: Object
 
+    @staticmethod
+    def _deserialize(msg: Dict[str, object]) -> "Function":
+        assert msg["type"] == "Function"
+        arg_obj = msg["arg"]
+        assert isinstance(arg_obj, dict)
+        arg = Object.deserialize(arg_obj)
+        body_obj = msg["body"]
+        assert isinstance(body_obj, dict)
+        body = Object.deserialize(body_obj)
+        return Function(arg, body)
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Apply(Object):
@@ -655,6 +666,18 @@ class Closure(Object):
 
     def serialize(self) -> Dict[bytes, object]:
         return self._serialize(env=serialize_env(self.env), func=self.func.serialize())
+
+    @staticmethod
+    def _deserialize(msg: Dict[str, object]) -> "Closure":
+        assert msg["type"] == "Closure"
+        env_obj = msg["env"]
+        assert isinstance(env_obj, dict)
+        env = deserialize_env(env_obj)
+        func_obj = msg["func"]
+        assert isinstance(func_obj, dict)
+        func = Object.deserialize(func_obj)
+        assert isinstance(func, (Function, MatchFunction))
+        return Closure(env, func)
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -2421,6 +2444,32 @@ class ObjectSerializeTests(unittest.TestCase):
             {b"env": {b"x": {b"type": b"Int", b"value": 1}}, b"type": b"EnvObject"},
         )
 
+    def test_serialize_function(self) -> None:
+        obj = Function(Var("x"), Var("x"))
+        self.assertEqual(
+            obj.serialize(),
+            {
+                b"arg": {b"name": b"x", b"type": b"Var"},
+                b"body": {b"name": b"x", b"type": b"Var"},
+                b"type": b"Function",
+            },
+        )
+
+    def test_serialize_closure(self) -> None:
+        obj = Closure({"a": Int(123)}, Function(Var("x"), Var("x")))
+        self.assertEqual(
+            obj.serialize(),
+            {
+                b"env": {b"a": {b"type": b"Int", b"value": 123}},
+                b"func": {
+                    b"arg": {b"name": b"x", b"type": b"Var"},
+                    b"body": {b"name": b"x", b"type": b"Var"},
+                    b"type": b"Function",
+                },
+                b"type": b"Closure",
+            },
+        )
+
 
 class ObjectDeserializeTests(unittest.TestCase):
     def test_deserialize_int(self) -> None:
@@ -2460,6 +2509,28 @@ class ObjectDeserializeTests(unittest.TestCase):
     def test_deserialize_env_object(self) -> None:
         obj = EnvObject({"x": Int(1)})
         msg = {"env": {"x": {"type": "Int", "value": 1}}, "type": "EnvObject"}
+        self.assertEqual(Object.deserialize(msg), obj)
+
+    def test_deserialize_function(self) -> None:
+        obj = Function(Var("x"), Var("x"))
+        msg = {
+            "arg": {"name": "x", "type": "Var"},
+            "body": {"name": "x", "type": "Var"},
+            "type": "Function",
+        }
+        self.assertEqual(Object.deserialize(msg), obj)
+
+    def test_deserialize_closure(self) -> None:
+        obj = Closure({"a": Int(123)}, Function(Var("x"), Var("x")))
+        msg = {
+            "env": {"a": {"type": "Int", "value": 123}},
+            "func": {
+                "arg": {"name": "x", "type": "Var"},
+                "body": {"name": "x", "type": "Var"},
+                "type": "Function",
+            },
+            "type": "Closure",
+        }
         self.assertEqual(Object.deserialize(msg), obj)
 
 

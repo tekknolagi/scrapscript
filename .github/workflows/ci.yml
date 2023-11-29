@@ -12,11 +12,6 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-
-
 jobs:
   run_lint:
     runs-on: ubuntu-latest

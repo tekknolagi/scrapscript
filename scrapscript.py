@@ -1145,6 +1145,9 @@ Input: <input id="input" onkeyup=""/>
 async function sendRequest(env, exp) {
     const params = env === null ? {exp} : {exp, env};
     const response = await fetch("/eval?" + new URLSearchParams(params));
+    if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}`);
+    }
     return response.json();
 }
 

@@ -1166,6 +1166,7 @@ const output = document.getElementById("output");
     if (hist !== null) {
         output.innerHTML = hist;
     }
+    output.scrollTop = output.scrollHeight;
 }
 document.env = window.localStorage.getItem('env');
 input.addEventListener("keyup", async ({key}) => {

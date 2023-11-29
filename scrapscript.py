@@ -1158,6 +1158,7 @@ const output = document.getElementById("output");
 }
 document.env = window.localStorage.getItem('env');
 input.addEventListener("keyup", async ({key}) => {
+    // TODO(max): Make up/down arrow keys navigate history
     if (key === "Enter") {
         const response = await sendRequest(document.env, input.value);
         const {env, result} = response;

@@ -988,7 +988,8 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
         return self.do_404()
 
     def do_repl(self) -> None:
-        html = rb"""<html>
+        html = rb"""<!DOCTYPE html>
+<html>
 <head>
 <title>Scrapscript Web REPL</title>
 </head>

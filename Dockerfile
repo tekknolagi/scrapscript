@@ -10,8 +10,8 @@ RUN bin/ape.elf bin/assimilate bin/python
 
 # Set up the container
 FROM scratch
-COPY scrapscript.py .
 COPY --from=build /cosmo/bin/python .
 EXPOSE 8000
+COPY scrapscript.py .
 ENTRYPOINT ["./python", "scrapscript.py"]
 CMD ["serve", "--port", "8000"]

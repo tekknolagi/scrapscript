@@ -1101,6 +1101,7 @@ input.focus();
             response = {"env": encoded.decode("utf-8"), "result": str(e)}
             self.send_response(200)
             self.send_header("Content-type", "text/plain")
+            self.send_header("Cache-Control", "max-age=3600")
             self.end_headers()
             self.wfile.write(json.dumps(response).encode("utf-8"))
         else:
@@ -1110,6 +1111,7 @@ input.focus();
             response = {"env": encoded.decode("utf-8"), "result": repr(expr_result) if expr_result is not None else ""}
             self.send_response(200)
             self.send_header("Content-type", "text/plain")
+            self.send_header("Cache-Control", "max-age=3600")
             self.end_headers()
             self.wfile.write(json.dumps(response).encode("utf-8"))
             return

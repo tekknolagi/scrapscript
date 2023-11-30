@@ -1175,7 +1175,6 @@ async function sendRequest(env, exp) {
     const params = env === null ? {exp} : {exp, env};
     const response = await fetch("/eval?" + new URLSearchParams(params));
     if (!response.ok) {
-        updateHistory(input.value, `there was an error :( (http code ${response.status})`);
         throw new Error(`${response.status} ${response.statusText}`);
     }
     return response.json();
@@ -1202,13 +1201,17 @@ input.focus();
 input.addEventListener("keyup", async ({key}) => {
     // TODO(max): Make up/down arrow keys navigate history
     if (key === "Enter") {
-        const response = await sendRequest(document.env, input.value);
-        const {env, result} = response;
-        updateHistory(input.value, result);
-        input.value = "";
-        document.env = env;
-        window.localStorage.setItem('env', env)
-        window.localStorage.setItem('history', output.innerHTML);
+        sendRequest(document.env, input.value).then(response => {
+            const {env, result} = response;
+            updateHistory(input.value, result);
+            input.value = "";
+            document.env = env;
+            window.localStorage.setItem('env', env)
+            window.localStorage.setItem('history', output.innerHTML);
+        }).catch(error => {
+            updateHistory(input.value, error);
+            input.value = "";
+        });
     }
 });
 button.addEventListener("click", () => {

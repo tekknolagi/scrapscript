@@ -2005,6 +2005,15 @@ class EndToEndTests(unittest.TestCase):
     def test_reverse_pipe_nested(self) -> None:
         self.assertEqual(self._run("(b -> b * 2) <| (a -> a + 2) <| 1"), Int(6))
 
+    def test_function_can_reference_itself(self) -> None:
+        result = self._run(
+            """
+    f 1
+    . f = n -> f
+    """
+        )
+        self.assertEqual(result, Closure({"f": result}, Function(Var("n"), Var("f"))))
+
     def test_function_can_call_itself(self) -> None:
         with self.assertRaises(RecursionError):
             self._run(

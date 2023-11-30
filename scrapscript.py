@@ -133,11 +133,7 @@ class Lexer:
 def tokenize(x: str) -> typing.List[str]:
     lexer = Lexer(x)
     tokens = []
-    while lexer.has_input():
-        token = lexer.read_one()
-        if token is None:
-            # EOF
-            break
+    while (token := lexer.read_one()) is not None:
         tokens.append(token)
     return tokens
 

@@ -1243,17 +1243,9 @@ button.addEventListener("click", () => {
     def do_eval(self, query: Dict[str, Any]) -> None:
         exp = query.get("exp")
         if exp is None:
-            self.send_response(400)
-            self.send_header("Content-type", "text/html")
-            self.end_headers()
-            self.wfile.write(b"Need expression to evaluate")
-            return
+            raise TypeError("Need expression to evaluate")
         if len(exp) != 1:
-            self.send_response(400)
-            self.send_header("Content-type", "text/html")
-            self.end_headers()
-            self.wfile.write(b"Need exactly one expression to evaluate")
-            return
+            raise TypeError("Need exactly one expression to evaluate")
         exp = exp[0]
         tokens = tokenize(exp)
         ast = parse(tokens)
@@ -1262,37 +1254,22 @@ button.addEventListener("click", () => {
             env = STDLIB
         else:
             if len(env) != 1:
-                self.send_response(400)
-                self.send_header("Content-type", "text/html")
-                self.end_headers()
-                self.wfile.write(b"Need exactly one env")
-                return
+                raise TypeError("Need exactly one env")
             env_object = deserialize(env[0])
             assert isinstance(env_object, EnvObject)
             env = env_object.env
         logging.debug("env is %s", env)
         monad = ScrapMonad(env)
-        try:
-            result, next_monad = monad.bind(ast)
-        except Exception as e:
-            serialized = EnvObject(env).serialize()
-            encoded = bencode(serialized)
-            response = {"env": encoded.decode("utf-8"), "result": str(e)}
-            self.send_response(200)
-            self.send_header("Content-type", "text/plain")
-            self.send_header("Cache-Control", "max-age=3600")
-            self.end_headers()
-            self.wfile.write(json.dumps(response).encode("utf-8"))
-        else:
-            serialized = EnvObject(next_monad.env).serialize()
-            encoded = bencode(serialized)
-            response = {"env": encoded.decode("utf-8"), "result": str(result)}
-            self.send_response(200)
-            self.send_header("Content-type", "text/plain")
-            self.send_header("Cache-Control", "max-age=3600")
-            self.end_headers()
-            self.wfile.write(json.dumps(response).encode("utf-8"))
-            return
+        result, next_monad = monad.bind(ast)
+        serialized = EnvObject(next_monad.env).serialize()
+        encoded = bencode(serialized)
+        response = {"env": encoded.decode("utf-8"), "result": str(result)}
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.send_header("Cache-Control", "max-age=3600")
+        self.end_headers()
+        self.wfile.write(json.dumps(response).encode("utf-8"))
+        return
 
 
 class TokenizerTests(unittest.TestCase):

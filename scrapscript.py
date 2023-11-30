@@ -652,91 +652,105 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
 
 # pylint: disable=redefined-builtin
 def eval_exp(env: Env, exp: Object) -> Object:
-    logger.debug(exp)
-    if isinstance(exp, (Int, Bool, String, Bytes, Hole, Closure, NativeFunction)):
-        return exp
-    if isinstance(exp, Var):
-        value = env.get(exp.name)
-        if value is None:
-            raise NameError(f"name '{exp.name}' is not defined")
-        return value
-    if isinstance(exp, Binop):
-        handler = BINOP_HANDLERS.get(exp.op)
-        if handler is None:
-            raise NotImplementedError(f"no handler for {exp.op}")
-        return handler(env, exp.left, exp.right)
-    if isinstance(exp, List):
-        return List([eval_exp(env, item) for item in exp.items])
-    if isinstance(exp, Record):
-        return Record({k: eval_exp(env, exp.data[k]) for k in exp.data})
-    if isinstance(exp, Assign):
-        # TODO(max): Rework this. There's something about matching that we need
-        # to figure out and implement.
-        assert isinstance(exp.name, Var)
-        value = eval_exp(env, exp.value)
-        return EnvObject({**env, exp.name.name: value})
-    if isinstance(exp, Where):
-        res_env = eval_exp(env, exp.binding)
-        assert isinstance(res_env, EnvObject)
-        new_env = {**env, **res_env.env}
-        return eval_exp(new_env, exp.body)
-    if isinstance(exp, Assert):
-        cond = eval_exp(env, exp.cond)
-        if cond != Bool(True):
-            raise AssertionError(f"condition {exp.cond} failed")
-        return eval_exp(env, exp.value)
-    if isinstance(exp, Function):
-        if not isinstance(exp.arg, Var):
-            raise RuntimeError(f"expected variable in function definition {exp.arg}")
-        return Closure(env, exp)
-    if isinstance(exp, MatchFunction):
-        return Closure(env, exp)
-    if isinstance(exp, Apply):
-        if isinstance(exp.func, Var) and exp.func.name == "$$quote":
-            return exp.arg
-        callee = eval_exp(env, exp.func)
-        if isinstance(callee, NativeFunction):
+    while True:
+        logger.debug(exp)
+        if isinstance(exp, (Int, Bool, String, Bytes, Hole, Closure, NativeFunction)):
+            return exp
+        if isinstance(exp, Var):
+            value = env.get(exp.name)
+            if value is None:
+                raise NameError(f"name '{exp.name}' is not defined")
+            return value
+        if isinstance(exp, Binop):
+            # TODO(max): Inline these to avoid recursion
+            handler = BINOP_HANDLERS.get(exp.op)
+            if handler is None:
+                raise NotImplementedError(f"no handler for {exp.op}")
+            return handler(env, exp.left, exp.right)
+        if isinstance(exp, List):
+            # TODO(max): Remove recursion
+            return List([eval_exp(env, item) for item in exp.items])
+        if isinstance(exp, Record):
+            # TODO(max): Remove recursion
+            return Record({k: eval_exp(env, exp.data[k]) for k in exp.data})
+        if isinstance(exp, Assign):
+            # TODO(max): Rework this. There's something about matching that we need
+            # to figure out and implement.
+            assert isinstance(exp.name, Var)
+            # TODO(max): Remove recursion
+            value = eval_exp(env, exp.value)
+            return EnvObject({**env, exp.name.name: value})
+        if isinstance(exp, Where):
+            res_env = eval_exp(env, exp.binding)
+            assert isinstance(res_env, EnvObject)
+            new_env = {**env, **res_env.env}
+            env = new_env
+            exp = exp.body
+            continue
+        if isinstance(exp, Assert):
+            cond = eval_exp(env, exp.cond)
+            if cond != Bool(True):
+                raise AssertionError(f"condition {exp.cond} failed")
+            exp = exp.value
+            continue
+        if isinstance(exp, Function):
+            if not isinstance(exp.arg, Var):
+                raise RuntimeError(f"expected variable in function definition {exp.arg}")
+            return Closure(env, exp)
+        if isinstance(exp, MatchFunction):
+            return Closure(env, exp)
+        if isinstance(exp, Apply):
+            if isinstance(exp.func, Var) and exp.func.name == "$$quote":
+                return exp.arg
+            callee = eval_exp(env, exp.func)
+            if isinstance(callee, NativeFunction):
+                arg = eval_exp(env, exp.arg)
+                return callee.func(arg)
+            if not isinstance(callee, Closure):
+                raise TypeError(f"attempted to apply a non-closure of type {type(callee).__name__}")
             arg = eval_exp(env, exp.arg)
-            return callee.func(arg)
-        if not isinstance(callee, Closure):
-            raise TypeError(f"attempted to apply a non-closure of type {type(callee).__name__}")
-        arg = eval_exp(env, exp.arg)
-        if isinstance(callee.func, Function):
-            assert isinstance(callee.func.arg, Var)
-            new_env = {**callee.env, callee.func.arg.name: arg}
-            return eval_exp(new_env, callee.func.body)
-        elif isinstance(callee.func, MatchFunction):
-            # TODO(max): Implement MatchClosure
-            arg = eval_exp(env, exp.arg)
-            for case in callee.func.cases:
-                m = match(arg, case.pattern)
-                if m is None:
-                    continue
-                return eval_exp({**env, **m}, case.body)
-            raise MatchError("no matching cases")
-        else:
-            raise TypeError(f"attempted to apply a non-function of type {type(callee.func).__name__}")
-    if isinstance(exp, Access):
-        obj = eval_exp(env, exp.obj)
-        if isinstance(obj, Record):
-            if not isinstance(exp.at, Var):
-                raise TypeError(f"cannot access record field using {type(exp.at).__name__}, expected a field name")
-            if exp.at.name not in obj.data:
-                raise NameError(f"no assignment to {exp.at.name} found in record")
-            return obj.data[exp.at.name]
-        elif isinstance(obj, List):
-            access_at = eval_exp(env, exp.at)
-            if not isinstance(access_at, Int):
-                raise TypeError(f"cannot index into list using type {type(access_at).__name__}, expected integer")
-            if access_at.value < 0 or access_at.value >= len(obj.items):
-                raise ValueError(f"index {access_at.value} out of bounds for list")
-            return obj.items[access_at.value]
-        raise TypeError(f"attempted to access from type {type(obj).__name__}")
-    if isinstance(exp, Compose):
-        clo_inner = eval_exp(env, exp.inner)
-        clo_outer = eval_exp(env, exp.outer)
-        return Closure({}, Function(Var("x"), Apply(clo_outer, Apply(clo_inner, Var("x")))))
-    raise NotImplementedError(f"eval_exp not implemented for {exp}")
+            if isinstance(callee.func, Function):
+                assert isinstance(callee.func.arg, Var)
+                new_env = {**callee.env, callee.func.arg.name: arg}
+                env = new_env
+                exp = callee.func.body
+                continue
+            elif isinstance(callee.func, MatchFunction):
+                # TODO(max): Implement MatchClosure
+                arg = eval_exp(env, exp.arg)
+                for case in callee.func.cases:
+                    m = match(arg, case.pattern)
+                    if m is None:
+                        continue
+                    env = {**env, **m}
+                    exp = case.body
+                    break
+                else:
+                    raise MatchError("no matching cases")
+                continue
+            else:
+                raise TypeError(f"attempted to apply a non-function of type {type(callee.func).__name__}")
+        if isinstance(exp, Access):
+            obj = eval_exp(env, exp.obj)
+            if isinstance(obj, Record):
+                if not isinstance(exp.at, Var):
+                    raise TypeError(f"cannot access record field using {type(exp.at).__name__}, expected a field name")
+                if exp.at.name not in obj.data:
+                    raise NameError(f"no assignment to {exp.at.name} found in record")
+                return obj.data[exp.at.name]
+            elif isinstance(obj, List):
+                access_at = eval_exp(env, exp.at)
+                if not isinstance(access_at, Int):
+                    raise TypeError(f"cannot index into list using type {type(access_at).__name__}, expected integer")
+                if access_at.value < 0 or access_at.value >= len(obj.items):
+                    raise ValueError(f"index {access_at.value} out of bounds for list")
+                return obj.items[access_at.value]
+            raise TypeError(f"attempted to access from type {type(obj).__name__}")
+        if isinstance(exp, Compose):
+            clo_inner = eval_exp(env, exp.inner)
+            clo_outer = eval_exp(env, exp.outer)
+            return Closure({}, Function(Var("x"), Apply(clo_outer, Apply(clo_inner, Var("x")))))
+        raise NotImplementedError(f"eval_exp not implemented for {exp}")
 
 
 def bencode(obj: object) -> bytes:

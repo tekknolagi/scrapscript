@@ -2032,6 +2032,9 @@ class EndToEndTests(unittest.TestCase):
     def test_modulus(self) -> None:
         self.assertEqual(self._run("11 % 3"), Int(2))
 
+    def test_exp_binds_tighter_than_mul(self) -> None:
+        self.assertEqual(self._run("5 * 2 ^ 3"), Int(40))
+
 
 class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:

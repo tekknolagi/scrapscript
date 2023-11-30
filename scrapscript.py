@@ -2020,7 +2020,7 @@ class EndToEndTests(unittest.TestCase):
             self._run("$$listlength 1", STDLIB)
         self.assertEqual(ctx.exception.args[0], "listlength Expected List, but got Int")
 
-    def test_access_before_cons(self) -> None:
+    def test_list_access_binds_tighter_than_cons(self) -> None:
         self.assertEqual(self._run("[1, 2, 3] +< xs@0 . xs = [4]"), List([Int(1), Int(2), Int(3), Int(4)]))
 
     def test_exponentiation(self) -> None:

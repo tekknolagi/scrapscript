@@ -416,9 +416,6 @@ Env = Mapping[str, Object]
 
 class BinopKind(enum.Enum):
     ADD = auto()
-    STRING_CONCAT = auto()
-    LIST_CONS = auto()
-    LIST_APPEND = auto()
     SUB = auto()
     MUL = auto()
     DIV = auto()
@@ -429,10 +426,13 @@ class BinopKind(enum.Enum):
     GREATER = auto()
     LESS_EQUAL = auto()
     GREATER_EQUAL = auto()
+    STRING_CONCAT = auto()
+    LIST_CONS = auto()
+    LIST_APPEND = auto()
+    RIGHT_EVAL = auto()
     HASTYPE = auto()
     PIPE = auto()
     REVERSE_PIPE = auto()
-    RIGHT_EVAL = auto()
 
     @classmethod
     def from_str(cls, x: str) -> "BinopKind":

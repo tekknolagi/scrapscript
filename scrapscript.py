@@ -1053,17 +1053,14 @@ class ParserTests(unittest.TestCase):
     def test_parse_sha_var_returns_var(self) -> None:
         self.assertEqual(parse([Name("$sha1'abc")]), Var("$sha1'abc"))
 
-    def test_parse_sha_var_without_quote_raises_parse_error(self) -> None:
-        with self.assertRaisesRegex(ParseError, "unexpected token"):
-            parse([Name("$sha1abc")])
+    def test_parse_sha_var_without_quote_returns_var(self) -> None:
+        self.assertEqual(parse([Name("$sha1abc")]), Var("$sha1abc"))
 
-    def test_parse_dollar_raises_parse_error(self) -> None:
-        with self.assertRaisesRegex(ParseError, "unexpected token"):
-            parse([Name("$")])
+    def test_parse_dollar_returns_var(self) -> None:
+        self.assertEqual(parse([Name("$")]), Var("$"))
 
-    def test_parse_dollar_dollar_raises_parse_error(self) -> None:
-        with self.assertRaisesRegex(ParseError, "unexpected token"):
-            parse([Name("$$")])
+    def test_parse_dollar_dollar_returns_var(self) -> None:
+        self.assertEqual(parse([Name("$$")]), Var("$$"))
 
     def test_parse_sha_var_without_dollar_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, "unexpected token"):
@@ -1086,7 +1083,7 @@ class ParserTests(unittest.TestCase):
 
     def test_mul_binds_tighter_than_add_right(self) -> None:
         self.assertEqual(
-            parse([NumLit(1), "+", NumLit(2), "*", NumLit(3)]),
+            parse([NumLit(1), Operator("+"), NumLit(2), Operator("*"), NumLit(3)]),
             Binop(BinopKind.ADD, Int(1), Binop(BinopKind.MUL, Int(2), Int(3))),
         )
 
@@ -1104,19 +1101,19 @@ class ParserTests(unittest.TestCase):
 
     def test_list_access_binds_tighter_than_append(self) -> None:
         self.assertEqual(
-            parse(["a", "+<", "ls", "@", NumLit(0)]),
+            parse([Name("a"), Operator("+<"), Name("ls"), Operator("@"), NumLit(0)]),
             Binop(BinopKind.LIST_APPEND, Var("a"), Access(Var("ls"), Int(0))),
         )
 
     def test_parse_binary_str_concat_returns_binop(self) -> None:
         self.assertEqual(
-            parse(['"abc"', "++", '"def"']),
+            parse([StringLit("abc"), Operator("++"), StringLit("def")]),
             Binop(BinopKind.STRING_CONCAT, String("abc"), String("def")),
         )
 
     def test_parse_binary_list_cons_returns_binop(self) -> None:
         self.assertEqual(
-            parse(["a", ">+", "b"]),
+            parse([Name("a"), Operator(">+"), Name("b")]),
             Binop(BinopKind.LIST_CONS, Var("a"), Var("b")),
         )
 
@@ -1135,150 +1132,188 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_empty_list(self) -> None:
         self.assertEqual(
-            parse(["[", "]"]),
+            parse([Operator("["), Operator("]")]),
             List([]),
         )
 
     def test_parse_list_of_ints_returns_list(self) -> None:
         self.assertEqual(
-            parse(["[", NumLit(1), ",", NumLit(2), "]"]),
+            parse([Operator("["), NumLit(1), Operator(","), NumLit(2), Operator("]")]),
             List([Int(1), Int(2)]),
         )
 
     def test_parse_assign(self) -> None:
         self.assertEqual(
-            parse(["a", "=", NumLit(1)]),
+            parse([Name("a"), Operator("="), NumLit(1)]),
             Assign(Var("a"), Int(1)),
         )
 
     def test_parse_function_one_arg_returns_function(self) -> None:
         self.assertEqual(
-            parse(["a", "->", "a", "+", NumLit(1)]),
+            parse([Name("a"), Operator("->"), Name("a"), Operator("+"), NumLit(1)]),
             Function(Var("a"), Binop(BinopKind.ADD, Var("a"), Int(1))),
         )
 
     def test_parse_function_two_args_returns_functions(self) -> None:
         self.assertEqual(
-            parse(["a", "->", "b", "->", "a", "+", "b"]),
+            parse([Name("a"), Operator("->"), Name("b"), Operator("->"), Name("a"), Operator("+"), Name("b")]),
             Function(Var("a"), Function(Var("b"), Binop(BinopKind.ADD, Var("a"), Var("b")))),
         )
 
     def test_parse_assign_function(self) -> None:
         self.assertEqual(
-            parse(["id", "=", "x", "->", "x"]),
+            parse([Name("id"), Operator("="), Name("x"), Operator("->"), Name("x")]),
             Assign(Var("id"), Function(Var("x"), Var("x"))),
         )
 
     def test_parse_function_application_one_arg(self) -> None:
-        self.assertEqual(parse(["f", "a"]), Apply(Var("f"), Var("a")))
+        self.assertEqual(parse([Name("f"), Name("a")]), Apply(Var("f"), Var("a")))
 
     def test_parse_function_application_two_args(self) -> None:
-        self.assertEqual(parse(["f", "a", "b"]), Apply(Apply(Var("f"), Var("a")), Var("b")))
+        self.assertEqual(parse([Name("f"), Name("a"), Name("b")]), Apply(Apply(Var("f"), Var("a")), Var("b")))
 
     def test_parse_where(self) -> None:
-        self.assertEqual(parse(["a", ".", "b"]), Where(Var("a"), Var("b")))
+        self.assertEqual(parse([Name("a"), Operator("."), Name("b")]), Where(Var("a"), Var("b")))
 
     def test_parse_nested_where(self) -> None:
-        self.assertEqual(parse(["a", ".", "b", ".", "c"]), Where(Where(Var("a"), Var("b")), Var("c")))
+        self.assertEqual(
+            parse([Name("a"), Operator("."), Name("b"), Operator("."), Name("c")]),
+            Where(Where(Var("a"), Var("b")), Var("c")),
+        )
 
     def test_parse_assert(self) -> None:
-        self.assertEqual(parse(["a", "?", "b"]), Assert(Var("a"), Var("b")))
+        self.assertEqual(parse([Name("a"), Operator("?"), Name("b")]), Assert(Var("a"), Var("b")))
 
     def test_parse_nested_assert(self) -> None:
-        self.assertEqual(parse(["a", "?", "b", "?", "c"]), Assert(Assert(Var("a"), Var("b")), Var("c")))
+        self.assertEqual(
+            parse([Name("a"), Operator("?"), Name("b"), Operator("?"), Name("c")]),
+            Assert(Assert(Var("a"), Var("b")), Var("c")),
+        )
 
     def test_parse_mixed_assert_where(self) -> None:
-        self.assertEqual(parse(["a", "?", "b", ".", "c"]), Where(Assert(Var("a"), Var("b")), Var("c")))
+        self.assertEqual(
+            parse([Name("a"), Operator("?"), Name("b"), Operator("."), Name("c")]),
+            Where(Assert(Var("a"), Var("b")), Var("c")),
+        )
 
     def test_parse_hastype(self) -> None:
-        self.assertEqual(parse(["a", ":", "b"]), Binop(BinopKind.HASTYPE, Var("a"), Var("b")))
+        self.assertEqual(parse([Name("a"), Operator(":"), Name("b")]), Binop(BinopKind.HASTYPE, Var("a"), Var("b")))
 
     def test_parse_hole(self) -> None:
-        self.assertEqual(parse(["(", ")"]), Hole())
+        self.assertEqual(parse([Operator("("), Operator(")")]), Hole())
 
     def test_parse_parenthesized_expression(self) -> None:
-        self.assertEqual(parse(["(", NumLit(1), "+", NumLit(2), ")"]), Binop(BinopKind.ADD, Int(1), Int(2)))
+        self.assertEqual(
+            parse([Operator("("), NumLit(1), Operator("+"), NumLit(2), Operator(")")]),
+            Binop(BinopKind.ADD, Int(1), Int(2)),
+        )
 
     def test_parse_parenthesized_add_mul(self) -> None:
         self.assertEqual(
-            parse(["(", NumLit(1), "+", NumLit(2), ")", "*", NumLit(3)]),
+            parse([Operator("("), NumLit(1), Operator("+"), NumLit(2), Operator(")"), Operator("*"), NumLit(3)]),
             Binop(BinopKind.MUL, Binop(BinopKind.ADD, Int(1), Int(2)), Int(3)),
         )
 
     def test_parse_pipe(self) -> None:
         self.assertEqual(
-            parse([NumLit(1), "|>", "f"]),
+            parse([NumLit(1), Operator("|>"), Name("f")]),
             Apply(Var("f"), Int(1)),
         )
 
     def test_parse_nested_pipe(self) -> None:
         self.assertEqual(
-            parse([NumLit(1), "|>", "f", "|>", "g"]),
+            parse([NumLit(1), Operator("|>"), Name("f"), Operator("|>"), Name("g")]),
             Apply(Var("g"), Apply(Var("f"), Int(1))),
         )
 
     def test_parse_reverse_pipe(self) -> None:
         self.assertEqual(
-            parse(["f", "<|", NumLit(1)]),
+            parse([Name("f"), Operator("<|"), NumLit(1)]),
             Apply(Var("f"), Int(1)),
         )
 
     def test_parse_nested_reverse_pipe(self) -> None:
         self.assertEqual(
-            parse(["g", "<|", "f", "<|", NumLit(1)]),
+            parse([Name("g"), Operator("<|"), Name("f"), Operator("<|"), NumLit(1)]),
             Apply(Var("g"), Apply(Var("f"), Int(1))),
         )
 
     def test_parse_empty_record(self) -> None:
-        self.assertEqual(parse(["{", "}"]), Record({}))
+        self.assertEqual(parse([Operator("{"), Operator("}")]), Record({}))
 
     def test_parse_record_single_field(self) -> None:
-        self.assertEqual(parse(["{", "a", "=", NumLit(4), "}"]), Record({"a": Int(4)}))
+        self.assertEqual(
+            parse([Operator("{"), Name("a"), Operator("="), NumLit(4), Operator("}")]), Record({"a": Int(4)})
+        )
 
     def test_parse_record_with_expression(self) -> None:
         self.assertEqual(
-            parse(["{", "a", "=", NumLit(1), "+", NumLit(2), "}"]),
+            parse([Operator("{"), Name("a"), Operator("="), NumLit(1), Operator("+"), NumLit(2), Operator("}")]),
             Record({"a": Binop(BinopKind.ADD, Int(1), Int(2))}),
         )
 
     def test_parse_record_multiple_fields(self) -> None:
         self.assertEqual(
-            parse(["{", "a", "=", NumLit(4), ",", "b", "=", '"z"', "}"]), Record({"a": Int(4), "b": String("z")})
+            parse(
+                [
+                    Operator("{"),
+                    Name("a"),
+                    Operator("="),
+                    NumLit(4),
+                    Operator(","),
+                    Name("b"),
+                    Operator("="),
+                    StringLit("z"),
+                    Operator("}"),
+                ]
+            ),
+            Record({"a": Int(4), "b": String("z")}),
         )
 
     def test_non_variable_in_assignment_raises_parse_error(self) -> None:
         with self.assertRaises(ParseError) as ctx:
-            parse([NumLit(3), "=", NumLit(4)])
+            parse([NumLit(3), Operator("="), NumLit(4)])
         self.assertEqual(ctx.exception.args[0], "expected variable in assignment Int(value=3)")
 
     def test_non_assign_in_record_constructor_raises_parse_error(self) -> None:
         with self.assertRaises(ParseError) as ctx:
-            parse(["{", NumLit(1), ",", NumLit(2), "}"])
+            parse([Operator("{"), NumLit(1), Operator(","), NumLit(2), Operator("}")])
         self.assertEqual(ctx.exception.args[0], "failed to parse variable assignment in record constructor")
 
     def test_parse_right_eval_returns_binop(self) -> None:
-        self.assertEqual(parse(["a", "!", "b"]), Binop(BinopKind.RIGHT_EVAL, Var("a"), Var("b")))
+        self.assertEqual(parse([Name("a"), Operator("!"), Name("b")]), Binop(BinopKind.RIGHT_EVAL, Var("a"), Var("b")))
 
     def test_parse_right_eval_with_defs_returns_binop(self) -> None:
         self.assertEqual(
-            parse(["a", "!", "b", ".", "c"]),
+            parse([Name("a"), Operator("!"), Name("b"), Operator("."), Name("c")]),
             Binop(BinopKind.RIGHT_EVAL, Var("a"), Where(Var("b"), Var("c"))),
         )
 
     def test_parse_match_no_cases_raises_parse_error(self) -> None:
         with self.assertRaises(ParseError) as ctx:
-            parse(["|"])
+            parse([Operator("|")])
         self.assertEqual(ctx.exception.args[0], "unexpected end of input")
 
     def test_parse_match_one_case(self) -> None:
         self.assertEqual(
-            parse(["|", NumLit(1), "->", NumLit(2)]),
+            parse([Operator("|"), NumLit(1), Operator("->"), NumLit(2)]),
             MatchFunction([MatchCase(Int(1), Int(2))]),
         )
 
     def test_parse_match_two_cases(self) -> None:
         self.assertEqual(
-            parse(["|", NumLit(1), "->", NumLit(2), "|", NumLit(2), "->", NumLit(3)]),
+            parse(
+                [
+                    Operator("|"),
+                    NumLit(1),
+                    Operator("->"),
+                    NumLit(2),
+                    Operator("|"),
+                    NumLit(2),
+                    Operator("->"),
+                    NumLit(3),
+                ]
+            ),
             MatchFunction(
                 [
                     MatchCase(Int(1), Int(2)),
@@ -1288,14 +1323,14 @@ class ParserTests(unittest.TestCase):
         )
 
     def test_parse_compose(self) -> None:
-        self.assertEqual(parse(["f", ">>", "g"]), Compose(Var("f"), Var("g")))
+        self.assertEqual(parse([Name("f"), Operator(">>"), Name("g")]), Compose(Var("f"), Var("g")))
 
     def test_parse_compose_reverse(self) -> None:
-        self.assertEqual(parse(["f", "<<", "g"]), Compose(Var("g"), Var("f")))
+        self.assertEqual(parse([Name("f"), Operator("<<"), Name("g")]), Compose(Var("g"), Var("f")))
 
     def test_parse_double_compose(self) -> None:
         self.assertEqual(
-            parse(["f", "<<", "g", "<<", "h"]),
+            parse([Name("f"), Operator("<<"), Name("g"), Operator("<<"), Name("h")]),
             Compose(Compose(Var("h"), Var("g")), Var("f")),
         )
 

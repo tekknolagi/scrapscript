@@ -723,10 +723,7 @@ def eval_exp(env: Env, exp: Object) -> Object:
                 m = match(arg, case.pattern)
                 if m is None:
                     continue
-                # TODO(max): Don't pass in env here; special case assignment
-                # binding functions to names to be letrec-like so that they can
-                # refer to themselves.
-                return eval_exp({**env, **callee.env, **m}, case.body)
+                return eval_exp({**callee.env, **m}, case.body)
             raise MatchError("no matching cases")
         else:
             raise TypeError(f"attempted to apply a non-function of type {type(callee.func).__name__}")

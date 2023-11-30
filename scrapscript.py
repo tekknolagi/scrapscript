@@ -261,16 +261,11 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         raise UnexpectedEOFError("unexpected end of input")
     token = tokens.pop(0)
     l: Object
-    sha_prefix = "$sha1'"
-    dollar_dollar_prefix = "$$"
-    tilde_tilde_prefix = "~~"
-    # TODO(max): Tag tokens out of the lexer so we don't have to re-interpret
-    # them here.
     if isinstance(token, NumLit):
         l = Int(token.value)
     elif isinstance(token, Name):
         # TODO: Handle kebab case vars
-        l = Var(token)
+        l = Var(token.value)
     elif isinstance(token, BytesLit):
         base = token.base
         if base == 85:
@@ -334,22 +329,22 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         op = tokens[0]
         if op in (Operator(")"), Operator("]"), Operator("}")):
             break
-        if op not in PS:
+        if not isinstance(op, Operator) or op.value not in PS:
             # TODO(max): Apply
-            op = ""
-        prec = PS[op]
+            op = Operator("")
+        prec = PS[op.value]
         pl, pr = prec.pl, prec.pr
         if pl < p:
             break
-        if op != "":
+        if op != Operator(""):
             tokens.pop(0)
-        if op == "=":
+        if op == Operator("="):
             if not isinstance(l, Var):
                 raise ParseError(f"expected variable in assignment {l!r}")
             l = Assign(l, parse(tokens, pr))
         elif op == Operator("->"):
             l = Function(l, parse(tokens, pr))
-        elif op == "":
+        elif op == Operator(""):
             l = Apply(l, parse(tokens, pr))
         elif op == Operator("|>"):
             l = Apply(parse(tokens, pr), l)
@@ -367,7 +362,7 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
             # TODO: revisit whether to use @ or . for field access
             l = Access(l, parse(tokens, pr))
         else:
-            l = Binop(BinopKind.from_str(op), l, parse(tokens, pr))
+            l = Binop(BinopKind.from_str(op.value), l, parse(tokens, pr))
     return l
 
 
@@ -1050,42 +1045,42 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse([NumLit(123)]), Int(123))
 
     def test_parse_negative_int_returns_int(self) -> None:
-        self.assertEqual(parse(["-123"]), Int(-123))
+        self.assertEqual(parse([NumLit(-123)]), Int(-123))
 
     def test_parse_var_returns_var(self) -> None:
-        self.assertEqual(parse(["abc_123"]), Var("abc_123"))
+        self.assertEqual(parse([Name("abc_123")]), Var("abc_123"))
 
     def test_parse_sha_var_returns_var(self) -> None:
-        self.assertEqual(parse(["$sha1'abc"]), Var("$sha1'abc"))
+        self.assertEqual(parse([Name("$sha1'abc")]), Var("$sha1'abc"))
 
     def test_parse_sha_var_without_quote_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, "unexpected token"):
-            parse(["$sha1abc"])
+            parse([Name("$sha1abc")])
 
     def test_parse_dollar_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, "unexpected token"):
-            parse(["$"])
+            parse([Name("$")])
 
     def test_parse_dollar_dollar_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, "unexpected token"):
-            parse(["$$"])
+            parse([Name("$$")])
 
     def test_parse_sha_var_without_dollar_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, "unexpected token"):
-            parse(["sha1'abc"])
+            parse([Name("sha1'abc")])
 
     def test_parse_dollar_dollar_var_returns_var(self) -> None:
-        self.assertEqual(parse(["$$bills"]), Var("$$bills"))
+        self.assertEqual(parse([Name("$$bills")]), Var("$$bills"))
 
     def test_parse_bytes_returns_bytes(self) -> None:
-        self.assertEqual(parse(["~~64'QUJD"]), Bytes(b"ABC"))
+        self.assertEqual(parse([BytesLit("QUJD", 64)]), Bytes(b"ABC"))
 
     def test_parse_binary_add_returns_binop(self) -> None:
-        self.assertEqual(parse([NumLit(1), "+", NumLit(2)]), Binop(BinopKind.ADD, Int(1), Int(2)))
+        self.assertEqual(parse([NumLit(1), Operator("+"), NumLit(2)]), Binop(BinopKind.ADD, Int(1), Int(2)))
 
     def test_parse_binary_add_right_returns_binop(self) -> None:
         self.assertEqual(
-            parse([NumLit(1), "+", NumLit(2), "+", NumLit(3)]),
+            parse([NumLit(1), Operator("+"), NumLit(2), Operator("+"), NumLit(3)]),
             Binop(BinopKind.ADD, Int(1), Binop(BinopKind.ADD, Int(2), Int(3))),
         )
 
@@ -1097,13 +1092,13 @@ class ParserTests(unittest.TestCase):
 
     def test_mul_binds_tighter_than_add_left(self) -> None:
         self.assertEqual(
-            parse([NumLit(1), "*", NumLit(2), "+", NumLit(3)]),
+            parse([NumLit(1), Operator("*"), NumLit(2), Operator("+"), NumLit(3)]),
             Binop(BinopKind.ADD, Binop(BinopKind.MUL, Int(1), Int(2)), Int(3)),
         )
 
     def test_exp_binds_tighter_than_mul_right(self) -> None:
         self.assertEqual(
-            parse([NumLit(5), "*", NumLit(2), "^", NumLit(3)]),
+            parse([NumLit(5), Operator("*"), NumLit(2), Operator("^"), NumLit(3)]),
             Binop(BinopKind.MUL, Int(5), Binop(BinopKind.EXP, Int(2), Int(3))),
         )
 
@@ -1127,7 +1122,7 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_binary_list_append_returns_binop(self) -> None:
         self.assertEqual(
-            parse(["a", "+<", "b"]),
+            parse([Name("a"), Operator("+<"), Name("b")]),
             Binop(BinopKind.LIST_APPEND, Var("a"), Var("b")),
         )
 
@@ -1136,7 +1131,7 @@ class ParserTests(unittest.TestCase):
         for op in ops:
             with self.subTest(op=op):
                 kind = BinopKind.from_str(op)
-                self.assertEqual(parse(["a", op, "b"]), Binop(kind, Var("a"), Var("b")))
+                self.assertEqual(parse([Name("a"), Operator(op), Name("b")]), Binop(kind, Var("a"), Var("b")))
 
     def test_parse_empty_list(self) -> None:
         self.assertEqual(

@@ -1025,6 +1025,18 @@ class ParserTests(unittest.TestCase):
             Binop(BinopKind.ADD, Binop(BinopKind.MUL, Int(1), Int(2)), Int(3)),
         )
 
+    def test_exp_binds_tighter_than_mul_right(self) -> None:
+        self.assertEqual(
+            parse(["5", "*", "2", "^", "3"]),
+            Binop(BinopKind.MUL, Int(5), Binop(BinopKind.EXP, Int(2), Int(3))),
+        )
+
+    def test_list_access_binds_tighter_than_append(self) -> None:
+        self.assertEqual(
+            parse(["a", "+<", "ls", "@", "0"]),
+            Binop(BinopKind.LIST_APPEND, Var("a"), Access(Var("ls"), Int(0))),
+        )
+
     def test_parse_binary_str_concat_returns_binop(self) -> None:
         self.assertEqual(
             parse(['"abc"', "++", '"def"']),
@@ -1407,6 +1419,14 @@ class EvalTests(unittest.TestCase):
     def test_eval_with_binop_div(self) -> None:
         exp = Binop(BinopKind.DIV, Int(2), Int(3))
         self.assertEqual(eval_exp({}, exp), Int(0))
+
+    def test_eval_with_binop_exp(self) -> None:
+        exp = Binop(BinopKind.EXP, Int(2), Int(3))
+        self.assertEqual(eval_exp({}, exp), Int(8))
+
+    def test_eval_with_binop_mod(self) -> None:
+        exp = Binop(BinopKind.MOD, Int(10), Int(4))
+        self.assertEqual(eval_exp({}, exp), Int(2))
 
     def test_eval_with_binop_equal_with_equal_returns_true(self) -> None:
         exp = Binop(BinopKind.EQUAL, Int(1), Int(1))
@@ -2023,7 +2043,7 @@ class EndToEndTests(unittest.TestCase):
             self._run("$$listlength 1", STDLIB)
         self.assertEqual(ctx.exception.args[0], "listlength Expected List, but got Int")
 
-    def test_list_access_binds_tighter_than_cons(self) -> None:
+    def test_list_access_binds_tighter_than_append(self) -> None:
         self.assertEqual(self._run("[1, 2, 3] +< xs@0 . xs = [4]"), List([Int(1), Int(2), Int(3), Int(4)]))
 
     def test_exponentiation(self) -> None:

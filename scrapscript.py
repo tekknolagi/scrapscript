@@ -693,6 +693,17 @@ class Apply(Object):
     func: Object
     arg: Object
 
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Apply":
+        assert msg["type"] == "Apply"
+        func_obj = msg["func"]
+        assert isinstance(func_obj, dict)
+        func = Object.deserialize(func_obj)
+        arg_obj = msg["arg"]
+        assert isinstance(arg_obj, dict)
+        arg = Object.deserialize(arg_obj)
+        return Apply(func, arg)
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Compose(Object):
@@ -3055,6 +3066,17 @@ class ObjectSerializeTests(unittest.TestCase):
             },
         )
 
+    def test_serialize_apply(self) -> None:
+        obj = Apply(Var("f"), Var("x"))
+        self.assertEqual(
+            obj.serialize(),
+            {
+                b"func": {b"name": b"f", b"type": b"Var"},
+                b"arg": {b"name": b"x", b"type": b"Var"},
+                b"type": b"Apply",
+            },
+        )
+
     def test_serialize_closure(self) -> None:
         obj = Closure({"a": Int(123)}, Function(Var("x"), Var("x")))
         self.assertEqual(
@@ -3139,6 +3161,15 @@ class ObjectDeserializeTests(unittest.TestCase):
         result = Object.deserialize(msg)
         self.assertEqual(result, obj)
         self.assertIs(result, obj)
+
+    def test_deserialize_apply(self) -> None:
+        obj = Apply(Var("f"), Var("x"))
+        msg = {
+            "func": {"name": "f", "type": "Var"},
+            "arg": {"name": "x", "type": "Var"},
+            "type": "Apply",
+        }
+        self.assertEqual(Object.deserialize(msg), obj)
 
 
 class SerializeTests(unittest.TestCase):

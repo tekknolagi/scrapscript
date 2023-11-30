@@ -170,6 +170,7 @@ def xp(n: float) -> Prec:
 
 PS = {
     "::": lp(2000),
+    "@": rp(1001),
     "": rp(1000),
     ">>": lp(14),
     "<<": lp(14),
@@ -196,7 +197,6 @@ PS = {
     "|>": rp(4.11),
     "<|": lp(4.11),
     "=": rp(4),
-    "@": rp(4),
     "!": lp(3),
     ".": rp(3),
     "?": rp(3),
@@ -2016,6 +2016,9 @@ class EndToEndTests(unittest.TestCase):
         with self.assertRaises(TypeError) as ctx:
             self._run("$$listlength 1", STDLIB)
         self.assertEqual(ctx.exception.args[0], "listlength Expected List, but got Int")
+
+    def test_access_before_cons(self) -> None:
+        self.assertEqual(self._run("[1, 2, 3] +< xs@0 . xs = [4]"), List([Int(1), Int(2), Int(3), Int(4)]))
 
 
 class BencodeTests(unittest.TestCase):

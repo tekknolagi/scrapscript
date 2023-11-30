@@ -1134,7 +1134,14 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
         if parsed_path.path == "/repl":
             return self.do_repl()
         if parsed_path.path == "/eval":
-            return self.do_eval(query)
+            try:
+                return self.do_eval(query)
+            except Exception as e:
+                self.send_response(400)
+                self.send_header("Content-type", "text/plain")
+                self.end_headers()
+                self.wfile.write(str(e).encode("utf-8"))
+                return
         return self.do_404()
 
     def do_repl(self) -> None:
@@ -1173,11 +1180,7 @@ function updateHistory(inp, out) {
 
 async function sendRequest(env, exp) {
     const params = env === null ? {exp} : {exp, env};
-    const response = await fetch("/eval?" + new URLSearchParams(params));
-    if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}`);
-    }
-    return response.json();
+    return fetch("/eval?" + new URLSearchParams(params));
 }
 
 const input = document.getElementById("input");
@@ -1201,17 +1204,19 @@ input.focus();
 input.addEventListener("keyup", async ({key}) => {
     // TODO(max): Make up/down arrow keys navigate history
     if (key === "Enter") {
-        sendRequest(document.env, input.value).then(response => {
-            const {env, result} = response;
+        const response = await sendRequest(document.env, input.value);
+        if (response.ok) {
+            const {env, result} = await response.json();
             updateHistory(input.value, result);
             input.value = "";
             document.env = env;
             window.localStorage.setItem('env', env)
             window.localStorage.setItem('history', output.innerHTML);
-        }).catch(error => {
-            updateHistory(input.value, error);
+        } else {
+            const msg = await response.text();
+            updateHistory(input.value, msg);
             input.value = "";
-        });
+        }
     }
 });
 button.addEventListener("click", () => {

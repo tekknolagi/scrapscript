@@ -174,13 +174,13 @@ PS = {
     "": rp(1000),
     ">>": lp(14),
     "<<": lp(14),
+    "^": rp(13),
     "*": lp(12),
     "/": lp(12),
     "//": lp(12),
     "%": lp(12),
     "+": lp(11),
     "-": lp(11),
-    "**": rp(10),
     ">*": rp(10),
     "++": rp(10),
     ">+": lp(10),
@@ -441,7 +441,7 @@ class BinopKind(enum.Enum):
             "-": cls.SUB,
             "*": cls.MUL,
             "/": cls.DIV,
-            "**": cls.EXP,
+            "^": cls.EXP,
             "==": cls.EQUAL,
             "/=": cls.NOT_EQUAL,
             "<": cls.LESS,
@@ -789,7 +789,7 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(tokenize("1-2"), ["1", "-", "2"])
 
     def test_tokenize_binop_var(self) -> None:
-        ops = ["+", "-", "*", "/", "**", "==", "/=", "<", ">", "<=", ">=", "++", ">+", "+<"]
+        ops = ["+", "-", "*", "/", "^", "==", "/=", "<", ">", "<=", ">=", "++", ">+", "+<"]
         for op in ops:
             with self.subTest(op=op):
                 self.assertEqual(tokenize(f"a {op} b"), ["a", op, "b"])
@@ -1041,7 +1041,7 @@ class ParserTests(unittest.TestCase):
         )
 
     def test_parse_binary_op_returns_binop(self) -> None:
-        ops = ["+", "-", "*", "/", "**", "==", "/=", "<", ">", "<=", ">=", "++", ">+", "+<"]
+        ops = ["+", "-", "*", "/", "^", "==", "/=", "<", ">", "<=", ">=", "++", ">+", "+<"]
         for op in ops:
             with self.subTest(op=op):
                 kind = BinopKind.from_str(op)
@@ -2024,7 +2024,7 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(self._run("[1, 2, 3] +< xs@0 . xs = [4]"), List([Int(1), Int(2), Int(3), Int(4)]))
 
     def test_exponentiation(self) -> None:
-        self.assertEqual(self._run("6 ** 2"), Int(36))
+        self.assertEqual(self._run("6 ^ 2"), Int(36))
 
 
 class BencodeTests(unittest.TestCase):

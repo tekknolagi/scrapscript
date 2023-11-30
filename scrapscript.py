@@ -19,7 +19,7 @@ import urllib.parse
 from dataclasses import dataclass
 from enum import auto
 from types import ModuleType, FunctionType
-from typing import Any, Callable, Dict, Mapping, Optional, Union
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Union
 
 readline: Optional[ModuleType]
 try:
@@ -1116,12 +1116,12 @@ class ScrapMonad:
         assert isinstance(env, dict)  # for .copy()
         self.env: Env = env.copy()
 
-    def bind(self, exp: Object) -> "ScrapMonad":
+    def bind(self, exp: Object) -> Tuple[Object, "ScrapMonad"]:
         env = self.env
         result = eval_exp(env, exp)
         if isinstance(result, EnvObject):
-            return ScrapMonad({**env, **result.env})
-        return ScrapMonad({**env, "_": result})
+            return result, ScrapMonad({**env, **result.env})
+        return result, ScrapMonad({**env, "_": result})
 
 
 class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
@@ -1261,7 +1261,7 @@ button.addEventListener("click", () => {
         logging.debug("env is %s", env)
         monad = ScrapMonad(env)
         try:
-            result = monad.bind(ast)
+            result, next_monad = monad.bind(ast)
         except Exception as e:
             serialized = EnvObject(env).serialize()
             encoded = bencode(serialized)
@@ -1272,10 +1272,9 @@ button.addEventListener("click", () => {
             self.end_headers()
             self.wfile.write(json.dumps(response).encode("utf-8"))
         else:
-            serialized = EnvObject(result.env).serialize()
+            serialized = EnvObject(next_monad.env).serialize()
             encoded = bencode(serialized)
-            expr_result = result.env.get("_")
-            response = {"env": encoded.decode("utf-8"), "result": repr(expr_result) if expr_result is not None else ""}
+            response = {"env": encoded.decode("utf-8"), "result": str(result)}
             self.send_response(200)
             self.send_header("Content-type", "text/plain")
             self.send_header("Cache-Control", "max-age=3600")
@@ -3211,9 +3210,9 @@ class ScrapMonadTests(unittest.TestCase):
     def test_bind_returns_new_monad(self) -> None:
         env = {"a": Int(123)}
         orig = ScrapMonad(env)
-        result = orig.bind(Assign(Var("b"), Int(456)))
+        result, next_monad = orig.bind(Assign(Var("b"), Int(456)))
         self.assertEqual(orig.env, {"a": Int(123)})
-        self.assertEqual(result.env, {"a": Int(123), "b": Int(456)})
+        self.assertEqual(next_monad.env, {"a": Int(123), "b": Int(456)})
 
 
 def eval_command(args: argparse.Namespace) -> None:

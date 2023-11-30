@@ -1633,6 +1633,10 @@ class EvalTests(unittest.TestCase):
         exp = Apply(Var("$$quote"), ast)
         self.assertIs(eval_exp({}, exp), ast)
 
+    def test_eval_apply_closure_with_match_function_has_access_to_closure_vars(self) -> None:
+        ast = Apply(Closure({"x": Int(1)}, MatchFunction([MatchCase(Var("y"), Var("x"))])), Int(2))
+        self.assertEqual(eval_exp({}, ast), Int(1))
+
 
 class EndToEndTests(unittest.TestCase):
     def _run(self, text: str, env: Optional[Env] = None) -> Object:

@@ -1,6 +1,4 @@
-map fn 4 arr
-. map = f ->
-  | 0 -> xs -> []
-  | i -> xs -> (map f (i - 1) xs) +< (f (xs@(i - 1)))
-. fn = v -> v * 2
-. arr = [1, 2, 3, 4]
+map (v -> v * 2) [1, 2, 3, 4] 4
+. map = f -> xs ->
+  | 0 -> []
+  | i -> (map f xs (i - 1)) +< (f (xs@(i - 1)))

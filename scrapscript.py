@@ -420,6 +420,7 @@ class BinopKind(enum.Enum):
     MUL = auto()
     DIV = auto()
     EXP = auto()
+    MOD = auto()
     EQUAL = auto()
     NOT_EQUAL = auto()
     LESS = auto()
@@ -442,6 +443,7 @@ class BinopKind(enum.Enum):
             "*": cls.MUL,
             "/": cls.DIV,
             "^": cls.EXP,
+            "%": cls.MOD,
             "==": cls.EQUAL,
             "/=": cls.NOT_EQUAL,
             "<": cls.LESS,
@@ -602,6 +604,7 @@ BINOP_HANDLERS: Dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.MUL: lambda env, x, y: Int(eval_int(env, x) * eval_int(env, y)),
     BinopKind.DIV: lambda env, x, y: Int(eval_int(env, x) // eval_int(env, y)),
     BinopKind.EXP: lambda env, x, y: Int(eval_int(env, x) ** eval_int(env, y)),
+    BinopKind.MOD: lambda env, x, y: Int(eval_int(env, x) % eval_int(env, y)),
     BinopKind.EQUAL: lambda env, x, y: Bool(eval_exp(env, x) == eval_exp(env, y)),
     BinopKind.NOT_EQUAL: lambda env, x, y: Bool(eval_exp(env, x) != eval_exp(env, y)),
     BinopKind.LESS: lambda env, x, y: Int(eval_int(env, x) < eval_int(env, y)),
@@ -789,7 +792,7 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(tokenize("1-2"), ["1", "-", "2"])
 
     def test_tokenize_binop_var(self) -> None:
-        ops = ["+", "-", "*", "/", "^", "==", "/=", "<", ">", "<=", ">=", "++", ">+", "+<"]
+        ops = ["+", "-", "*", "/", "^", "%", "==", "/=", "<", ">", "<=", ">=", "++", ">+", "+<"]
         for op in ops:
             with self.subTest(op=op):
                 self.assertEqual(tokenize(f"a {op} b"), ["a", op, "b"])
@@ -1041,7 +1044,7 @@ class ParserTests(unittest.TestCase):
         )
 
     def test_parse_binary_op_returns_binop(self) -> None:
-        ops = ["+", "-", "*", "/", "^", "==", "/=", "<", ">", "<=", ">=", "++", ">+", "+<"]
+        ops = ["+", "-", "*", "/", "^", "%", "==", "/=", "<", ">", "<=", ">=", "++", ">+", "+<"]
         for op in ops:
             with self.subTest(op=op):
                 kind = BinopKind.from_str(op)
@@ -2025,6 +2028,9 @@ class EndToEndTests(unittest.TestCase):
 
     def test_exponentiation(self) -> None:
         self.assertEqual(self._run("6 ^ 2"), Int(36))
+
+    def test_modulus(self) -> None:
+        self.assertEqual(self._run("11 % 3"), Int(2))
 
 
 class BencodeTests(unittest.TestCase):

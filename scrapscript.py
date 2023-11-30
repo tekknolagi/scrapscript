@@ -1170,6 +1170,7 @@ async function sendRequest(env, exp) {
     const params = env === null ? {exp} : {exp, env};
     const response = await fetch("/eval?" + new URLSearchParams(params));
     if (!response.ok) {
+        output.innerHTML += input.value + `\nthere was an error :( (http code ${response.status})\n>>> `;
         throw new Error(`${response.status} ${response.statusText}`);
     }
     return response.json();

@@ -437,9 +437,6 @@ class BinopKind(enum.Enum):
     def from_str(cls, x: str) -> "BinopKind":
         return {
             "+": cls.ADD,
-            "++": cls.STRING_CONCAT,
-            ">+": cls.LIST_CONS,
-            "+<": cls.LIST_APPEND,
             "-": cls.SUB,
             "*": cls.MUL,
             "/": cls.DIV,
@@ -449,10 +446,13 @@ class BinopKind(enum.Enum):
             ">": cls.GREATER,
             "<=": cls.LESS_EQUAL,
             ">=": cls.GREATER_EQUAL,
+            "++": cls.STRING_CONCAT,
+            ">+": cls.LIST_CONS,
+            "+<": cls.LIST_APPEND,
+            "!": cls.RIGHT_EVAL,
             ":": cls.HASTYPE,
             "|>": cls.PIPE,
             "<|": cls.REVERSE_PIPE,
-            "!": cls.RIGHT_EVAL,
         }[x]
 
 
@@ -596,13 +596,18 @@ def eval_list(env: Env, exp: Object) -> typing.List[Object]:
 
 BINOP_HANDLERS: Dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.ADD: lambda env, x, y: Int(eval_int(env, x) + eval_int(env, y)),
-    BinopKind.STRING_CONCAT: lambda env, x, y: String(eval_str(env, x) + eval_str(env, y)),
-    BinopKind.LIST_CONS: lambda env, x, y: List([eval_exp(env, x)] + eval_list(env, y)),
-    BinopKind.LIST_APPEND: lambda env, x, y: List(eval_list(env, x) + [eval_exp(env, y)]),
     BinopKind.SUB: lambda env, x, y: Int(eval_int(env, x) - eval_int(env, y)),
     BinopKind.MUL: lambda env, x, y: Int(eval_int(env, x) * eval_int(env, y)),
     BinopKind.DIV: lambda env, x, y: Int(eval_int(env, x) // eval_int(env, y)),
     BinopKind.EQUAL: lambda env, x, y: Bool(eval_exp(env, x) == eval_exp(env, y)),
+    BinopKind.NOT_EQUAL: lambda env, x, y: Bool(eval_exp(env, x) != eval_exp(env, y)),
+    BinopKind.LESS: lambda env, x, y: Int(eval_int(env, x) < eval_int(env, y)),
+    BinopKind.GREATER: lambda env, x, y: Int(eval_int(env, x) > eval_int(env, y)),
+    BinopKind.LESS_EQUAL: lambda env, x, y: Int(eval_int(env, x) <= eval_int(env, y)),
+    BinopKind.GREATER_EQUAL: lambda env, x, y: Int(eval_int(env, x) >= eval_int(env, y)),
+    BinopKind.STRING_CONCAT: lambda env, x, y: String(eval_str(env, x) + eval_str(env, y)),
+    BinopKind.LIST_CONS: lambda env, x, y: List([eval_exp(env, x)] + eval_list(env, y)),
+    BinopKind.LIST_APPEND: lambda env, x, y: List(eval_list(env, x) + [eval_exp(env, y)]),
     BinopKind.RIGHT_EVAL: lambda env, x, y: eval_exp(env, y),
 }
 

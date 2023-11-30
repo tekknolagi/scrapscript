@@ -1,0 +1,25 @@
+# fly.toml app configuration file generated for scrapscript on 2023-11-29T02:06:16-05:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = "scrapscript"
+primary_region = "ewr"
+
+[build]
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
+
+[experimental]
+cmd = ["serve", "--port", "8000", "--debug"]

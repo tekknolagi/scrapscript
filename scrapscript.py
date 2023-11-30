@@ -682,6 +682,10 @@ def eval_exp(env: Env, exp: Object) -> Object:
         assert isinstance(exp.name, Var)
         value = eval_exp(env, exp.value)
         if isinstance(value, Closure):
+            # We want functions to be able to call themselves without using the
+            # Y combinator or similar, so we bind functions (and only
+            # functions) using a letrec-like strategy. We augment their
+            # captured environment with a binding to themselves.
             assert isinstance(value.env, dict)
             value.env[exp.name.name] = value
         return EnvObject({**env, exp.name.name: value})

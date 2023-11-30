@@ -422,6 +422,7 @@ class BinopKind(enum.Enum):
     SUB = auto()
     MUL = auto()
     DIV = auto()
+    EXP = auto()
     EQUAL = auto()
     NOT_EQUAL = auto()
     LESS = auto()
@@ -440,6 +441,7 @@ class BinopKind(enum.Enum):
             "-": cls.SUB,
             "*": cls.MUL,
             "/": cls.DIV,
+            "**": cls.EXP,
             "==": cls.EQUAL,
             "/=": cls.NOT_EQUAL,
             "<": cls.LESS,
@@ -599,6 +601,7 @@ BINOP_HANDLERS: Dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.SUB: lambda env, x, y: Int(eval_int(env, x) - eval_int(env, y)),
     BinopKind.MUL: lambda env, x, y: Int(eval_int(env, x) * eval_int(env, y)),
     BinopKind.DIV: lambda env, x, y: Int(eval_int(env, x) // eval_int(env, y)),
+    BinopKind.EXP: lambda env, x, y: Int(eval_int(env, x) ** eval_int(env, y)),
     BinopKind.EQUAL: lambda env, x, y: Bool(eval_exp(env, x) == eval_exp(env, y)),
     BinopKind.NOT_EQUAL: lambda env, x, y: Bool(eval_exp(env, x) != eval_exp(env, y)),
     BinopKind.LESS: lambda env, x, y: Int(eval_int(env, x) < eval_int(env, y)),
@@ -786,7 +789,7 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(tokenize("1-2"), ["1", "-", "2"])
 
     def test_tokenize_binop_var(self) -> None:
-        ops = ["+", "-", "*", "/", "==", "/=", "<", ">", "<=", ">=", "++", ">+", "+<"]
+        ops = ["+", "-", "*", "/", "**", "==", "/=", "<", ">", "<=", ">=", "++", ">+", "+<"]
         for op in ops:
             with self.subTest(op=op):
                 self.assertEqual(tokenize(f"a {op} b"), ["a", op, "b"])
@@ -1038,7 +1041,7 @@ class ParserTests(unittest.TestCase):
         )
 
     def test_parse_binary_op_returns_binop(self) -> None:
-        ops = ["+", "-", "*", "/", "==", "/=", "<", ">", "<=", ">=", "++", ">+", "+<"]
+        ops = ["+", "-", "*", "/", "**", "==", "/=", "<", ">", "<=", ">=", "++", ">+", "+<"]
         for op in ops:
             with self.subTest(op=op):
                 kind = BinopKind.from_str(op)
@@ -2019,6 +2022,9 @@ class EndToEndTests(unittest.TestCase):
 
     def test_access_before_cons(self) -> None:
         self.assertEqual(self._run("[1, 2, 3] +< xs@0 . xs = [4]"), List([Int(1), Int(2), Int(3), Int(4)]))
+
+    def test_exponentiation(self) -> None:
+        self.assertEqual(self._run("6 ** 2"), Int(36))
 
 
 class BencodeTests(unittest.TestCase):

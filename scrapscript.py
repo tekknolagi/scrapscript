@@ -1166,11 +1166,16 @@ Input: <input id="input" />
 <script type="module">
 "use strict";
 
+function updateHistory(inp, out) {
+    output.innerHTML += `${inp}\n${out}\n>>> `;
+    output.scrollTop = output.scrollHeight;
+}
+
 async function sendRequest(env, exp) {
     const params = env === null ? {exp} : {exp, env};
     const response = await fetch("/eval?" + new URLSearchParams(params));
     if (!response.ok) {
-        output.innerHTML += input.value + `\nthere was an error :( (http code ${response.status})\n>>> `;
+        updateHistory(input.value, `there was an error :( (http code ${response.status})`);
         throw new Error(`${response.status} ${response.statusText}`);
     }
     return response.json();
@@ -1199,13 +1204,11 @@ input.addEventListener("keyup", async ({key}) => {
     if (key === "Enter") {
         const response = await sendRequest(document.env, input.value);
         const {env, result} = response;
-        output.innerHTML += input.value + "\n";
-        output.innerHTML += result + "\n>>> ";
+        updateHistory(input.value, result);
         input.value = "";
         document.env = env;
         window.localStorage.setItem('env', env)
         window.localStorage.setItem('history', output.innerHTML);
-        output.scrollTop = output.scrollHeight;
     }
 });
 button.addEventListener("click", () => {

@@ -161,10 +161,8 @@ class Lexer:
             if (c := self.read_char()).isspace():
                 break
             buf += c
-        if not (len(buf) >= 2 and buf[:2].isnumeric()):
-            buf = "64'" + buf
-        # TODO(max): Read base
-        return BytesLit(buf, 64)
+        base, _, value = buf.rpartition("'")
+        return BytesLit(value, int(base) if base else 64)
 
 
 def tokenize(x: str) -> typing.List[Token]:
@@ -258,7 +256,7 @@ def parse_assign(tokens: typing.List[str], p: float = 0) -> "Assign":
     return assign
 
 
-def parse(tokens: typing.List[str], p: float = 0) -> "Object":
+def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     if not tokens:
         raise UnexpectedEOFError("unexpected end of input")
     token = tokens.pop(0)
@@ -268,69 +266,62 @@ def parse(tokens: typing.List[str], p: float = 0) -> "Object":
     tilde_tilde_prefix = "~~"
     # TODO(max): Tag tokens out of the lexer so we don't have to re-interpret
     # them here.
-    if token.isnumeric() or (token[0] == "-" and token[1:].isnumeric()):
-        l = Int(int(token))
-    elif token.isidentifier():
+    if isinstance(token, NumLit):
+        l = Int(token.value)
+    elif isinstance(token, Name):
         # TODO: Handle kebab case vars
         l = Var(token)
-    elif token.startswith(sha_prefix) and token[len(sha_prefix) :].isidentifier():
-        l = Var(token)
-    elif token.startswith(dollar_dollar_prefix) and token[len(dollar_dollar_prefix) :].isidentifier():
-        l = Var(token)
-    elif token.startswith(tilde_tilde_prefix):
-        assert len(token) >= len("~~XX'")
-        assert "'" in token, "expected base in bytes"
-        base, without_base = token[len(tilde_tilde_prefix) :].split("'")
-        assert base.isnumeric(), f"unexpected base {base!r} in {token!r}"
-        if base == "85":
-            l = Bytes(base64.b85decode(without_base))
-        elif base == "64":
-            l = Bytes(base64.b64decode(without_base))
-        elif base == "32":
-            l = Bytes(base64.b32decode(without_base))
-        elif base == "16":
-            l = Bytes(base64.b16decode(without_base))
+    elif isinstance(token, BytesLit):
+        base = token.base
+        if base == 85:
+            l = Bytes(base64.b85decode(token.value))
+        elif base == 64:
+            l = Bytes(base64.b64decode(token.value))
+        elif base == 32:
+            l = Bytes(base64.b32decode(token.value))
+        elif base == 16:
+            l = Bytes(base64.b16decode(token.value))
         else:
             raise ParseError(f"unexpected base {base!r} in {token!r}")
-    elif token.startswith('"') and token.endswith('"'):
-        l = String(token[1:-1])
-    elif token == "|":
+    elif isinstance(token, StringLit):
+        l = String(token.value)
+    elif token == Operator("|"):
         expr = parse(tokens, 5)  # TODO: make this work for larger arities
         if not isinstance(expr, Function):
             raise ParseError(f"expected function in match expression {expr!r}")
         cases = [MatchCase(expr.arg, expr.body)]
-        while tokens and tokens[0] == "|":
+        while tokens and tokens[0] == Operator("|"):
             tokens.pop(0)
             expr = parse(tokens, 5)  # TODO: make this work for larger arities
             if not isinstance(expr, Function):
                 raise ParseError(f"expected function in match expression {expr!r}")
             cases.append(MatchCase(expr.arg, expr.body))
         l = MatchFunction(cases)
-    elif token == "(":
-        if tokens[0] == ")":
+    elif token == Operator("("):
+        if tokens[0] == Operator(")"):
             l = Hole()
         else:
             l = parse(tokens, 0)
         tokens.pop(0)
-    elif token == "[":
+    elif token == Operator("["):
         l = List([])
         token = tokens[0]
-        if token == "]":
+        if token == Operator("]"):
             tokens.pop(0)
         else:
             l.items.append(parse(tokens, 2))
-            while tokens.pop(0) != "]":
+            while tokens.pop(0) != Operator("]"):
                 # TODO: Implement .. and ... operators
                 l.items.append(parse(tokens, 2))
-    elif token == "{":
+    elif token == Operator("{"):
         l = Record({})
         token = tokens[0]
-        if token == "}":
+        if token == Operator("}"):
             tokens.pop(0)
         else:
             assign = parse_assign(tokens, 2)
             l.data[assign.name.name] = assign.value
-            while tokens.pop(0) != "}":
+            while tokens.pop(0) != Operator("}"):
                 # TODO: Implement .. and ... operators
                 assign = parse_assign(tokens, 2)
                 l.data[assign.name.name] = assign.value
@@ -341,9 +332,10 @@ def parse(tokens: typing.List[str], p: float = 0) -> "Object":
         if not tokens:
             break
         op = tokens[0]
-        if op in ")]}":
+        if op in (Operator(")"), Operator("]"), Operator("}")):
             break
         if op not in PS:
+            # TODO(max): Apply
             op = ""
         prec = PS[op]
         pl, pr = prec.pl, prec.pr
@@ -355,23 +347,23 @@ def parse(tokens: typing.List[str], p: float = 0) -> "Object":
             if not isinstance(l, Var):
                 raise ParseError(f"expected variable in assignment {l!r}")
             l = Assign(l, parse(tokens, pr))
-        elif op == "->":
+        elif op == Operator("->"):
             l = Function(l, parse(tokens, pr))
         elif op == "":
             l = Apply(l, parse(tokens, pr))
-        elif op == "|>":
+        elif op == Operator("|>"):
             l = Apply(parse(tokens, pr), l)
-        elif op == "<|":
+        elif op == Operator("<|"):
             l = Apply(l, parse(tokens, pr))
-        elif op == ">>":
+        elif op == Operator(">>"):
             l = Compose(l, parse(tokens, pr))
-        elif op == "<<":
+        elif op == Operator("<<"):
             l = Compose(parse(tokens, pr), l)
-        elif op == ".":
+        elif op == Operator("."):
             l = Where(l, parse(tokens, pr))
-        elif op == "?":
+        elif op == Operator("?"):
             l = Assert(l, parse(tokens, pr))
-        elif op == "@":
+        elif op == Operator("@"):
             # TODO: revisit whether to use @ or . for field access
             l = Access(l, parse(tokens, pr))
         else:
@@ -909,23 +901,23 @@ class TokenizerTests(unittest.TestCase):
         with self.assertRaisesRegex(ParseError, "unexpected token '~'"):
             tokenize("~=")
 
-    def test_tokenize_tilde_tilde_equals_returns_empty_bytes(self) -> None:
-        self.assertEqual(tokenize("~~"), ["~~64'"])
+    def test_tokenize_tilde_tilde_returns_empty_bytes(self) -> None:
+        self.assertEqual(tokenize("~~"), [BytesLit("", 64)])
 
     def test_tokenize_bytes_returns_bytes_base64(self) -> None:
-        self.assertEqual(tokenize("~~QUJD"), ["~~64'QUJD"])
+        self.assertEqual(tokenize("~~QUJD"), [BytesLit("QUJD", 64)])
 
     def test_tokenize_bytes_base85(self) -> None:
-        self.assertEqual(tokenize("~~85'K|(_"), ["~~85'K|(_"])
+        self.assertEqual(tokenize("~~85'K|(_"), [BytesLit("K|(_", 85)])
 
     def test_tokenize_bytes_base64(self) -> None:
-        self.assertEqual(tokenize("~~64'QUJD"), ["~~64'QUJD"])
+        self.assertEqual(tokenize("~~64'QUJD"), [BytesLit("QUJD", 64)])
 
     def test_tokenize_bytes_base32(self) -> None:
-        self.assertEqual(tokenize("~~32'IFBEG==="), ["~~32'IFBEG==="])
+        self.assertEqual(tokenize("~~32'IFBEG==="), [BytesLit("IFBEG===", 32)])
 
     def test_tokenize_bytes_base16(self) -> None:
-        self.assertEqual(tokenize("~~16'414243"), ["~~16'414243"])
+        self.assertEqual(tokenize("~~16'414243"), [BytesLit("414243", 16)])
 
     def test_tokenize_hole(self) -> None:
         self.assertEqual(tokenize("()"), [Operator("("), Operator(")")])

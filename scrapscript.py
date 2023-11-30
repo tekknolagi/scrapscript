@@ -703,6 +703,8 @@ def eval_exp(env: Env, exp: Object) -> Object:
         arg = eval_exp(env, exp.arg)
         if isinstance(callee.func, Function):
             assert isinstance(callee.func.arg, Var)
+            # TODO(max): Special case assignment binding functions to names to
+            # be letrec-like so that they can refer to themselves.
             new_env = {**callee.env, callee.func.arg.name: arg}
             return eval_exp(new_env, callee.func.body)
         elif isinstance(callee.func, MatchFunction):
@@ -711,6 +713,9 @@ def eval_exp(env: Env, exp: Object) -> Object:
                 m = match(arg, case.pattern)
                 if m is None:
                     continue
+                # TODO(max): Don't pass in env here; special case assignment
+                # binding functions to names to be letrec-like so that they can
+                # refer to themselves.
                 return eval_exp({**env, **callee.env, **m}, case.body)
             raise MatchError("no matching cases")
         else:

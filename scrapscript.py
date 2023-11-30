@@ -249,7 +249,7 @@ class UnexpectedEOFError(ParseError):
     pass
 
 
-def parse_assign(tokens: typing.List[str], p: float = 0) -> "Assign":
+def parse_assign(tokens: typing.List[Token], p: float = 0) -> "Assign":
     assign = parse(tokens, p)
     if not isinstance(assign, Assign):
         raise ParseError("failed to parse variable assignment in record constructor")

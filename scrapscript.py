@@ -1997,7 +1997,17 @@ class EndToEndTests(unittest.TestCase):
     def test_reverse_pipe_nested(self) -> None:
         self.assertEqual(self._run("(b -> b * 2) <| (a -> a + 2) <| 1"), Int(6))
 
-    def test_recursive_function(self) -> None:
+    @unittest.skip("TODO: implement function binding as letrec")
+    def test_function_can_call_itself(self) -> None:
+        with self.assertRaises(RecursionError):
+            self._run(
+                """
+        fac 1
+        . fac = n -> f n
+        """
+            )
+
+    def test_match_function_can_call_itself(self) -> None:
         self.assertEqual(
             self._run(
                 """

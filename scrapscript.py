@@ -706,13 +706,12 @@ def eval_exp(env: Env, exp: Object) -> Object:
             new_env = {**callee.env, callee.func.arg.name: arg}
             return eval_exp(new_env, callee.func.body)
         elif isinstance(callee.func, MatchFunction):
-            # TODO(max): Implement MatchClosure
             arg = eval_exp(env, exp.arg)
             for case in callee.func.cases:
                 m = match(arg, case.pattern)
                 if m is None:
                     continue
-                return eval_exp({**env, **m}, case.body)
+                return eval_exp({**env, **callee.env, **m}, case.body)
             raise MatchError("no matching cases")
         else:
             raise TypeError(f"attempted to apply a non-function of type {type(callee.func).__name__}")
@@ -1792,6 +1791,18 @@ class EndToEndTests(unittest.TestCase):
                   | x -> x
                   | y -> y * 2
                 """
+            ),
+            Int(3),
+        )
+
+    def test_match_function_can_close_over_variables(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        f 1 2
+        . f = a ->
+          | b -> a + b
+        """
             ),
             Int(3),
         )

@@ -681,6 +681,9 @@ def eval_exp(env: Env, exp: Object) -> Object:
         # to figure out and implement.
         assert isinstance(exp.name, Var)
         value = eval_exp(env, exp.value)
+        if isinstance(value, Closure):
+            assert isinstance(value.env, dict)
+            value.env[exp.name.name] = value
         return EnvObject({**env, exp.name.name: value})
     if isinstance(exp, Where):
         res_env = eval_exp(env, exp.binding)
@@ -1484,6 +1487,14 @@ class EvalTests(unittest.TestCase):
         env: Env = {}
         result = eval_exp(env, exp)
         self.assertEqual(result, EnvObject({"a": Int(1)}))
+
+    def test_eval_assign_function_returns_closure_with_function_in_env(self) -> None:
+        exp = Assign(Var("a"), Function(Var("x"), Var("x")))
+        result = eval_exp({}, exp)
+        assert isinstance(result, EnvObject)
+        closure = result.env["a"]
+        self.assertIsInstance(closure, Closure)
+        self.assertEqual(closure, Closure(env={"a": closure}, func=Function(arg=Var(name="x"), body=Var(name="x"))))
 
     def test_eval_assign_does_not_modify_env(self) -> None:
         exp = Assign(Var("a"), Int(1))

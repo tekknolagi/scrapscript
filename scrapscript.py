@@ -31,6 +31,42 @@ def is_identifier_char(c: str) -> bool:
     return c.isalnum() or c in ("$", "'", "_")
 
 
+@dataclass(eq=True, frozen=True)
+class Token:
+    pass
+
+
+@dataclass(eq=True, frozen=True)
+class NumLit(Token):
+    value: int
+
+
+@dataclass(eq=True, frozen=True)
+class StringLit(Token):
+    value: str
+
+
+@dataclass(eq=True, frozen=True)
+class BytesLit(Token):
+    value: str
+    base: int
+
+
+@dataclass(eq=True, frozen=True)
+class Operator(Token):
+    value: str
+
+
+@dataclass(eq=True, frozen=True)
+class Name(Token):
+    value: str
+
+
+@dataclass(eq=True, frozen=True)
+class EOF(Token):
+    pass
+
+
 class Lexer:
     # TODO(chris): Add position information to tokens, enable showing position of error in program
     def __init__(self, text: str):
@@ -50,13 +86,13 @@ class Lexer:
             raise UnexpectedEOFError("while reading token")
         return self.text[self.idx]
 
-    def read_one(self) -> Optional[str]:
+    def read_one(self) -> Token:
         while self.has_input():
             c = self.read_char()
             if not c.isspace():
                 break
         else:
-            return None
+            return EOF()
         if c == '"':
             return self.read_string()
         if c == "-":
@@ -74,14 +110,14 @@ class Lexer:
         if c.isdigit():
             return self.read_number(c)
         if c in "()[]{}":
-            return c
+            return Operator(c)
         if c in OPER_CHARS:
             return self.read_op(c)
         if is_identifier_char(c):
             return self.read_var(c)
         raise ParseError(f"unexpected token {c!r}")
 
-    def read_string(self) -> str:
+    def read_string(self) -> StringLit:
         buf = ""
         while self.has_input():
             if (c := self.read_char()) == '"':
@@ -89,20 +125,20 @@ class Lexer:
             buf += c
         else:
             raise UnexpectedEOFError("while reading string")
-        return '"' + buf + '"'
+        return StringLit(buf)
 
     def read_comment(self) -> None:
         while self.has_input() and self.read_char() != "\n":
             pass
 
-    def read_number(self, first_digit: str) -> str:
+    def read_number(self, first_digit: str) -> Token:
         buf = first_digit
         while self.has_input() and (c := self.peek_char()).isdigit():
             self.read_char()
             buf += c
-        return buf
+        return NumLit(int(buf))
 
-    def read_op(self, first_char: str) -> str:
+    def read_op(self, first_char: str) -> Token:
         buf = first_char
         # TODO(max): To catch ill-formed operators earlier and to avoid merging
         # operators by accident, we could make a trie and do longest trie
@@ -110,16 +146,16 @@ class Lexer:
         while self.has_input() and (c := self.peek_char()) in OPER_CHARS:
             self.read_char()
             buf += c
-        return buf
+        return Operator(buf)
 
-    def read_var(self, first_char: str) -> str:
+    def read_var(self, first_char: str) -> Token:
         buf = first_char
         while self.has_input() and is_identifier_char(c := self.peek_char()):
             self.read_char()
             buf += c
-        return buf
+        return Name(buf)
 
-    def read_bytes(self) -> str:
+    def read_bytes(self) -> Token:
         buf = ""
         while self.has_input():
             if (c := self.read_char()).isspace():
@@ -127,13 +163,14 @@ class Lexer:
             buf += c
         if not (len(buf) >= 2 and buf[:2].isnumeric()):
             buf = "64'" + buf
-        return "~~" + buf
+        # TODO(max): Read base
+        return BytesLit(buf, 64)
 
 
-def tokenize(x: str) -> typing.List[str]:
+def tokenize(x: str) -> typing.List[Token]:
     lexer = Lexer(x)
     tokens = []
-    while (token := lexer.read_one()) is not None:
+    while (token := lexer.read_one()) and not isinstance(token, EOF):
         tokens.append(token)
     return tokens
 
@@ -769,94 +806,100 @@ def serialize(obj: Object) -> bytes:
 
 class TokenizerTests(unittest.TestCase):
     def test_tokenize_digit(self) -> None:
-        self.assertEqual(tokenize("1"), ["1"])
+        self.assertEqual(tokenize("1"), [NumLit(1)])
 
     def test_tokenize_multiple_digits(self) -> None:
-        self.assertEqual(tokenize("123"), ["123"])
+        self.assertEqual(tokenize("123"), [NumLit(123)])
 
     def test_tokenize_negative_int(self) -> None:
-        self.assertEqual(tokenize("-123"), ["-123"])
+        self.assertEqual(tokenize("-123"), [NumLit(-123)])
 
     def test_tokenize_binop(self) -> None:
-        self.assertEqual(tokenize("1 + 2"), ["1", "+", "2"])
+        self.assertEqual(tokenize("1 + 2"), [NumLit(1), Operator("+"), NumLit(2)])
 
     def test_tokenize_binop_no_spaces(self) -> None:
-        self.assertEqual(tokenize("1+2"), ["1", "+", "2"])
+        self.assertEqual(tokenize("1+2"), [NumLit(1), Operator("+"), NumLit(2)])
 
     @unittest.skip("TODO(max): Move negative integers into the parser")
     def test_tokenize_binary_sub_no_spaces(self) -> None:
-        self.assertEqual(tokenize("1-2"), ["1", "-", "2"])
+        self.assertEqual(tokenize("1-2"), [NumLit(1), Operator("-"), NumLit(2)])
 
     def test_tokenize_binop_var(self) -> None:
         ops = ["+", "-", "*", "/", "^", "%", "==", "/=", "<", ">", "<=", ">=", "++", ">+", "+<"]
         for op in ops:
             with self.subTest(op=op):
-                self.assertEqual(tokenize(f"a {op} b"), ["a", op, "b"])
-                self.assertEqual(tokenize(f"a{op}b"), ["a", op, "b"])
+                self.assertEqual(tokenize(f"a {op} b"), [Name("a"), Operator(op), Name("b")])
+                self.assertEqual(tokenize(f"a{op}b"), [Name("a"), Operator(op), Name("b")])
 
     def test_tokenize_var(self) -> None:
-        self.assertEqual(tokenize("abc"), ["abc"])
+        self.assertEqual(tokenize("abc"), [Name("abc")])
 
     def test_tokenize_dollar_sha1_var(self) -> None:
-        self.assertEqual(tokenize("$sha1'foo"), ["$sha1'foo"])
+        self.assertEqual(tokenize("$sha1'foo"), [Name("$sha1'foo")])
 
     def test_tokenize_dollar_dollar_var(self) -> None:
-        self.assertEqual(tokenize("$$bills"), ["$$bills"])
+        self.assertEqual(tokenize("$$bills"), [Name("$$bills")])
 
     def test_ignore_whitespace(self) -> None:
-        self.assertEqual(tokenize("1\n+\t2"), ["1", "+", "2"])
+        self.assertEqual(tokenize("1\n+\t2"), [NumLit(1), Operator("+"), NumLit(2)])
 
     def test_ignore_line_comment(self) -> None:
-        self.assertEqual(tokenize("-- 1\n2"), ["2"])
+        self.assertEqual(tokenize("-- 1\n2"), [NumLit(2)])
 
     def test_tokenize_string(self) -> None:
-        self.assertEqual(tokenize('"hello"'), ['"hello"'])
+        self.assertEqual(tokenize('"hello"'), [StringLit("hello")])
 
     def test_tokenize_string_with_spaces(self) -> None:
-        self.assertEqual(tokenize('"hello world"'), ['"hello world"'])
+        self.assertEqual(tokenize('"hello world"'), [StringLit("hello world")])
 
     def test_tokenize_string_missing_end_quote_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(UnexpectedEOFError, "while reading string"):
             tokenize('"hello')
 
     def test_tokenize_with_trailing_whitespace(self) -> None:
-        self.assertEqual(tokenize("- "), ["-"])
+        self.assertEqual(tokenize("- "), [Operator("-")])
         self.assertEqual(tokenize("-- "), [])
-        self.assertEqual(tokenize("+ "), ["+"])
-        self.assertEqual(tokenize("123 "), ["123"])
-        self.assertEqual(tokenize("abc "), ["abc"])
-        self.assertEqual(tokenize("[ "), ["["])
-        self.assertEqual(tokenize("] "), ["]"])
+        self.assertEqual(tokenize("+ "), [Operator("+")])
+        self.assertEqual(tokenize("123 "), [NumLit(123)])
+        self.assertEqual(tokenize("abc "), [Name("abc")])
+        self.assertEqual(tokenize("[ "), [Operator("[")])
+        self.assertEqual(tokenize("] "), [Operator("]")])
 
     def test_tokenize_empty_list(self) -> None:
-        self.assertEqual(tokenize("[ ]"), ["[", "]"])
+        self.assertEqual(tokenize("[ ]"), [Operator("["), Operator("]")])
 
     def test_tokenize_empty_list_with_spaces(self) -> None:
-        self.assertEqual(tokenize("[ ]"), ["[", "]"])
+        self.assertEqual(tokenize("[ ]"), [Operator("["), Operator("]")])
 
     def test_tokenize_list_with_items(self) -> None:
-        self.assertEqual(tokenize("[ 1 , 2 ]"), ["[", "1", ",", "2", "]"])
+        self.assertEqual(tokenize("[ 1 , 2 ]"), [Operator("["), NumLit(1), Operator(","), NumLit(2), Operator("]")])
 
     def test_tokenize_list_with_no_spaces(self) -> None:
-        self.assertEqual(tokenize("[1,2]"), ["[", "1", ",", "2", "]"])
+        self.assertEqual(tokenize("[1,2]"), [Operator("["), NumLit(1), Operator(","), NumLit(2), Operator("]")])
 
     def test_tokenize_function(self) -> None:
-        self.assertEqual(tokenize("a -> b -> a + b"), ["a", "->", "b", "->", "a", "+", "b"])
+        self.assertEqual(
+            tokenize("a -> b -> a + b"),
+            [Name("a"), Operator("->"), Name("b"), Operator("->"), Name("a"), Operator("+"), Name("b")],
+        )
 
     def test_tokenize_function_with_no_spaces(self) -> None:
-        self.assertEqual(tokenize("a->b->a+b"), ["a", "->", "b", "->", "a", "+", "b"])
+        self.assertEqual(
+            tokenize("a->b->a+b"),
+            [Name("a"), Operator("->"), Name("b"), Operator("->"), Name("a"), Operator("+"), Name("b")],
+        )
 
     def test_tokenize_where(self) -> None:
-        self.assertEqual(tokenize("a . b"), ["a", ".", "b"])
+        self.assertEqual(tokenize("a . b"), [Name("a"), Operator("."), Name("b")])
 
     def test_tokenize_assert(self) -> None:
-        self.assertEqual(tokenize("a ? b"), ["a", "?", "b"])
+        self.assertEqual(tokenize("a ? b"), [Name("a"), Operator("?"), Name("b")])
 
     def test_tokenize_hastype(self) -> None:
-        self.assertEqual(tokenize("a : b"), ["a", ":", "b"])
+        self.assertEqual(tokenize("a : b"), [Name("a"), Operator(":"), Name("b")])
 
     def test_tokenize_minus_returns_minus(self) -> None:
-        self.assertEqual(tokenize("-"), ["-"])
+        self.assertEqual(tokenize("-"), [Operator("-")])
 
     def test_tokenize_tilde_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, "unexpected token '~'"):
@@ -885,75 +928,120 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(tokenize("~~16'414243"), ["~~16'414243"])
 
     def test_tokenize_hole(self) -> None:
-        self.assertEqual(tokenize("()"), ["(", ")"])
+        self.assertEqual(tokenize("()"), [Operator("("), Operator(")")])
 
     def test_tokenize_hole_with_spaces(self) -> None:
-        self.assertEqual(tokenize("( )"), ["(", ")"])
+        self.assertEqual(tokenize("( )"), [Operator("("), Operator(")")])
 
     def test_tokenize_parenthetical_expression(self) -> None:
-        self.assertEqual(tokenize("(1+2)"), ["(", "1", "+", "2", ")"])
+        self.assertEqual(tokenize("(1+2)"), [Operator("("), NumLit(1), Operator("+"), NumLit(2), Operator(")")])
 
     def test_tokenize_pipe(self) -> None:
         self.assertEqual(
             tokenize("1 |> f . f = a -> a + 1"),
-            ["1", "|>", "f", ".", "f", "=", "a", "->", "a", "+", "1"],
+            [
+                NumLit(1),
+                Operator("|>"),
+                Name("f"),
+                Operator("."),
+                Name("f"),
+                Operator("="),
+                Name("a"),
+                Operator("->"),
+                Name("a"),
+                Operator("+"),
+                NumLit(1),
+            ],
         )
 
     def test_tokenize_reverse_pipe(self) -> None:
         self.assertEqual(
             tokenize("f <| 1 . f = a -> a + 1"),
-            ["f", "<|", "1", ".", "f", "=", "a", "->", "a", "+", "1"],
+            [
+                Name("f"),
+                Operator("<|"),
+                NumLit(1),
+                Operator("."),
+                Name("f"),
+                Operator("="),
+                Name("a"),
+                Operator("->"),
+                Name("a"),
+                Operator("+"),
+                NumLit(1),
+            ],
         )
 
     def test_tokenize_record_no_fields(self) -> None:
         self.assertEqual(
             tokenize("{ }"),
-            ["{", "}"],
+            [Operator("{"), Operator("}")],
         )
 
     def test_tokenize_record_no_fields_no_spaces(self) -> None:
         self.assertEqual(
             tokenize("{}"),
-            ["{", "}"],
+            [Operator("{"), Operator("}")],
         )
 
     def test_tokenize_record_one_field(self) -> None:
         self.assertEqual(
             tokenize("{ a = 4 }"),
-            ["{", "a", "=", "4", "}"],
+            [Operator("{"), Name("a"), Operator("="), NumLit(4), Operator("}")],
         )
 
     def test_tokenize_record_multiple_fields(self) -> None:
         self.assertEqual(
             tokenize('{ a = 4, b = "z" }'),
-            ["{", "a", "=", "4", ",", "b", "=", '"z"', "}"],
+            [
+                Operator("{"),
+                Name("a"),
+                Operator("="),
+                NumLit(4),
+                Operator(","),
+                Name("b"),
+                Operator("="),
+                StringLit("z"),
+                Operator("}"),
+            ],
         )
 
     def test_tokenize_record_access(self) -> None:
         self.assertEqual(
             tokenize("r@a"),
-            ["r", "@", "a"],
+            [Name("r"), Operator("@"), Name("a")],
         )
 
     def test_tokenize_right_eval(self) -> None:
-        self.assertEqual(tokenize("a!b"), ["a", "!", "b"])
+        self.assertEqual(tokenize("a!b"), [Name("a"), Operator("!"), Name("b")])
 
     def test_tokenize_match(self) -> None:
         self.assertEqual(
             tokenize("g = | 1 -> 2 | 2 -> 3"),
-            ["g", "=", "|", "1", "->", "2", "|", "2", "->", "3"],
+            [
+                Name("g"),
+                Operator("="),
+                Operator("|"),
+                NumLit(1),
+                Operator("->"),
+                NumLit(2),
+                Operator("|"),
+                NumLit(2),
+                Operator("->"),
+                NumLit(3),
+            ],
         )
 
     def test_tokenize_compose(self) -> None:
         self.assertEqual(
             tokenize("f >> g"),
-            ["f", ">>", "g"],
+            [Name("f"), Operator(">>"), Name("g")],
         )
 
     def test_tokenize_compose_reverse(self) -> None:
         self.assertEqual(
             tokenize("f << g"),
-            ["f", "<<", "g"],
+            [Name("f"), Operator("<<"), Name("g")],
         )
 
 
@@ -964,10 +1052,10 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(ctx.exception.args[0], "unexpected end of input")
 
     def test_parse_digit_returns_int(self) -> None:
-        self.assertEqual(parse(["1"]), Int(1))
+        self.assertEqual(parse([NumLit(1)]), Int(1))
 
     def test_parse_digits_returns_int(self) -> None:
-        self.assertEqual(parse(["123"]), Int(123))
+        self.assertEqual(parse([NumLit(123)]), Int(123))
 
     def test_parse_negative_int_returns_int(self) -> None:
         self.assertEqual(parse(["-123"]), Int(-123))
@@ -1001,35 +1089,35 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse(["~~64'QUJD"]), Bytes(b"ABC"))
 
     def test_parse_binary_add_returns_binop(self) -> None:
-        self.assertEqual(parse(["1", "+", "2"]), Binop(BinopKind.ADD, Int(1), Int(2)))
+        self.assertEqual(parse([NumLit(1), "+", NumLit(2)]), Binop(BinopKind.ADD, Int(1), Int(2)))
 
     def test_parse_binary_add_right_returns_binop(self) -> None:
         self.assertEqual(
-            parse(["1", "+", "2", "+", "3"]),
+            parse([NumLit(1), "+", NumLit(2), "+", NumLit(3)]),
             Binop(BinopKind.ADD, Int(1), Binop(BinopKind.ADD, Int(2), Int(3))),
         )
 
     def test_mul_binds_tighter_than_add_right(self) -> None:
         self.assertEqual(
-            parse(["1", "+", "2", "*", "3"]),
+            parse([NumLit(1), "+", NumLit(2), "*", NumLit(3)]),
             Binop(BinopKind.ADD, Int(1), Binop(BinopKind.MUL, Int(2), Int(3))),
         )
 
     def test_mul_binds_tighter_than_add_left(self) -> None:
         self.assertEqual(
-            parse(["1", "*", "2", "+", "3"]),
+            parse([NumLit(1), "*", NumLit(2), "+", NumLit(3)]),
             Binop(BinopKind.ADD, Binop(BinopKind.MUL, Int(1), Int(2)), Int(3)),
         )
 
     def test_exp_binds_tighter_than_mul_right(self) -> None:
         self.assertEqual(
-            parse(["5", "*", "2", "^", "3"]),
+            parse([NumLit(5), "*", NumLit(2), "^", NumLit(3)]),
             Binop(BinopKind.MUL, Int(5), Binop(BinopKind.EXP, Int(2), Int(3))),
         )
 
     def test_list_access_binds_tighter_than_append(self) -> None:
         self.assertEqual(
-            parse(["a", "+<", "ls", "@", "0"]),
+            parse(["a", "+<", "ls", "@", NumLit(0)]),
             Binop(BinopKind.LIST_APPEND, Var("a"), Access(Var("ls"), Int(0))),
         )
 
@@ -1066,19 +1154,19 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_list_of_ints_returns_list(self) -> None:
         self.assertEqual(
-            parse(["[", "1", ",", "2", "]"]),
+            parse(["[", NumLit(1), ",", NumLit(2), "]"]),
             List([Int(1), Int(2)]),
         )
 
     def test_parse_assign(self) -> None:
         self.assertEqual(
-            parse(["a", "=", "1"]),
+            parse(["a", "=", NumLit(1)]),
             Assign(Var("a"), Int(1)),
         )
 
     def test_parse_function_one_arg_returns_function(self) -> None:
         self.assertEqual(
-            parse(["a", "->", "a", "+", "1"]),
+            parse(["a", "->", "a", "+", NumLit(1)]),
             Function(Var("a"), Binop(BinopKind.ADD, Var("a"), Int(1))),
         )
 
@@ -1122,35 +1210,35 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse(["(", ")"]), Hole())
 
     def test_parse_parenthesized_expression(self) -> None:
-        self.assertEqual(parse(["(", "1", "+", "2", ")"]), Binop(BinopKind.ADD, Int(1), Int(2)))
+        self.assertEqual(parse(["(", NumLit(1), "+", NumLit(2), ")"]), Binop(BinopKind.ADD, Int(1), Int(2)))
 
     def test_parse_parenthesized_add_mul(self) -> None:
         self.assertEqual(
-            parse(["(", "1", "+", "2", ")", "*", "3"]),
+            parse(["(", NumLit(1), "+", NumLit(2), ")", "*", NumLit(3)]),
             Binop(BinopKind.MUL, Binop(BinopKind.ADD, Int(1), Int(2)), Int(3)),
         )
 
     def test_parse_pipe(self) -> None:
         self.assertEqual(
-            parse(["1", "|>", "f"]),
+            parse([NumLit(1), "|>", "f"]),
             Apply(Var("f"), Int(1)),
         )
 
     def test_parse_nested_pipe(self) -> None:
         self.assertEqual(
-            parse(["1", "|>", "f", "|>", "g"]),
+            parse([NumLit(1), "|>", "f", "|>", "g"]),
             Apply(Var("g"), Apply(Var("f"), Int(1))),
         )
 
     def test_parse_reverse_pipe(self) -> None:
         self.assertEqual(
-            parse(["f", "<|", "1"]),
+            parse(["f", "<|", NumLit(1)]),
             Apply(Var("f"), Int(1)),
         )
 
     def test_parse_nested_reverse_pipe(self) -> None:
         self.assertEqual(
-            parse(["g", "<|", "f", "<|", "1"]),
+            parse(["g", "<|", "f", "<|", NumLit(1)]),
             Apply(Var("g"), Apply(Var("f"), Int(1))),
         )
 
@@ -1158,27 +1246,27 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse(["{", "}"]), Record({}))
 
     def test_parse_record_single_field(self) -> None:
-        self.assertEqual(parse(["{", "a", "=", "4", "}"]), Record({"a": Int(4)}))
+        self.assertEqual(parse(["{", "a", "=", NumLit(4), "}"]), Record({"a": Int(4)}))
 
     def test_parse_record_with_expression(self) -> None:
         self.assertEqual(
-            parse(["{", "a", "=", "1", "+", "2", "}"]),
+            parse(["{", "a", "=", NumLit(1), "+", NumLit(2), "}"]),
             Record({"a": Binop(BinopKind.ADD, Int(1), Int(2))}),
         )
 
     def test_parse_record_multiple_fields(self) -> None:
         self.assertEqual(
-            parse(["{", "a", "=", "4", ",", "b", "=", '"z"', "}"]), Record({"a": Int(4), "b": String("z")})
+            parse(["{", "a", "=", NumLit(4), ",", "b", "=", '"z"', "}"]), Record({"a": Int(4), "b": String("z")})
         )
 
     def test_non_variable_in_assignment_raises_parse_error(self) -> None:
         with self.assertRaises(ParseError) as ctx:
-            parse(["3", "=", "4"])
+            parse([NumLit(3), "=", NumLit(4)])
         self.assertEqual(ctx.exception.args[0], "expected variable in assignment Int(value=3)")
 
     def test_non_assign_in_record_constructor_raises_parse_error(self) -> None:
         with self.assertRaises(ParseError) as ctx:
-            parse(["{", "1", ",", "2", "}"])
+            parse(["{", NumLit(1), ",", NumLit(2), "}"])
         self.assertEqual(ctx.exception.args[0], "failed to parse variable assignment in record constructor")
 
     def test_parse_right_eval_returns_binop(self) -> None:
@@ -1197,13 +1285,13 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_match_one_case(self) -> None:
         self.assertEqual(
-            parse(["|", "1", "->", "2"]),
+            parse(["|", NumLit(1), "->", NumLit(2)]),
             MatchFunction([MatchCase(Int(1), Int(2))]),
         )
 
     def test_parse_match_two_cases(self) -> None:
         self.assertEqual(
-            parse(["|", "1", "->", "2", "|", "2", "->", "3"]),
+            parse(["|", NumLit(1), "->", NumLit(2), "|", NumLit(2), "->", NumLit(3)]),
             MatchFunction(
                 [
                     MatchCase(Int(1), Int(2)),

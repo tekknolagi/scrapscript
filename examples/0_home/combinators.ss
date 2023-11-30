@@ -17,11 +17,4 @@ Z factr 5
 . factr = facti ->
   | 0 -> 1
   | n -> (mult n) (facti (n - 1))
-
-. double = x -> x * 2
-. add = x -> y -> x + y
 . mult = x -> y -> x * y
-. h = x -> y -> x + (y + 1)
-. plus3 = x -> x + 3
-. sq = x -> x * x
-. iszero = x -> x == 0

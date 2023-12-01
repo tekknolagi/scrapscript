@@ -681,6 +681,13 @@ def eval_exp(env: Env, exp: Object) -> Object:
         # to figure out and implement.
         assert isinstance(exp.name, Var)
         value = eval_exp(env, exp.value)
+        if isinstance(value, Closure):
+            # We want functions to be able to call themselves without using the
+            # Y combinator or similar, so we bind functions (and only
+            # functions) using a letrec-like strategy. We augment their
+            # captured environment with a binding to themselves.
+            assert isinstance(value.env, dict)
+            value.env[exp.name.name] = value
         return EnvObject({**env, exp.name.name: value})
     if isinstance(exp, Where):
         res_env = eval_exp(env, exp.binding)
@@ -720,10 +727,7 @@ def eval_exp(env: Env, exp: Object) -> Object:
                 m = match(arg, case.pattern)
                 if m is None:
                     continue
-                # TODO(max): Don't pass in env here; special case assignment
-                # binding functions to names to be letrec-like so that they can
-                # refer to themselves.
-                return eval_exp({**env, **callee.env, **m}, case.body)
+                return eval_exp({**callee.env, **m}, case.body)
             raise MatchError("no matching cases")
         else:
             raise TypeError(f"attempted to apply a non-function of type {type(callee.func).__name__}")
@@ -1485,6 +1489,14 @@ class EvalTests(unittest.TestCase):
         result = eval_exp(env, exp)
         self.assertEqual(result, EnvObject({"a": Int(1)}))
 
+    def test_eval_assign_function_returns_closure_with_function_in_env(self) -> None:
+        exp = Assign(Var("a"), Function(Var("x"), Var("x")))
+        result = eval_exp({}, exp)
+        assert isinstance(result, EnvObject)
+        closure = result.env["a"]
+        self.assertIsInstance(closure, Closure)
+        self.assertEqual(closure, Closure(env={"a": closure}, func=Function(arg=Var(name="x"), body=Var(name="x"))))
+
     def test_eval_assign_does_not_modify_env(self) -> None:
         exp = Assign(Var("a"), Int(1))
         env: Env = {}
@@ -1993,13 +2005,21 @@ class EndToEndTests(unittest.TestCase):
     def test_reverse_pipe_nested(self) -> None:
         self.assertEqual(self._run("(b -> b * 2) <| (a -> a + 2) <| 1"), Int(6))
 
-    @unittest.skip("TODO: implement function binding as letrec")
+    def test_function_can_reference_itself(self) -> None:
+        result = self._run(
+            """
+    f 1
+    . f = n -> f
+    """
+        )
+        self.assertEqual(result, Closure({"f": result}, Function(Var("n"), Var("f"))))
+
     def test_function_can_call_itself(self) -> None:
         with self.assertRaises(RecursionError):
             self._run(
                 """
-        fac 1
-        . fac = n -> f n
+        f 1
+        . f = n -> f n
         """
             )
 

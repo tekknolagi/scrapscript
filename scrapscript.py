@@ -336,7 +336,7 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
             cases.append(MatchCase(expr.arg, expr.body))
         l = MatchFunction(cases)
     elif isinstance(token, LeftParen):
-        if tokens[0] == RightParen():
+        if isinstance(tokens[0], RightParen):
             l = Hole()
         else:
             l = parse(tokens, 0)
@@ -348,7 +348,7 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
             tokens.pop(0)
         else:
             l.items.append(parse(tokens, 2))
-            while tokens.pop(0) != RightBracket():
+            while not isinstance(tokens.pop(0), RightBracket):
                 # TODO: Implement .. and ... operators
                 l.items.append(parse(tokens, 2))
     elif isinstance(token, LeftBrace):
@@ -359,7 +359,7 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         else:
             assign = parse_assign(tokens, 2)
             l.data[assign.name.name] = assign.value
-            while tokens.pop(0) != RightBrace():
+            while not isinstance(tokens.pop(0), RightBrace):
                 # TODO: Implement .. and ... operators
                 assign = parse_assign(tokens, 2)
                 l.data[assign.name.name] = assign.value

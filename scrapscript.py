@@ -134,8 +134,6 @@ class Lexer:
             if self.has_input() and self.peek_char() == "-":
                 self.read_comment()
                 return self.read_one()
-            if self.has_input() and self.peek_char().isdigit():
-                return self.read_number(c)
             return self.read_op(c)
         if c == "~":
             if self.has_input() and self.peek_char() == "~":
@@ -363,6 +361,12 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
                 # TODO: Implement .. and ... operators
                 assign = parse_assign(tokens, 2)
                 l.data[assign.name.name] = assign.value
+    elif token == Operator("-"):
+        # Unary minus
+        # TODO(max): This number can't be right. I have no idea what's going on
+        # here. Fix it?
+        r = parse(tokens, 5000)
+        l = Binop(BinopKind.SUB, Int(0), r)
     else:
         raise ParseError(f"unexpected token {token!r}")
 
@@ -848,7 +852,7 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(tokenize("123"), [NumLit(123)])
 
     def test_tokenize_negative_int(self) -> None:
-        self.assertEqual(tokenize("-123"), [NumLit(-123)])
+        self.assertEqual(tokenize("-123"), [Operator("-"), NumLit(123)])
 
     def test_tokenize_binop(self) -> None:
         self.assertEqual(tokenize("1 + 2"), [NumLit(1), Operator("+"), NumLit(2)])
@@ -1097,8 +1101,17 @@ class ParserTests(unittest.TestCase):
     def test_parse_digits_returns_int(self) -> None:
         self.assertEqual(parse([NumLit(123)]), Int(123))
 
-    def test_parse_negative_int_returns_int(self) -> None:
-        self.assertEqual(parse([NumLit(-123)]), Int(-123))
+    def test_parse_negative_int_returns_binary_sub_int(self) -> None:
+        self.assertEqual(parse([Operator("-"), NumLit(123)]), Binop(BinopKind.SUB, Int(0), Int(123)))
+
+    def test_parse_negative_var_returns_binary_sub_int(self) -> None:
+        self.assertEqual(parse([Operator("-"), Name("x")]), Binop(BinopKind.SUB, Int(0), Var("x")))
+
+    def test_parse_negative_int_binds_tighter_than_plus(self) -> None:
+        self.assertEqual(
+            parse([Operator("-"), NumLit(123), Operator("+"), NumLit(456)]),
+            Binop(BinopKind.ADD, Binop(BinopKind.SUB, Int(0), Int(123)), Int(456)),
+        )
 
     def test_parse_var_returns_var(self) -> None:
         self.assertEqual(parse([Name("abc_123")]), Var("abc_123"))

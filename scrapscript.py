@@ -330,26 +330,26 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
                 raise ParseError(f"expected function in match expression {expr!r}")
             cases.append(MatchCase(expr.arg, expr.body))
         l = MatchFunction(cases)
-    elif token == LeftParen():
+    elif isinstance(token, LeftParen):
         if tokens[0] == RightParen():
             l = Hole()
         else:
             l = parse(tokens, 0)
         tokens.pop(0)
-    elif token == LeftBracket():
+    elif isinstance(token, LeftBracket):
         l = List([])
         token = tokens[0]
-        if token == RightBracket():
+        if isinstance(token, RightBracket):
             tokens.pop(0)
         else:
             l.items.append(parse(tokens, 2))
             while tokens.pop(0) != RightBracket():
                 # TODO: Implement .. and ... operators
                 l.items.append(parse(tokens, 2))
-    elif token == LeftBrace():
+    elif isinstance(token, LeftBrace):
         l = Record({})
         token = tokens[0]
-        if token == RightBrace():
+        if isinstance(token, RightBrace):
             tokens.pop(0)
         else:
             assign = parse_assign(tokens, 2)
@@ -365,7 +365,7 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         if not tokens:
             break
         op = tokens[0]
-        if op in (RightParen(), RightBracket(), RightBrace()):
+        if isinstance(op, (RightParen, RightBracket, RightBrace)):
             break
         if not isinstance(op, Operator) or op.value not in PS:
             # TODO(max): Apply

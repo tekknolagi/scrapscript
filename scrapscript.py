@@ -92,6 +92,11 @@ class RightBracket(Token):
     pass
 
 
+class Juxt(Token):
+    # The space between other tokens that indicates function application.
+    pass
+
+
 @dataclass(eq=True, frozen=True)
 class EOF(Token):
     pass
@@ -368,13 +373,14 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         if isinstance(op, (RightParen, RightBracket, RightBrace)):
             break
         if not isinstance(op, Operator) or op.value not in PS:
-            # TODO(max): Apply
-            op = Operator("")
-        prec = PS[op.value]
+            op = Juxt()
+            prec = PS[""]
+        else:
+            prec = PS[op.value]
         pl, pr = prec.pl, prec.pr
         if pl < p:
             break
-        if op != Operator(""):
+        if not isinstance(op, Juxt):
             tokens.pop(0)
         if op == Operator("="):
             if not isinstance(l, Var):
@@ -382,7 +388,7 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
             l = Assign(l, parse(tokens, pr))
         elif op == Operator("->"):
             l = Function(l, parse(tokens, pr))
-        elif op == Operator(""):
+        elif isinstance(op, Juxt):
             l = Apply(l, parse(tokens, pr))
         elif op == Operator("|>"):
             l = Apply(parse(tokens, pr), l)
@@ -400,6 +406,7 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
             # TODO: revisit whether to use @ or . for field access
             l = Access(l, parse(tokens, pr))
         else:
+            assert isinstance(op, Operator)
             l = Binop(BinopKind.from_str(op.value), l, parse(tokens, pr))
     return l
 

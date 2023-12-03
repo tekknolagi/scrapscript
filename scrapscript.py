@@ -363,9 +363,11 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
                 l.data[assign.name.name] = assign.value
     elif token == Operator("-"):
         # Unary minus
-        # TODO(max): This number can't be right. I have no idea what's going on
-        # here. Fix it?
-        r = parse(tokens, 5000)
+        # Precedence was chosen to be higher than binary ops so that -a op
+        # b is (-a) op b and not -(a op b).
+        # Precedence was chosen to be higher than function application so that
+        # -a b is (-a) b and not -(a b).
+        r = parse(tokens, 2001)
         l = Binop(BinopKind.SUB, Int(0), r)
     else:
         raise ParseError(f"unexpected token {token!r}")
@@ -1109,8 +1111,26 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_negative_int_binds_tighter_than_plus(self) -> None:
         self.assertEqual(
-            parse([Operator("-"), NumLit(123), Operator("+"), NumLit(456)]),
-            Binop(BinopKind.ADD, Binop(BinopKind.SUB, Int(0), Int(123)), Int(456)),
+            parse([Operator("-"), Name("l"), Operator("+"), Name("r")]),
+            Binop(BinopKind.ADD, Binop(BinopKind.SUB, Int(0), Var("l")), Var("r")),
+        )
+
+    def test_parse_negative_int_binds_tighter_than_mul(self) -> None:
+        self.assertEqual(
+            parse([Operator("-"), Name("l"), Operator("*"), Name("r")]),
+            Binop(BinopKind.MUL, Binop(BinopKind.SUB, Int(0), Var("l")), Var("r")),
+        )
+
+    def test_parse_negative_int_binds_tighter_than_index(self) -> None:
+        self.assertEqual(
+            parse([Operator("-"), Name("l"), Operator("@"), Name("r")]),
+            Access(Binop(BinopKind.SUB, Int(0), Var("l")), Var("r")),
+        )
+
+    def test_parse_negative_int_binds_tighter_than_apply(self) -> None:
+        self.assertEqual(
+            parse([Operator("-"), Name("l"), Name("r")]),
+            Apply(Binop(BinopKind.SUB, Int(0), Var("l")), Var("r")),
         )
 
     def test_parse_var_returns_var(self) -> None:
@@ -1141,6 +1161,9 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_binary_add_returns_binop(self) -> None:
         self.assertEqual(parse([NumLit(1), Operator("+"), NumLit(2)]), Binop(BinopKind.ADD, Int(1), Int(2)))
+
+    def test_parse_binary_sub_returns_binop(self) -> None:
+        self.assertEqual(parse([NumLit(1), Operator("-"), NumLit(2)]), Binop(BinopKind.SUB, Int(1), Int(2)))
 
     def test_parse_binary_add_right_returns_binop(self) -> None:
         self.assertEqual(

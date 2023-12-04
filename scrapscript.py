@@ -181,10 +181,10 @@ class Lexer:
 
     def read_op(self, first_char: str) -> Token:
         buf = first_char
-        # TODO(max): To catch ill-formed operators earlier and to avoid merging
-        # operators by accident, we could make a trie and do longest trie
-        # match.
-        while self.has_input() and (c := self.peek_char()) in OPER_CHARS:
+        while self.has_input():
+            c = self.peek_char()
+            if buf + c not in PS.keys():
+                break
             self.read_char()
             buf += c
         return Operator(buf)
@@ -861,6 +861,9 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_binop_no_spaces(self) -> None:
         self.assertEqual(tokenize("1+2"), [NumLit(1), Operator("+"), NumLit(2)])
+
+    def test_tokenize_two_oper_chars_returns_two_ops(self) -> None:
+        self.assertEqual(tokenize(",:"), [Operator(","), Operator(":")])
 
     @unittest.skip("TODO(max): Move negative integers into the parser")
     def test_tokenize_binary_sub_no_spaces(self) -> None:

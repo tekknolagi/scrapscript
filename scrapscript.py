@@ -31,80 +31,80 @@ def is_identifier_char(c: str) -> bool:
     return c.isalnum() or c in ("$", "'", "_")
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class Token:
-    line: int = dataclasses.field(default=-1, init=False)
+    line: int = dataclasses.field(default=-1, init=False, compare=False)
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class NumLit(Token):
     value: int
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class StringLit(Token):
     value: str
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class BytesLit(Token):
     value: str
     base: int
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class Operator(Token):
     value: str
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class Name(Token):
     value: str
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class LeftParen(Token):
     # (
     pass
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class RightParen(Token):
     # )
     pass
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class LeftBrace(Token):
     # {
     pass
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class RightBrace(Token):
     # }
     pass
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class LeftBracket(Token):
     # [
     pass
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class RightBracket(Token):
     # ]
     pass
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class Juxt(Token):
     # The space between other tokens that indicates function application.
     pass
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class EOF(Token):
     pass
 
@@ -137,13 +137,18 @@ class Lexer:
             raise UnexpectedEOFError("while reading token")
         return self.text[self.idx]
 
+    def make_token(self, cls: type, *args: Any) -> Token:
+        result: Token = cls(*args)
+        result.line = self.lineno
+        return result
+
     def read_one(self) -> Token:
         while self.has_input():
             c = self.read_char()
             if not c.isspace():
                 break
         else:
-            return EOF()
+            return self.make_token(EOF)
         if c == '"':
             return self.read_string()
         if c == "-":
@@ -160,21 +165,21 @@ class Lexer:
             return self.read_number(c)
         if c in "()[]{}":
             custom = {
-                "(": LeftParen(),
-                ")": RightParen(),
-                "{": LeftBrace(),
-                "}": RightBrace(),
-                "[": LeftBracket(),
-                "]": RightBracket(),
+                "(": LeftParen,
+                ")": RightParen,
+                "{": LeftBrace,
+                "}": RightBrace,
+                "[": LeftBracket,
+                "]": RightBracket,
             }
-            return custom[c]
+            return self.make_token(custom[c])
         if c in OPER_CHARS:
             return self.read_op(c)
         if is_identifier_char(c):
             return self.read_var(c)
         raise ParseError(f"unexpected token {c!r}", ("<input>", self.lineno, self.colno, self.line))
 
-    def read_string(self) -> StringLit:
+    def read_string(self) -> Token:
         buf = ""
         while self.has_input():
             if (c := self.read_char()) == '"':
@@ -182,7 +187,7 @@ class Lexer:
             buf += c
         else:
             raise UnexpectedEOFError("while reading string")
-        return StringLit(buf)
+        return self.make_token(StringLit, buf)
 
     def read_comment(self) -> None:
         while self.has_input() and self.read_char() != "\n":
@@ -193,7 +198,7 @@ class Lexer:
         while self.has_input() and (c := self.peek_char()).isdigit():
             self.read_char()
             buf += c
-        return NumLit(int(buf))
+        return self.make_token(NumLit, int(buf))
 
     def read_op(self, first_char: str) -> Token:
         buf = first_char
@@ -203,14 +208,14 @@ class Lexer:
                 break
             self.read_char()
             buf += c
-        return Operator(buf)
+        return self.make_token(Operator, buf)
 
     def read_var(self, first_char: str) -> Token:
         buf = first_char
         while self.has_input() and is_identifier_char(c := self.peek_char()):
             self.read_char()
             buf += c
-        return Name(buf)
+        return self.make_token(Name, buf)
 
     def read_bytes(self) -> Token:
         buf = ""
@@ -219,7 +224,7 @@ class Lexer:
                 break
             buf += c
         base, _, value = buf.rpartition("'")
-        return BytesLit(value, int(base) if base else 64)
+        return self.make_token(BytesLit, value, int(base) if base else 64)
 
 
 def tokenize(x: str) -> typing.List[Token]:

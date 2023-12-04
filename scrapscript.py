@@ -298,6 +298,9 @@ PS = {
 }
 
 
+HIGHEST_PREC: float = max(max(p.pl, p.pr) for p in PS.values())
+
+
 OPER_CHARS = set("".join(PS.keys()))
 assert " " not in OPER_CHARS
 
@@ -343,13 +346,13 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     elif isinstance(token, StringLit):
         l = String(token.value)
     elif token == Operator("|"):
-        expr = parse(tokens, 5)  # TODO: make this work for larger arities
+        expr = parse(tokens, PS["|"].pr)  # TODO: make this work for larger arities
         if not isinstance(expr, Function):
             raise ParseError(f"expected function in match expression {expr!r}")
         cases = [MatchCase(expr.arg, expr.body)]
         while tokens and tokens[0] == Operator("|"):
             tokens.pop(0)
-            expr = parse(tokens, 5)  # TODO: make this work for larger arities
+            expr = parse(tokens, PS["|"].pr)  # TODO: make this work for larger arities
             if not isinstance(expr, Function):
                 raise ParseError(f"expected function in match expression {expr!r}")
             cases.append(MatchCase(expr.arg, expr.body))
@@ -358,7 +361,7 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         if isinstance(tokens[0], RightParen):
             l = Hole()
         else:
-            l = parse(tokens, 0)
+            l = parse(tokens)
         tokens.pop(0)
     elif isinstance(token, LeftBracket):
         l = List([])
@@ -388,7 +391,7 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         # b is (-a) op b and not -(a op b).
         # Precedence was chosen to be higher than function application so that
         # -a b is (-a) b and not -(a b).
-        r = parse(tokens, 2001)
+        r = parse(tokens, HIGHEST_PREC + 1)
         l = Binop(BinopKind.SUB, Int(0), r)
     else:
         raise ParseError(f"unexpected token {token!r}")

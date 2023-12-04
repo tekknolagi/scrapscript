@@ -884,7 +884,6 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_two_oper_chars_returns_two_ops(self) -> None:
         self.assertEqual(tokenize(",:"), [Operator(","), Operator(":")])
 
-    @unittest.skip("TODO(max): Move negative integers into the parser")
     def test_tokenize_binary_sub_no_spaces(self) -> None:
         self.assertEqual(tokenize("1-2"), [NumLit(1), Operator("-"), NumLit(2)])
 

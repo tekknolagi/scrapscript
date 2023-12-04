@@ -62,36 +62,43 @@ class Name(Token):
     value: str
 
 
+@dataclass(eq=True)
 class LeftParen(Token):
     # (
     pass
 
 
+@dataclass(eq=True)
 class RightParen(Token):
     # )
     pass
 
 
+@dataclass(eq=True)
 class LeftBrace(Token):
     # {
     pass
 
 
+@dataclass(eq=True)
 class RightBrace(Token):
     # }
     pass
 
 
+@dataclass(eq=True)
 class LeftBracket(Token):
     # [
     pass
 
 
+@dataclass(eq=True)
 class RightBracket(Token):
     # ]
     pass
 
 
+@dataclass(eq=True)
 class Juxt(Token):
     # The space between other tokens that indicates function application.
     pass

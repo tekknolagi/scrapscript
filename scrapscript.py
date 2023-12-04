@@ -33,7 +33,7 @@ def is_identifier_char(c: str) -> bool:
 
 @dataclass(eq=True)
 class Token:
-    line: int = dataclasses.field(default=-1, init=False, compare=False)
+    lineno: int = dataclasses.field(default=-1, init=False, compare=False)
 
 
 @dataclass(eq=True)
@@ -139,7 +139,7 @@ class Lexer:
 
     def make_token(self, cls: type, *args: Any) -> Token:
         result: Token = cls(*args)
-        result.line = self.lineno
+        result.lineno = self.lineno
         return result
 
     def read_one(self) -> Token:
@@ -1145,6 +1145,17 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(l.line, "ab")
         l.read_char()
         self.assertEqual(l.line, "")
+
+    def read_one_sets_lineno(self) -> None:
+        l = Lexer("a b \n c d")
+        a = l.read_one()
+        b = l.read_one()
+        c = l.read_one()
+        d = l.read_one()
+        self.assertEqual(a.lineno, 1)
+        self.assertEqual(b.lineno, 1)
+        self.assertEqual(c.lineno, 2)
+        self.assertEqual(d.lineno, 2)
 
 
 class ParserTests(unittest.TestCase):

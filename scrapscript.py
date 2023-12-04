@@ -110,7 +110,6 @@ class EOF(Token):
 
 
 class Lexer:
-    # TODO(chris): Add position information to tokens, enable showing position of error in program
     def __init__(self, text: str):
         self.text: str = text
         self.idx: int = 0

@@ -808,8 +808,6 @@ def eval_exp(env: Env, exp: Object) -> Object:
         arg = eval_exp(env, exp.arg)
         if isinstance(callee.func, Function):
             assert isinstance(callee.func.arg, Var)
-            # TODO(max): Special case assignment binding functions to names to
-            # be letrec-like so that they can refer to themselves.
             new_env = {**callee.env, callee.func.arg.name: arg}
             return eval_exp(new_env, callee.func.body)
         elif isinstance(callee.func, MatchFunction):

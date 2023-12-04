@@ -114,12 +114,22 @@ class Lexer:
     def __init__(self, text: str):
         self.text: str = text
         self.idx: int = 0
+        self.lineno: int = 1
+        self.colno: int = 1
+        self.line: str = ""
 
     def has_input(self) -> bool:
         return self.idx < len(self.text)
 
     def read_char(self) -> str:
         c = self.peek_char()
+        if c == "\n":
+            self.lineno += 1
+            self.colno = 1
+            self.line = ""
+        else:
+            self.line += c
+            self.colno += 1
         self.idx += 1
         return c
 
@@ -163,7 +173,7 @@ class Lexer:
             return self.read_op(c)
         if is_identifier_char(c):
             return self.read_var(c)
-        raise ParseError(f"unexpected token {c!r}")
+        raise ParseError(f"unexpected token {c!r}", ("<input>", self.lineno, self.colno, self.line))
 
     def read_string(self) -> StringLit:
         buf = ""
@@ -288,7 +298,7 @@ OPER_CHARS = set("".join(PS.keys()))
 assert " " not in OPER_CHARS
 
 
-class ParseError(Exception):
+class ParseError(SyntaxError):
     pass
 
 
@@ -1099,6 +1109,40 @@ class TokenizerTests(unittest.TestCase):
             tokenize("f << g"),
             [Name("f"), Operator("<<"), Name("g")],
         )
+
+    def test_first_lineno_is_one(self) -> None:
+        l = Lexer("abc")
+        self.assertEqual(l.lineno, 1)
+
+    def test_first_colno_is_one(self) -> None:
+        l = Lexer("abc")
+        self.assertEqual(l.colno, 1)
+
+    def test_first_line_is_empty(self) -> None:
+        l = Lexer("abc")
+        self.assertEqual(l.line, "")
+
+    def test_read_char_increments_colno(self) -> None:
+        l = Lexer("abc")
+        l.read_char()
+        self.assertEqual(l.colno, 2)
+        self.assertEqual(l.lineno, 1)
+
+    def test_read_newline_increments_lineno(self) -> None:
+        l = Lexer("ab\nc")
+        l.read_char()
+        l.read_char()
+        l.read_char()
+        self.assertEqual(l.lineno, 2)
+        self.assertEqual(l.colno, 1)
+
+    def test_read_char_appends_to_line(self) -> None:
+        l = Lexer("ab\nc")
+        l.read_char()
+        l.read_char()
+        self.assertEqual(l.line, "ab")
+        l.read_char()
+        self.assertEqual(l.line, "")
 
 
 class ParserTests(unittest.TestCase):

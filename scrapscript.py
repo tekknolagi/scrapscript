@@ -31,9 +31,9 @@ def is_identifier_char(c: str) -> bool:
     return c.isalnum() or c in ("$", "'", "_")
 
 
-@dataclass(eq=True, frozen=True, kw_only=True)
+@dataclass(eq=True, frozen=True)
 class Token:
-    line: int = -1
+    line: int = dataclasses.field(default=-1, init=False)
 
 
 @dataclass(eq=True, frozen=True)

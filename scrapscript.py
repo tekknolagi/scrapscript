@@ -725,6 +725,9 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
         if not isinstance(obj, Record):
             return None
         result: Env = {}
+        if len(pattern.data) != len(obj.data):
+            # TODO: Remove this check when implementing ... operator
+            return None
         for key, value in pattern.data.items():
             obj_value = obj.data.get(key)
             if obj_value is None:
@@ -1529,15 +1532,13 @@ class MatchTests(unittest.TestCase):
             None,
         )
 
-    def test_match_record_with_fewer_fields_in_pattern_returns_intersection(self) -> None:
-        # TODO(max): Should this be the case? I feel like we should not match
-        # without explicitly using spread.
-        self.assertEqual(
+    def test_match_record_with_fewer_fields_in_pattern_none(self) -> None:
+        self.assertIs(
             match(
                 Record({"x": Int(1), "y": Int(2)}),
                 pattern=Record({"x": Var("x")}),
             ),
-            {"x": Int(1)},
+            None,
         )
 
     def test_match_record_with_vars_returns_dict_with_keys(self) -> None:

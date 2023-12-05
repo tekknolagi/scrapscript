@@ -67,7 +67,7 @@ async function sendRequest(env, exp) {
     return fetch("/eval?" + new URLSearchParams(params));
 }
 
-const input = document.getElementById("input");
+let input = document.getElementById("input");
 const output = document.getElementById("output");
 const history = [];
 const button = document.getElementById("clear-local-storage");
@@ -89,12 +89,50 @@ function loadFromLocalStorage() {
     document.env = window.localStorage.getItem('env');
 }
 
+function expandInput() {
+    if (input.tagName === "TEXTAREA") {
+        return;
+    }
+    const textarea = document.createElement("textarea");
+    textarea.setAttribute("id", "input");
+    textarea.setAttribute("rows", "1");
+    textarea.setAttribute("style", "height: 1.5em;");
+    textarea.value = input.value;
+    input.replaceWith(textarea);
+    input = textarea;
+    input.focus();
+    input.addEventListener("keyup", e => inputHandler(e));
+}
+
+function shrinkInput() {
+    if (input.tagName === "INPUT") {
+        return;
+    }
+    const newInput = document.createElement("input");
+    newInput.setAttribute("id", "input");
+    newInput.setAttribute("type", "text");
+    newInput.value = input.value;
+    input.replaceWith(newInput);
+    input = newInput;
+    input.focus();
+    input.addEventListener("keyup", e => inputHandler(e));
+}
 
 loadFromLocalStorage();
 input.focus();
-input.addEventListener("keyup", async ({key}) => {
+async function inputHandler(e) {
     // TODO(max): Make up/down arrow keys navigate history
-    if (key === "Enter") {
+    if (e.key === "Enter") {
+        if (e.shiftKey && input.tagName === "INPUT") {
+            // Shift-Enter expands the input to a textarea and does not submit
+            // input.
+            expandInput();
+            return;
+        }
+        if (!e.shiftKey && input.tagName === "TEXTAREA") {
+            // Normal Enter in a textarea should not submit input.
+            return;
+        }
         const response = await sendRequest(document.env, input.value);
         if (response.ok) {
             const {env, result} = await response.json();
@@ -109,8 +147,14 @@ input.addEventListener("keyup", async ({key}) => {
             updateHistory(input.value, msg);
             input.value = "";
         }
+        if (input.tagName === "TEXTAREA") {
+            shrinkInput();
+        }
+    } else {
+        console.log("key", e.key);
     }
-});
+}
+input.addEventListener("keyup", e => inputHandler(e));
 button.addEventListener("click", () => {
     window.localStorage.clear();
     loadFromLocalStorage();

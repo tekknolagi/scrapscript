@@ -1191,7 +1191,7 @@ completely stateless. All persistence is in the browser.</p>
 Output:
 </div>
 <div>
-<code>>>> </code><input id="input" />
+<code>>>> </code><input id="input" type="text" />
 </div>
 <script type="module">
 "use strict";

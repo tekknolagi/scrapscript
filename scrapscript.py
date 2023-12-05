@@ -1159,6 +1159,20 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Scrapscript Web REPL</title>
 <link rel="shortcut icon" type="image/x-icon" href="data:image/vnd.microsoft.icon;base64,AAABAAEAEBAQAAAAAAAoAQAAFgAAACgAAAAQAAAAIAAAAAEABAAAAAAAgAAAAAAAAAAAAAAAEAAAAAAAAAD/AAAA////AAAA/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAREBEQAAAAAQAQEAEAAAABABAQAQAAAAAREBEQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACIiIiIiIiIiIiIiIiIiIiIiERIiESEiIiIiESEiISIiIhEiISIhEiIiIREiESEhIiIiIiIiIiIiIiIiIiIiIiIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA">
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Fira+Code&display=swap"
+  rel="stylesheet"
+/>
+<link
+  href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,500;0,700&display=swap"
+  rel="stylesheet"
+/>
+<link
+  href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,400;0,700;0,900;1,400&display=swap"
+  rel="stylesheet"
+/>
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -1185,6 +1199,7 @@ Input: <input id="input" />
 "use strict";
 
 function updateHistory(inp, out) {
+    // TODO(max): Use pre and pre.result to get different background colors
     output.innerHTML += `${inp}\n${out}\n>>> `;
     output.scrollTop = output.scrollHeight;
 }

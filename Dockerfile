@@ -19,6 +19,7 @@ RUN bin/ape.elf bin/assimilate bin/scrapscript.com
 FROM scratch
 COPY --from=build /cosmo/bin/scrapscript.com .
 COPY style.css .
+COPY repl.html .
 EXPOSE 8000
 ENTRYPOINT ["./scrapscript.com"]
 CMD ["repl"]

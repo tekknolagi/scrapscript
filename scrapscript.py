@@ -1151,141 +1151,20 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(str(e).encode("utf-8"))
                 return
         if parsed_path.path == "/style.css":
+            self.send_response(200)
+            self.send_header("Content-type", "text/css")
+            self.end_headers()
             with open("style.css", "rb") as f:
-                self.send_response(200)
-                self.send_header("Content-type", "text/css")
-                self.end_headers()
                 self.wfile.write(f.read())
-                return
+            return
         return self.do_404()
 
     def do_repl(self) -> None:
-        html = rb"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Scrapscript Web REPL</title>
-<link rel="shortcut icon" type="image/x-icon" href="data:image/vnd.microsoft.icon;base64,AAABAAEAEBAQAAAAAAAoAQAAFgAAACgAAAAQAAAAIAAAAAEABAAAAAAAgAAAAAAAAAAAAAAAEAAAAAAAAAD/AAAA////AAAA/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAREBEQAAAAAQAQEAEAAAABABAQAQAAAAAREBEQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACIiIiIiIiIiIiIiIiIiIiIiERIiESEiIiIiESEiISIiIhEiISIhEiIiIREiESEhIiIiIiIiIiIiIiIiIiIiIiIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA">
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link
-  href="https://fonts.googleapis.com/css2?family=Fira+Code&display=swap"
-  rel="stylesheet"
-/>
-<link
-  href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,500;0,700&display=swap"
-  rel="stylesheet"
-/>
-<link
-  href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,400;0,700;0,900;1,400&display=swap"
-  rel="stylesheet"
-/>
-<link rel="stylesheet" href="/style.css" />
-</head>
-<body>
-<main>
-<div>
-<p>See <a href="https://scrapscript.org/">scrapscript.org</a> for a slightly
-out of date language reference.</p>
-<p>This REPL sends programs to a server to be evaluated, but the server is
-completely stateless. All persistence is in the browser.</p>
-</div>
-<div>
-<!-- TODO(max): Add button to save to/load from disk. -->
-<button id="clear-local-storage">Clear LocalStorage</button>
-</div>
-<div id="output" style="height: 400px; overflow: auto;">
-Output:
-</div>
-<div>
-<code>>>> </code><input id="input" type="text" />
-</div>
-<script type="module">
-"use strict";
-
-function updateHistory(inp, out) {
-    const pre_inp = document.createElement("pre");
-    pre_inp.setAttribute("class", "language-text");
-    const code_inp = document.createElement("code");
-    code_inp.setAttribute("class", "language-text");
-    code_inp.append(`>>> ${inp}`);
-    pre_inp.append(code_inp);
-
-    const pre_out = document.createElement("pre");
-    pre_out.setAttribute("class", "result language-text");
-    const code_out = document.createElement("code");
-    code_out.setAttribute("class", "language-text");
-    code_out.append(`${out}`);
-    pre_out.append(code_out);
-
-    output.append(pre_inp);
-    output.append(pre_out);
-    output.scrollTop = output.scrollHeight;
-}
-
-async function sendRequest(env, exp) {
-    const params = env === null ? {exp} : {exp, env};
-    return fetch("/eval?" + new URLSearchParams(params));
-}
-
-const input = document.getElementById("input");
-const output = document.getElementById("output");
-const history = [];
-const button = document.getElementById("clear-local-storage");
-
-function renderHistory() {
-    for (const [inp, out] of history) {
-        updateHistory(inp, out);
-    }
-}
-
-function loadFromLocalStorage() {
-    history.length = 0;
-    output.innerHTML = "";
-    const hist = window.localStorage.getItem('history');
-    if (hist !== null) {
-        history.push(...JSON.parse(hist));
-    }
-    renderHistory();
-    document.env = window.localStorage.getItem('env');
-}
-
-
-loadFromLocalStorage();
-input.focus();
-input.addEventListener("keyup", async ({key}) => {
-    // TODO(max): Make up/down arrow keys navigate history
-    if (key === "Enter") {
-        const response = await sendRequest(document.env, input.value);
-        if (response.ok) {
-            const {env, result} = await response.json();
-            updateHistory(input.value, result);
-            history.push([input.value, result]);
-            input.value = "";
-            document.env = env;
-            window.localStorage.setItem('env', env)
-            window.localStorage.setItem('history', JSON.stringify(history));
-        } else {
-            const msg = await response.text();
-            updateHistory(input.value, msg);
-            input.value = "";
-        }
-    }
-});
-button.addEventListener("click", () => {
-    window.localStorage.clear();
-    loadFromLocalStorage();
-    input.focus();
-});
-</script>
-</main>
-</body>
-</html>"""
         self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.end_headers()
-        self.wfile.write(html)
+        with open("repl.html", "rb") as f:
+            self.wfile.write(f.read())
         return
 
     def do_404(self) -> None:

@@ -1162,6 +1162,7 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
+<main>
 <div>
 <p>See <a href="https://scrapscript.org/">scrapscript.org</a> for a slightly
 out of date language reference.</p>
@@ -1235,6 +1236,7 @@ button.addEventListener("click", () => {
     input.focus();
 });
 </script>
+</main>
 </body>
 </html>"""
         self.send_response(200)

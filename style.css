@@ -12,6 +12,9 @@ body {
 p {
   margin-bottom: 1rem;
 }
+div {
+  color: #d4d4d4;
+}
 
 a:link {
   text-decoration: none;

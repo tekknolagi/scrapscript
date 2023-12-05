@@ -565,8 +565,8 @@ class Bool(Object):
     @staticmethod
     def deserialize(msg: Dict[str, object]) -> "Bool":
         assert msg["type"] == "Bool"
-        assert isinstance(msg["value"], bool)
-        return Bool(msg["value"])
+        assert isinstance(msg["value"], int)
+        return Bool(bool(msg["value"]))
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -820,6 +820,14 @@ class Record(Object):
 
     def serialize(self) -> Dict[bytes, object]:
         return self._serialize(data={key.encode("utf-8"): value.serialize() for key, value in self.data.items()})
+
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Record":
+        assert msg["type"] == "Record"
+        data_obj = msg["data"]
+        assert isinstance(data_obj, dict)
+        data = {key: Object.deserialize(value) for key, value in data_obj.items()}
+        return Record(data)
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -3149,9 +3157,21 @@ class ObjectDeserializeTests(unittest.TestCase):
         msg = {"type": "Var", "name": "abc"}
         self.assertEqual(Object.deserialize(msg), Var("abc"))
 
-    def test_deserialize_bool(self) -> None:
+    def test_deserialize_bool_true(self) -> None:
         msg = {"type": "Bool", "value": True}
         self.assertEqual(Object.deserialize(msg), Bool(True))
+
+    def test_deserialize_bool_false(self) -> None:
+        msg = {"type": "Bool", "value": False}
+        self.assertEqual(Object.deserialize(msg), Bool(False))
+
+    def test_deserialize_bool_int_one(self) -> None:
+        msg = {"type": "Bool", "value": 1}
+        self.assertEqual(Object.deserialize(msg), Bool(True))
+
+    def test_deserialize_bool_int_zero(self) -> None:
+        msg = {"type": "Bool", "value": 0}
+        self.assertEqual(Object.deserialize(msg), Bool(False))
 
     def test_deserialize_binary_add(self) -> None:
         msg = {
@@ -3203,6 +3223,14 @@ class ObjectDeserializeTests(unittest.TestCase):
             "func": {"name": "f", "type": "Var"},
             "arg": {"name": "x", "type": "Var"},
             "type": "Apply",
+        }
+        self.assertEqual(Object.deserialize(msg), obj)
+
+    def test_deserialize_record(self) -> None:
+        obj = Record({"x": Int(1), "y": Int(2)})
+        msg = {
+            "data": {"x": {"type": "Int", "value": 1}, "y": {"type": "Int", "value": 2}},
+            "type": "Record",
         }
         self.assertEqual(Object.deserialize(msg), obj)
 

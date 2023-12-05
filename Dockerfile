@@ -18,6 +18,7 @@ RUN bin/ape.elf bin/assimilate bin/scrapscript.com
 # Set up the container
 FROM scratch
 COPY --from=build /cosmo/bin/scrapscript.com .
+COPY style.css .
 EXPOSE 8000
 ENTRYPOINT ["./scrapscript.com"]
 CMD ["repl"]

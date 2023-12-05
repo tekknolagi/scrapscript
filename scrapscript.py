@@ -1142,6 +1142,13 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(str(e).encode("utf-8"))
                 return
+        if parsed_path.path == "/style.css":
+            with open("style.css", "rb") as f:
+                self.send_response(200)
+                self.send_header("Content-type", "text/css")
+                self.end_headers()
+                self.wfile.write(f.read())
+                return
         return self.do_404()
 
     def do_repl(self) -> None:
@@ -1152,6 +1159,7 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Scrapscript Web REPL</title>
 <link rel="shortcut icon" type="image/x-icon" href="data:image/vnd.microsoft.icon;base64,AAABAAEAEBAQAAAAAAAoAQAAFgAAACgAAAAQAAAAIAAAAAEABAAAAAAAgAAAAAAAAAAAAAAAEAAAAAAAAAD/AAAA////AAAA/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAREBEQAAAAAQAQEAEAAAABABAQAQAAAAAREBEQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACIiIiIiIiIiIiIiIiIiIiIiERIiESEiIiIiESEiISIiIhEiISIhEiIiIREiESEhIiIiIiIiIiIiIiIiIiIiIiIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA">
+<link rel="stylesheet" href="/style.css" />
 </head>
 <body>
 <div>

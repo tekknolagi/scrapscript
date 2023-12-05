@@ -139,8 +139,8 @@ pre[class*="language-"] {
 }
 pre[class*="language-"] {
   border-radius: 5px;
-  padding: 2em 1em;
-  margin-bottom: 2em;
+  padding: 0.5em 0.5em;
+  margin: 0em;
   z-index: 2;
 }
 code,
@@ -156,8 +156,6 @@ pre > code {
 }
 
 pre[class*="language-"] + pre[class*="language-"].result {
-  padding-top: 2.5rem;
-  margin-top: -2.5rem;
   background-color: #202020;
   position: relative;
   opacity: 0.9;

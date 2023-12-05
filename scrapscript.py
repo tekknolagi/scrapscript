@@ -1187,10 +1187,8 @@ completely stateless. All persistence is in the browser.</p>
 <!-- TODO(max): Add button to save to/load from disk. -->
 <button id="clear-local-storage">Clear LocalStorage</button>
 </div>
-<div>
+<div id="output" style="height: 400px; overflow: auto;">
 Output:
-<pre id="output" style="height: 200px; overflow: auto;">
->>> </pre>
 </div>
 <div>
 Input: <input id="input" />
@@ -1200,7 +1198,22 @@ Input: <input id="input" />
 
 function updateHistory(inp, out) {
     // TODO(max): Use pre and pre.result to get different background colors
-    output.innerHTML += `${inp}\n${out}\n>>> `;
+    const pre_inp = document.createElement("pre");
+    pre_inp.setAttribute("class", "language-text");
+    const code_inp = document.createElement("code");
+    code_inp.setAttribute("class", "language-text");
+    code_inp.append(`>>> ${inp}`);
+    pre_inp.append(code_inp);
+
+    const pre_out = document.createElement("pre");
+    pre_out.setAttribute("class", "result language-text");
+    const code_out = document.createElement("code");
+    code_out.setAttribute("class", "language-text");
+    code_out.append(`${out}`);
+    pre_out.append(code_out);
+
+    output.append(pre_inp);
+    output.append(pre_out);
     output.scrollTop = output.scrollHeight;
 }
 
@@ -1211,16 +1224,23 @@ async function sendRequest(env, exp) {
 
 const input = document.getElementById("input");
 const output = document.getElementById("output");
+const history = [];
 const button = document.getElementById("clear-local-storage");
 
-function loadFromLocalStorage() {
-    const hist = window.localStorage.getItem('history');
-    if (hist === null) {
-        output.innerHTML = ">>> ";
-    } else {
-        output.innerHTML = hist;
+function renderHistory() {
+    for (const [inp, out] of history) {
+        updateHistory(inp, out);
     }
-    output.scrollTop = output.scrollHeight;
+}
+
+function loadFromLocalStorage() {
+    history.length = 0;
+    output.innerHTML = "";
+    const hist = window.localStorage.getItem('history');
+    if (hist !== null) {
+        history.push(...JSON.parse(hist));
+    }
+    renderHistory();
     document.env = window.localStorage.getItem('env');
 }
 
@@ -1234,10 +1254,11 @@ input.addEventListener("keyup", async ({key}) => {
         if (response.ok) {
             const {env, result} = await response.json();
             updateHistory(input.value, result);
+            history.push([input.value, result]);
             input.value = "";
             document.env = env;
             window.localStorage.setItem('env', env)
-            window.localStorage.setItem('history', output.innerHTML);
+            window.localStorage.setItem('history', JSON.stringify(history));
         } else {
             const msg = await response.text();
             updateHistory(input.value, msg);

@@ -1197,7 +1197,6 @@ Output:
 "use strict";
 
 function updateHistory(inp, out) {
-    // TODO(max): Use pre and pre.result to get different background colors
     const pre_inp = document.createElement("pre");
     pre_inp.setAttribute("class", "language-text");
     const code_inp = document.createElement("code");

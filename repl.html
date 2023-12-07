@@ -150,8 +150,6 @@ async function inputHandler(e) {
         if (input.tagName === "TEXTAREA") {
             shrinkInput();
         }
-    } else {
-        console.log("key", e.key);
     }
 }
 input.addEventListener("keyup", e => inputHandler(e));

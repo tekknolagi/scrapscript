@@ -29,7 +29,7 @@ pytest = "^7.4.0"
 ruff = "^0.1.5"
 
 [tool.poetry.scripts]
-scrap = "scrapscript.cli.cli:main"
+scrap = "scrapscript:main"
 
 [build-system]
 build-backend = "poetry.core.masonry.api"

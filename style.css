@@ -167,7 +167,7 @@ pre[class*="language-"] + pre[class*="language-"].result {
 pre[class*="language-"].result {
   z-index: 1;
 }
-input[type="text"] {
+input[type="text"], textarea {
   background-color: #2d2d2d;
   outline: none;
   color: #ccc;

@@ -200,11 +200,15 @@ class Lexer:
             buf += c
         return self.make_token(NumLit, int(buf))
 
+    def _starts_operator(self, buf: str) -> bool:
+        # TODO(max): Rewrite using trie
+        return any(op.startswith(buf) for op in PS.keys())
+
     def read_op(self, first_char: str) -> Token:
         buf = first_char
         while self.has_input():
             c = self.peek_char()
-            if buf + c not in PS.keys():
+            if not self._starts_operator(buf + c):
                 break
             self.read_char()
             buf += c
@@ -296,6 +300,8 @@ PS = {
     ".": rp(3),
     "?": rp(3),
     ",": xp(1),
+    # TODO: Fix precedence for spread
+    "...": xp(0),
 }
 
 
@@ -927,6 +933,9 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_dollar_dollar_var(self) -> None:
         self.assertEqual(tokenize("$$bills"), [Name("$$bills")])
+
+    def test_tokenize_spread(self) -> None:
+        self.assertEqual(tokenize("..."), [Operator("...")])
 
     def test_ignore_whitespace(self) -> None:
         self.assertEqual(tokenize("1\n+\t2"), [NumLit(1), Operator("+"), NumLit(2)])

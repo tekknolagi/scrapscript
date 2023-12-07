@@ -22,4 +22,4 @@ primary_region = "ewr"
   memory_mb = 256
 
 [experimental]
-cmd = ["serve", "--port", "8000", "--debug"]
+cmd = ["serve", "--port", "8000", "--debug", "--fork"]

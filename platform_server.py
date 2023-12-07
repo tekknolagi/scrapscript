@@ -4,6 +4,7 @@ import http.server
 import logging
 import socketserver
 import urllib.request
+import urllib.parse
 from typing import Union
 
 from scrapscript import Record, STDLIB, String, Apply, eval_exp, parse, tokenize
@@ -16,9 +17,6 @@ handler = parse(tokenize("x -> x"))
 
 
 class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
-    def set_server(self, server_exp):
-        self.server_exp = server_exp
-
     def do_GET(self) -> None:
         logger.debug("GET %s", self.path)
         parsed_path = urllib.parse.urlsplit(self.path)

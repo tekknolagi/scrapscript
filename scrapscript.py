@@ -1949,7 +1949,7 @@ class EvalTests(unittest.TestCase):
         ast = Binop(BinopKind.LESS, Int(3), Int(4))
         self.assertEqual(eval_exp({}, ast), Bool(True))
 
-    def test_eval_less_on_bool_raises_type_error(self) -> None:
+    def test_eval_less_on_non_bool_raises_type_error(self) -> None:
         ast = Binop(BinopKind.LESS, Bool(True), Int(4))
         with self.assertRaisesRegex(TypeError, re.escape("expected Int, got Bool")):
             eval_exp({}, ast)

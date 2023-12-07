@@ -2627,7 +2627,8 @@ def test_command(args: argparse.Namespace) -> None:
     if args.debug:
         # pylint: disable=protected-access
         __import__("sys").modules["unittest.util"]._MAX_LENGTH = 999999999
-    unittest.main(argv=[__file__])
+    # Pass on the rest of the positionals (for filtering tests and so on)
+    unittest.main(argv=[__file__, *args.unittest_args])
 
 
 def main() -> None:
@@ -2640,6 +2641,7 @@ def main() -> None:
 
     test = subparsers.add_parser("test")
     test.set_defaults(func=test_command)
+    test.add_argument("unittest_args", nargs="*")
     test.add_argument("--debug", action="store_true")
 
     eval_ = subparsers.add_parser("eval")

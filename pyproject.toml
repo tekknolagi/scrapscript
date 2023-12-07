@@ -19,9 +19,6 @@ readme = "README.md"
 repository = "https://github.com/tekknolagi/scrapscript"
 version = "0.1.0"
 
-[[tool.poetry.packages]]
-include = "scrapscript"
-
 [tool.poetry.dependencies]
 python = ">=3.9"
 

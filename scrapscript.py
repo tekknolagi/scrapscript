@@ -2345,6 +2345,12 @@ class EndToEndTests(unittest.TestCase):
     def test_exp_binds_tighter_than_mul(self) -> None:
         self.assertEqual(self._run("5 * 2 ^ 3"), Int(40))
 
+    def test_stdlib_true_returns_true(self) -> None:
+        self.assertEqual(self._run("true", STDLIB), Bool(True))
+
+    def test_stdlib_false_returns_false(self) -> None:
+        self.assertEqual(self._run("false", STDLIB), Bool(False))
+
 
 class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:
@@ -2532,6 +2538,8 @@ STDLIB = {
     "$$jsondecode": NativeFunction(jsondecode),
     "$$serialize": NativeFunction(lambda obj: Bytes(serialize(obj))),
     "$$listlength": NativeFunction(listlength),
+    "true": Bool(True),
+    "false": Bool(False),
 }
 
 

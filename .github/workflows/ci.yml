@@ -25,9 +25,9 @@ jobs:
       run: sudo apt install --yes python3.10
     - run: python3.10 -m pip install --user pipx
     - run: python3.10 -m pipx install poetry
-    - run: /root/.local/bin/poetry install --with=dev
-    - run: /root/.local/bin/poetry run ruff check scrapscript.py
-    - run: /root/.local/bin/poetry run mypy --strict scrapscript.py
+    - run: poetry install --with=dev
+    - run: poetry run ruff check scrapscript.py
+    - run: poetry run mypy --strict scrapscript.py
   run_unit_tests:
     strategy:
       matrix:

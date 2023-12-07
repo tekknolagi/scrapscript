@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eux
+PREV="$(pwd)"
+DIR="$(mktemp -d)"
+cp scrapscript.py "$DIR"
+cp .args "$DIR"
+cd "$DIR"
+wget https://cosmo.zip/pub/cosmos/bin/python
+wget https://cosmo.zip/pub/cosmos/bin/zip
+chmod +x python
+chmod +x zip
+./python -m compileall scrapscript.py
+mkdir Lib
+cp __pycache__/scrapscript.cpython-311.pyc Lib/scrapscript.pyc
+cp python scrapscript.com
+./zip -r scrapscript.com Lib .args
+echo "Testing..."
+./scrapscript.com apply "1+2"
+cd "$PREV"
+cp "$DIR"/scrapscript.com .

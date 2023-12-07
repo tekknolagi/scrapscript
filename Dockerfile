@@ -7,15 +7,17 @@ WORKDIR cosmo
 RUN unzip ../$COSMO bin/ape.elf bin/assimilate bin/bash bin/python bin/zip
 RUN mkdir Lib
 COPY scrapscript.py Lib
+COPY .args .
 RUN bin/ape.elf bin/python -m compileall Lib
 RUN mv Lib/__pycache__/scrapscript*.pyc Lib/scrapscript.pyc
 RUN rm Lib/scrapscript.py
-RUN sh bin/zip -A -r bin/python Lib
-RUN bin/ape.elf bin/assimilate bin/python
+RUN cp bin/python bin/scrapscript.com
+RUN sh bin/zip -A -r bin/scrapscript.com Lib .args
+RUN bin/ape.elf bin/assimilate bin/scrapscript.com
 
 # Set up the container
 FROM scratch
-COPY --from=build /cosmo/bin/python .
+COPY --from=build /cosmo/bin/scrapscript.com .
 EXPOSE 8000
-ENTRYPOINT ["./python", "-m", "scrapscript"]
+ENTRYPOINT ["./scrapscript.com"]
 CMD ["repl"]

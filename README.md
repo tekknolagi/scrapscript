@@ -16,12 +16,14 @@ python scrapscript.py repl
 or with Docker:
 
 ```bash
-# Run the REPL
-docker run -i -t ghcr.io/tekknolagi/scrapscript:trunk
-# or
-docker run -i -t ghcr.io/tekknolagi/scrapscript:trunk repl
+# With a file (mount your local directory)
+docker run --mount type=bind,source="$(pwd)",target=/mnt -i -t ghcr.io/tekknolagi/scrapscript:trunk eval /mnt/examples/0_home/triangle.ss
 
-# the rest is same as above
+# With a string literal
+docker run -i -t ghcr.io/tekknolagi/scrapscript:trunk apply "1 + 2"
+
+# With a REPL
+docker run -i -t ghcr.io/tekknolagi/scrapscript:trunk repl
 ```
 
 ## Running Tests

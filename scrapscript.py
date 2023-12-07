@@ -212,7 +212,9 @@ class Lexer:
                 break
             self.read_char()
             buf += c
-        return self.make_token(Operator, buf)
+        if buf in PS.keys():
+            return self.make_token(Operator, buf)
+        raise ParseError(f"unexpected token {buf!r}")
 
     def read_var(self, first_char: str) -> Token:
         buf = first_char
@@ -933,6 +935,10 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_dollar_dollar_var(self) -> None:
         self.assertEqual(tokenize("$$bills"), [Name("$$bills")])
+
+    def test_tokenize_dot_dot(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token '..'")):
+            tokenize("..")
 
     def test_tokenize_spread(self) -> None:
         self.assertEqual(tokenize("..."), [Operator("...")])

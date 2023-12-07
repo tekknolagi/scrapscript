@@ -126,6 +126,14 @@ a:hover {
   opacity: 0.8;
 }
 
+#output {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  margin: 0.8em 0;
+  box-sizing: border-box;
+}
+
 pre {
   overflow-x: scroll;
 }
@@ -138,10 +146,9 @@ pre[class*="language-"] {
   font-size: 0.8rem;
 }
 pre[class*="language-"] {
-  border-radius: 5px;
   padding: 0.5em 0.5em;
-  margin: 0em;
   z-index: 2;
+  margin: 0;
 }
 code,
 pre > code {
@@ -157,11 +164,13 @@ pre > code {
 
 :not(pre) > code[class*="language-"], pre[class*="language-"] {
   background: #2d2d2d;
+  border-radius: 5px 5px 0px 0px;
 }
 pre[class*="language-"] + pre[class*="language-"].result {
   background-color: #202020;
   position: relative;
   opacity: 0.9;
+  border-radius: 0px 0px 5px 5px;
 }
 
 pre[class*="language-"].result {
@@ -171,6 +180,38 @@ input[type="text"], textarea {
   background-color: #2d2d2d;
   outline: none;
   color: #ccc;
+}
+
+#prompt-string {
+  font-family: "Nunito Sans", sans-serif;
+  font-weight: bold;
+  display: inline-block;
+  padding-right: 0.4em;
+}
+
+#input {
+  font-family: "Fira Code", Monaco, Menlo, Consolas, "Courier New", monospace;
+  background-color: #2d2d2d;
+  color: #d4d4d4;
+  border: none;
+  padding: 0.5em 1.2em;
+  border-radius: 5px;
+  transition: background-color 200ms;
+}
+
+#clear-local-storage {
+  font-family: "Nunito Sans", sans-serif;
+  background-color: #2d2d2d;
+  color: #d4d4d4;
+  border: none;
+  padding: 0.5em 1.2em;
+  font-weight: bold;
+  border-radius: 5px;
+  transition: background-color 200ms;
+}
+#clear-local-storage:hover {
+  cursor: pointer;
+  background-color: #434343;
 }
 
 /*

@@ -1759,7 +1759,7 @@ class EvalTests(unittest.TestCase):
         assert isinstance(result, EnvObject)
         closure = result.env["a"]
         self.assertIsInstance(closure, Closure)
-        self.assertEqual(closure, Closure(env={"a": closure}, func=Function(arg=Var(name="x"), body=Var(name="x"))))
+        self.assertEqual(closure, Closure({"a": closure}, Function(Var("x"), Var("x"))))
 
     def test_eval_assign_does_not_modify_env(self) -> None:
         exp = Assign(Var("a"), Int(1))

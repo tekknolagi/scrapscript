@@ -2767,7 +2767,7 @@ def test_command(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    subparsers = parser.add_subparsers(required=True)
+    subparsers = parser.add_subparsers(dest="command")
 
     repl = subparsers.add_parser("repl")
     repl.set_defaults(func=repl_command)
@@ -2789,7 +2789,11 @@ def main() -> None:
     apply.add_argument("--debug", action="store_true")
 
     args = parser.parse_args()
-    args.func(args)
+    if not args.command:
+        args.debug = False
+        repl_command(args)
+    else:
+        args.func(args)
 
 
 if __name__ == "__main__":

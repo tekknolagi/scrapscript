@@ -1,6 +1,6 @@
 [tool.poetry]
 authors = [
-    "Max Bernstein <maxmaxmax>",
+    "Max Bernstein <python@bernsteinbear.com>",
     "Chris Gregory <christopher.b.gregory@gmail.com>",
 ]
 classifiers = [

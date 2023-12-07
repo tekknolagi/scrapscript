@@ -284,6 +284,8 @@ PS = {
     ">": np(9),
     "<=": np(9),
     ">=": np(9),
+    "&&": rp(8),
+    "||": rp(7),
     "->": lp(5),
     "|": rp(4.5),
     ":": lp(4.5),
@@ -522,6 +524,8 @@ class BinopKind(enum.Enum):
     GREATER = auto()
     LESS_EQUAL = auto()
     GREATER_EQUAL = auto()
+    BOOL_AND = auto()
+    BOOL_OR = auto()
     STRING_CONCAT = auto()
     LIST_CONS = auto()
     LIST_APPEND = auto()
@@ -545,6 +549,8 @@ class BinopKind(enum.Enum):
             ">": cls.GREATER,
             "<=": cls.LESS_EQUAL,
             ">=": cls.GREATER_EQUAL,
+            "&&": cls.BOOL_AND,
+            "||": cls.BOOL_OR,
             "++": cls.STRING_CONCAT,
             ">+": cls.LIST_CONS,
             "+<": cls.LIST_APPEND,
@@ -686,6 +692,13 @@ def eval_str(env: Env, exp: Object) -> str:
     return result.value
 
 
+def eval_bool(env: Env, exp: Object) -> bool:
+    result = eval_exp(env, exp)
+    if not isinstance(result, Bool):
+        raise TypeError(f"expected Bool, got {type(result).__name__}")
+    return result.value
+
+
 def eval_list(env: Env, exp: Object) -> typing.List[Object]:
     result = eval_exp(env, exp)
     if not isinstance(result, List):
@@ -706,6 +719,8 @@ BINOP_HANDLERS: Dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.GREATER: lambda env, x, y: Bool(eval_int(env, x) > eval_int(env, y)),
     BinopKind.LESS_EQUAL: lambda env, x, y: Bool(eval_int(env, x) <= eval_int(env, y)),
     BinopKind.GREATER_EQUAL: lambda env, x, y: Bool(eval_int(env, x) >= eval_int(env, y)),
+    BinopKind.BOOL_AND: lambda env, x, y: Bool(eval_bool(env, x) and eval_bool(env, y)),
+    BinopKind.BOOL_OR: lambda env, x, y: Bool(eval_bool(env, x) or eval_bool(env, y)),
     BinopKind.STRING_CONCAT: lambda env, x, y: String(eval_str(env, x) + eval_str(env, y)),
     BinopKind.LIST_CONS: lambda env, x, y: List([eval_exp(env, x)] + eval_list(env, y)),
     BinopKind.LIST_APPEND: lambda env, x, y: List(eval_list(env, x) + [eval_exp(env, y)]),
@@ -894,7 +909,7 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(tokenize("1-2"), [NumLit(1), Operator("-"), NumLit(2)])
 
     def test_tokenize_binop_var(self) -> None:
-        ops = ["+", "-", "*", "/", "^", "%", "==", "/=", "<", ">", "<=", ">=", "++", ">+", "+<"]
+        ops = ["+", "-", "*", "/", "^", "%", "==", "/=", "<", ">", "<=", ">=", "&&", "||", "++", ">+", "+<"]
         for op in ops:
             with self.subTest(op=op):
                 self.assertEqual(tokenize(f"a {op} b"), [Name("a"), Operator(op), Name("b")])
@@ -1286,7 +1301,7 @@ class ParserTests(unittest.TestCase):
         )
 
     def test_parse_binary_op_returns_binop(self) -> None:
-        ops = ["+", "-", "*", "/", "^", "%", "==", "/=", "<", ">", "<=", ">=", "++", ">+", "+<"]
+        ops = ["+", "-", "*", "/", "^", "%", "==", "/=", "<", ">", "<=", ">=", "&&", "||", "++", ">+", "+<"]
         for op in ops:
             with self.subTest(op=op):
                 kind = BinopKind.from_str(op)
@@ -1492,6 +1507,12 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(
             parse([Name("f"), Operator("<<"), Name("g"), Operator("<<"), Name("h")]),
             Compose(Compose(Var("h"), Var("g")), Var("f")),
+        )
+
+    def test_boolean_and_binds_tighter_than_or(self) -> None:
+        self.assertEqual(
+            parse([Name("true"), Operator("||"), Name("true"), Operator("&&"), Name("false")]),
+            Binop(BinopKind.BOOL_OR, Var("true"), Binop(BinopKind.BOOL_AND, Var("true"), Var("false"))),
         )
 
 
@@ -1989,6 +2010,52 @@ class EvalTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, re.escape("expected Int, got Bool")):
             eval_exp({}, ast)
 
+    def test_boolean_and_evaluates_args(self) -> None:
+        ast = Binop(BinopKind.BOOL_AND, Bool(True), Var("a"))
+        self.assertEqual(eval_exp({"a": Bool(False)}, ast), Bool(False))
+
+        ast = Binop(BinopKind.BOOL_AND, Var("a"), Bool(False))
+        self.assertEqual(eval_exp({"a": Bool(True)}, ast), Bool(False))
+
+    def test_boolean_or_evaluates_args(self) -> None:
+        ast = Binop(BinopKind.BOOL_OR, Bool(False), Var("a"))
+        self.assertEqual(eval_exp({"a": Bool(True)}, ast), Bool(True))
+
+        ast = Binop(BinopKind.BOOL_OR, Var("a"), Bool(True))
+        self.assertEqual(eval_exp({"a": Bool(False)}, ast), Bool(True))
+
+    def test_boolean_and_short_circuit(self) -> None:
+        def raise_func(message: Object) -> Object:
+            if not isinstance(message, String):
+                raise TypeError(f"raise_func expected String, but got {type(message).__name__}")
+            raise RuntimeError(message)
+
+        error = NativeFunction(raise_func)
+        apply = Apply(Var("error"), String("expected failure"))
+        ast = Binop(BinopKind.BOOL_AND, Bool(False), apply)
+        self.assertEqual(eval_exp({"error": error}, ast), Bool(False))
+
+    def test_boolean_or_short_circuit(self) -> None:
+        def raise_func(message: Object) -> Object:
+            if not isinstance(message, String):
+                raise TypeError(f"raise_func expected String, but got {type(message).__name__}")
+            raise RuntimeError(message)
+
+        error = NativeFunction(raise_func)
+        apply = Apply(Var("error"), String("expected failure"))
+        ast = Binop(BinopKind.BOOL_OR, Bool(True), apply)
+        self.assertEqual(eval_exp({"error": error}, ast), Bool(True))
+
+    def test_boolean_and_on_int_raises_type_error(self) -> None:
+        exp = Binop(BinopKind.BOOL_AND, Int(1), Int(2))
+        with self.assertRaisesRegex(TypeError, re.escape("expected Bool, got Int")):
+            eval_exp({}, exp)
+
+    def test_boolean_or_on_int_raises_type_error(self) -> None:
+        exp = Binop(BinopKind.BOOL_OR, Int(1), Int(2))
+        with self.assertRaisesRegex(TypeError, re.escape("expected Bool, got Int")):
+            eval_exp({}, exp)
+
 
 class EndToEndTests(unittest.TestCase):
     def _run(self, text: str, env: Optional[Env] = None) -> Object:
@@ -2390,10 +2457,18 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(self._run("5 * 2 ^ 3"), Int(40))
 
     def test_stdlib_true_returns_true(self) -> None:
+        # TODO: replace true/false stdlib def with alternate
         self.assertEqual(self._run("true", STDLIB), Bool(True))
 
     def test_stdlib_false_returns_false(self) -> None:
+        # TODO: replace true/false stdlib def with alternate
         self.assertEqual(self._run("false", STDLIB), Bool(False))
+
+    def test_boolean_and_binds_tighter_than_or(self) -> None:
+        self.assertEqual(self._run("true || true && false", STDLIB), Bool(True))
+
+    def test_compare_binds_tighter_than_boolean_and(self) -> None:
+        self.assertEqual(self._run("1 < 2 && 2 < 1"), Bool(False))
 
 
 class BencodeTests(unittest.TestCase):

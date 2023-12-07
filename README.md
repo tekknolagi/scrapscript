@@ -9,15 +9,17 @@ an idea for how the language works.
 
 ## Usage
 
+We support python3.8+.
+
 ```bash
 # With a file
-python scrapscript.py eval examples/0_home/triangle.ss
+python3 scrapscript.py eval examples/0_home/triangle.ss
 
 # With a string literal
-python scrapscript.py apply "1 + 2"
+python3 scrapscript.py apply "1 + 2"
 
 # With a REPL
-python scrapscript.py repl
+python3 scrapscript.py repl
 ```
 
 or with Docker:

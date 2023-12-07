@@ -2331,7 +2331,7 @@ class EndToEndTests(unittest.TestCase):
     def test_stdlib_listlength_with_non_list_raises_type_error(self) -> None:
         with self.assertRaises(TypeError) as ctx:
             self._run("$$listlength 1", STDLIB)
-        self.assertEqual(ctx.exception.args[0], "listlength Expected List, but got Int")
+        self.assertEqual(ctx.exception.args[0], "listlength expected List, but got Int")
 
     def test_list_access_binds_tighter_than_append(self) -> None:
         self.assertEqual(self._run("[1, 2, 3] +< xs@0 . xs = [4]"), List([Int(1), Int(2), Int(3), Int(4)]))
@@ -2496,7 +2496,7 @@ def apply_command(args: argparse.Namespace) -> None:
 
 def fetch(url: Object) -> Object:
     if not isinstance(url, String):
-        raise TypeError(f"fetch Expected String, but got {type(url).__name__}")
+        raise TypeError(f"fetch expected String, but got {type(url).__name__}")
     with urllib.request.urlopen(url.value) as f:
         return String(f.read().decode("utf-8"))
 
@@ -2519,7 +2519,7 @@ def make_object(pyobj: object) -> Object:
 
 def jsondecode(obj: Object) -> Object:
     if not isinstance(obj, String):
-        raise TypeError(f"jsondecode Expected String, but got {type(obj).__name__}")
+        raise TypeError(f"jsondecode expected String, but got {type(obj).__name__}")
     data = json.loads(obj.value)
     return make_object(data)
 
@@ -2528,7 +2528,7 @@ def listlength(obj: Object) -> Object:
     # TODO(max): Implement in scrapscript once list pattern matching is
     # implemented.
     if not isinstance(obj, List):
-        raise TypeError(f"listlength Expected List, but got {type(obj).__name__}")
+        raise TypeError(f"listlength expected List, but got {type(obj).__name__}")
     return Int(len(obj.items))
 
 

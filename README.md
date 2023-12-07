@@ -38,5 +38,5 @@ docker run -i -t ghcr.io/tekknolagi/scrapscript:trunk repl
 ## Running Tests
 
 ```bash
-python scrapscript.py test
+python3 scrapscript.py test
 ```

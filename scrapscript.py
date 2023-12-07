@@ -936,7 +936,7 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_dollar_dollar_var(self) -> None:
         self.assertEqual(tokenize("$$bills"), [Name("$$bills")])
 
-    def test_tokenize_dot_dot(self) -> None:
+    def test_tokenize_dot_dot_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, re.escape("unexpected token '..'")):
             tokenize("..")
 

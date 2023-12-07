@@ -20,7 +20,7 @@ repository = "https://github.com/tekknolagi/scrapscript"
 version = "0.1.0"
 
 [tool.poetry.dependencies]
-python = ">=3.9"
+python = ">=3.8"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.7.0"

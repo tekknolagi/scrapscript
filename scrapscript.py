@@ -686,13 +686,6 @@ def eval_str(env: Env, exp: Object) -> str:
     return result.value
 
 
-def eval_bool(env: Env, exp: Object) -> bool:
-    result = eval_exp(env, exp)
-    if not isinstance(result, Bool):
-        raise TypeError(f"expected Bool, got {type(result).__name__}")
-    return result.value
-
-
 def eval_list(env: Env, exp: Object) -> typing.List[Object]:
     result = eval_exp(env, exp)
     if not isinstance(result, List):
@@ -709,10 +702,10 @@ BINOP_HANDLERS: Dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.MOD: lambda env, x, y: Int(eval_int(env, x) % eval_int(env, y)),
     BinopKind.EQUAL: lambda env, x, y: Bool(eval_exp(env, x) == eval_exp(env, y)),
     BinopKind.NOT_EQUAL: lambda env, x, y: Bool(eval_exp(env, x) != eval_exp(env, y)),
-    BinopKind.LESS: lambda env, x, y: Bool(eval_bool(env, x) < eval_bool(env, y)),
-    BinopKind.GREATER: lambda env, x, y: Bool(eval_bool(env, x) > eval_bool(env, y)),
-    BinopKind.LESS_EQUAL: lambda env, x, y: Bool(eval_bool(env, x) <= eval_bool(env, y)),
-    BinopKind.GREATER_EQUAL: lambda env, x, y: Bool(eval_bool(env, x) >= eval_bool(env, y)),
+    BinopKind.LESS: lambda env, x, y: Bool(eval_int(env, x) < eval_int(env, y)),
+    BinopKind.GREATER: lambda env, x, y: Bool(eval_int(env, x) > eval_int(env, y)),
+    BinopKind.LESS_EQUAL: lambda env, x, y: Bool(eval_int(env, x) <= eval_int(env, y)),
+    BinopKind.GREATER_EQUAL: lambda env, x, y: Bool(eval_int(env, x) >= eval_int(env, y)),
     BinopKind.STRING_CONCAT: lambda env, x, y: String(eval_str(env, x) + eval_str(env, y)),
     BinopKind.LIST_CONS: lambda env, x, y: List([eval_exp(env, x)] + eval_list(env, y)),
     BinopKind.LIST_APPEND: lambda env, x, y: List(eval_list(env, x) + [eval_exp(env, y)]),
@@ -1951,6 +1944,15 @@ class EvalTests(unittest.TestCase):
     def test_eval_apply_closure_with_match_function_has_access_to_closure_vars(self) -> None:
         ast = Apply(Closure({"x": Int(1)}, MatchFunction([MatchCase(Var("y"), Var("x"))])), Int(2))
         self.assertEqual(eval_exp({}, ast), Int(1))
+
+    def test_eval_less_returns_bool(self) -> None:
+        ast = Binop(BinopKind.LESS, Int(3), Int(4))
+        self.assertEqual(eval_exp({}, ast), Bool(True))
+
+    def test_eval_less_on_bool_raises_type_error(self) -> None:
+        ast = Binop(BinopKind.LESS, Bool(True), Int(4))
+        with self.assertRaisesRegex(TypeError, re.escape("expected Int, got Bool")):
+            eval_exp({}, ast)
 
 
 class EndToEndTests(unittest.TestCase):

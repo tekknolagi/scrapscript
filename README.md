@@ -13,6 +13,17 @@ python scrapscript.py apply "1 + 2"
 python scrapscript.py repl
 ```
 
+or with Docker:
+
+```bash
+# Run the REPL
+docker run -i -t ghcr.io/tekknolagi/scrapscript:trunk
+# or
+docker run -i -t ghcr.io/tekknolagi/scrapscript:trunk repl
+
+# the rest is same as above
+```
+
 ## Running Tests
 
 ```bash

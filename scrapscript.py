@@ -1700,6 +1700,14 @@ class EvalTests(unittest.TestCase):
         exp = Binop(BinopKind.EQUAL, Int(1), Int(2))
         self.assertEqual(eval_exp({}, exp), Bool(False))
 
+    def test_eval_with_binop_not_equal_with_equal_returns_false(self) -> None:
+        exp = Binop(BinopKind.NOT_EQUAL, Int(1), Int(1))
+        self.assertEqual(eval_exp({}, exp), Bool(False))
+
+    def test_eval_with_binop_not_equal_with_inequal_returns_true(self) -> None:
+        exp = Binop(BinopKind.NOT_EQUAL, Int(1), Int(2))
+        self.assertEqual(eval_exp({}, exp), Bool(True))
+
     def test_eval_with_binop_concat_with_strings_returns_string(self) -> None:
         exp = Binop(BinopKind.STRING_CONCAT, String("hello"), String(" world"))
         self.assertEqual(eval_exp({}, exp), String("hello world"))
@@ -1951,6 +1959,33 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_less_on_non_bool_raises_type_error(self) -> None:
         ast = Binop(BinopKind.LESS, Bool(True), Int(4))
+        with self.assertRaisesRegex(TypeError, re.escape("expected Int, got Bool")):
+            eval_exp({}, ast)
+
+    def test_eval_less_equal_returns_bool(self) -> None:
+        ast = Binop(BinopKind.LESS_EQUAL, Int(3), Int(4))
+        self.assertEqual(eval_exp({}, ast), Bool(True))
+
+    def test_eval_less_equal_on_non_bool_raises_type_error(self) -> None:
+        ast = Binop(BinopKind.LESS_EQUAL, Bool(True), Int(4))
+        with self.assertRaisesRegex(TypeError, re.escape("expected Int, got Bool")):
+            eval_exp({}, ast)
+
+    def test_eval_greater_returns_bool(self) -> None:
+        ast = Binop(BinopKind.GREATER, Int(3), Int(4))
+        self.assertEqual(eval_exp({}, ast), Bool(False))
+
+    def test_eval_greater_on_non_bool_raises_type_error(self) -> None:
+        ast = Binop(BinopKind.GREATER, Bool(True), Int(4))
+        with self.assertRaisesRegex(TypeError, re.escape("expected Int, got Bool")):
+            eval_exp({}, ast)
+
+    def test_eval_greater_equal_returns_bool(self) -> None:
+        ast = Binop(BinopKind.GREATER_EQUAL, Int(3), Int(4))
+        self.assertEqual(eval_exp({}, ast), Bool(False))
+
+    def test_eval_greater_equal_on_non_bool_raises_type_error(self) -> None:
+        ast = Binop(BinopKind.GREATER_EQUAL, Bool(True), Int(4))
         with self.assertRaisesRegex(TypeError, re.escape("expected Int, got Bool")):
             eval_exp({}, ast)
 

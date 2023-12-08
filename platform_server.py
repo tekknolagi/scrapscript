@@ -13,7 +13,18 @@ from scrapscript import Record, STDLIB, String, Apply, eval_exp, parse, tokenize
 logger = logging.getLogger(__name__)
 
 
-handler = parse(tokenize("x -> x"))
+handler = parse(
+    tokenize(
+        """
+handler
+. handler =
+  | { path = "/" } -> page "you're on the index"
+  | { path = "/about" } -> page "you're on the about page"
+  | x -> page "page not found"
+. page = body -> "<!doctype html><html><body>" ++ body ++ "</body></html>"
+"""
+    )
+)
 
 
 class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
@@ -22,9 +33,11 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
         parsed_path = urllib.parse.urlsplit(self.path)
         req = Record({"path": String(parsed_path.path)})
         res = eval_exp(STDLIB, Apply(handler, req))
+        assert isinstance(res, String)
         self.send_response(200)
+        self.send_header("Content-Type", "text/html")
         self.end_headers()
-        self.wfile.write(str(res).encode("utf-8"))
+        self.wfile.write(res.value.encode("utf-8"))
         return
 
 

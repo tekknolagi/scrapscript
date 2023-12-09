@@ -1663,29 +1663,6 @@ class MatchTests(unittest.TestCase):
             None,
         )
 
-    def test_chris(self) -> None:
-        text = """
-| 1 -> 19
-| a -> a |> (x -> x + 1)
-"""
-        tokens = tokenize(text)
-        ast = parse(tokens)
-        self.assertEqual(
-            ast,
-            MatchFunction(
-                [
-                    MatchCase(Int(1), Int(19)),
-                    MatchCase(
-                        Var("a"),
-                        Apply(
-                            Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(1))),
-                            Var("a"),
-                        ),
-                    ),
-                ]
-            ),
-        )
-
     def test_parse_right_pipe(self) -> None:
         text = "3 + 4 |> $$quote"
         ast = parse(tokenize(text))
@@ -1706,13 +1683,9 @@ class MatchTests(unittest.TestCase):
                 Operator("|"),
                 Name("a"),
                 Operator("->"),
-                # TODO(max): Remove?
-                # LeftParen(),
                 Name("b"),
                 Operator("<|"),
                 Name("c"),
-                # TODO(max): Remove?
-                # RightParen(),
                 Operator("|"),
                 Name("d"),
                 Operator("->"),
@@ -1722,6 +1695,29 @@ class MatchTests(unittest.TestCase):
         ast = parse(tokens)
         self.assertEqual(
             ast, MatchFunction([MatchCase(Var("a"), Apply(Var("b"), Var("c"))), MatchCase(Var("d"), Var("e"))])
+        )
+
+    def test_parse_pattern_match_with_right_apply(self) -> None:
+        text = """
+| 1 -> 19
+| a -> a |> (x -> x + 1)
+"""
+        tokens = tokenize(text)
+        ast = parse(tokens)
+        self.assertEqual(
+            ast,
+            MatchFunction(
+                [
+                    MatchCase(Int(1), Int(19)),
+                    MatchCase(
+                        Var("a"),
+                        Apply(
+                            Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(1))),
+                            Var("a"),
+                        ),
+                    ),
+                ]
+            ),
         )
 
 

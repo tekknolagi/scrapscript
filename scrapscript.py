@@ -1697,7 +1697,7 @@ class MatchTests(unittest.TestCase):
             ast, MatchFunction([MatchCase(Var("a"), Apply(Var("b"), Var("c"))), MatchCase(Var("d"), Var("e"))])
         )
 
-    def test_parse_pattern_match_with_right_apply(self) -> None:
+    def test_parse_match_with_right_apply(self) -> None:
         text = """
 | 1 -> 19
 | a -> a |> (x -> x + 1)

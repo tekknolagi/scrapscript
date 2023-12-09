@@ -300,8 +300,8 @@ PS = {
     ".": rp(3),
     "?": rp(3),
     ",": xp(1),
-    "|>": lp(0),
-    "<|": rp(0),
+    "|>": rp(0),
+    "<|": lp(0),
     # TODO: Fix precedence for spread
     "...": xp(0),
 }
@@ -2495,10 +2495,10 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(self._run("$$quote (3 + 4)"), Binop(BinopKind.ADD, Int(3), Int(4)))
 
     def test_stdlib_quote_pipe(self) -> None:
-        self.assertEqual(self._run("(3 + 4) |> $$quote"), Binop(BinopKind.ADD, Int(3), Int(4)))
+        self.assertEqual(self._run("3 + 4 |> $$quote"), Int(7))
 
     def test_stdlib_quote_reverse_pipe(self) -> None:
-        self.assertEqual(self._run("$$quote <| (3 + 4)"), Binop(BinopKind.ADD, Int(3), Int(4)))
+        self.assertEqual(self._run("$$quote <| 3 + 4"), Int(7))
 
     def test_stdlib_serialize(self) -> None:
         self.assertEqual(self._run("$$serialize 3", STDLIB), Bytes(value=b"d4:type3:Int5:valuei3ee"))

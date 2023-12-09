@@ -268,8 +268,6 @@ def xp(n: float) -> Prec:
 
 
 PS = {
-    "|>": rp(2002),
-    "<|": lp(2002),
     "::": lp(2000),
     "@": rp(1001),
     "": rp(1000),
@@ -294,6 +292,8 @@ PS = {
     ">=": np(9),
     "&&": rp(8),
     "||": rp(7),
+    "|>": rp(6),
+    "<|": lp(6),
     "->": lp(5),
     "|": rp(4.5),
     ":": lp(4.5),
@@ -1666,12 +1666,12 @@ class MatchTests(unittest.TestCase):
     def test_parse_right_pipe(self) -> None:
         text = "3 + 4 |> $$quote"
         ast = parse(tokenize(text))
-        self.assertEqual(ast, Binop(BinopKind.ADD, Int(3), Apply(Var("$$quote"), Int(4))))
+        self.assertEqual(ast, Apply(Var("$$quote"), Binop(BinopKind.ADD, Int(3), Int(4))))
 
     def test_parse_left_pipe(self) -> None:
         text = "$$quote <| 3 + 4"
         ast = parse(tokenize(text))
-        self.assertEqual(ast, Binop(BinopKind.ADD, Apply(Var("$$quote"), Int(3)), Int(4)))
+        self.assertEqual(ast, Apply(Var("$$quote"), Binop(BinopKind.ADD, Int(3), Int(4))))
 
     def test_parse_match_with_left_apply(self) -> None:
         text = """| a -> b <| c
@@ -2491,10 +2491,10 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(self._run("$$quote (3 + 4)"), Binop(BinopKind.ADD, Int(3), Int(4)))
 
     def test_stdlib_quote_pipe(self) -> None:
-        self.assertEqual(self._run("3 + 4 |> $$quote"), Int(7))
+        self.assertEqual(self._run("3 + 4 |> $$quote"), Binop(BinopKind.ADD, Int(3), Int(4)))
 
     def test_stdlib_quote_reverse_pipe(self) -> None:
-        self.assertEqual(self._run("$$quote <| 3 + 4"), Int(7))
+        self.assertEqual(self._run("$$quote <| 3 + 4"), Binop(BinopKind.ADD, Int(3), Int(4)))
 
     def test_stdlib_serialize(self) -> None:
         self.assertEqual(self._run("$$serialize 3", STDLIB), Bytes(value=b"d4:type3:Int5:valuei3ee"))

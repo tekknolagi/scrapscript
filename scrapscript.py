@@ -268,9 +268,11 @@ def xp(n: float) -> Prec:
 
 
 PS = {
+    "|>": rp(0),
+    "<|": lp(0),
     "::": lp(2000),
     "@": rp(1001),
-    "": rp(1000),
+    "": rp(15),
     ">>": lp(14),
     "<<": lp(14),
     "^": rp(13),
@@ -292,11 +294,9 @@ PS = {
     ">=": np(9),
     "&&": rp(8),
     "||": rp(7),
-    "->": lp(5),
+    "->": lp(10),
     "|": rp(4.5),
     ":": lp(4.5),
-    "|>": rp(4.11),
-    "<|": lp(4.11),
     "=": rp(4),
     "!": lp(3),
     ".": rp(3),
@@ -1661,6 +1661,67 @@ class MatchTests(unittest.TestCase):
                 pattern=List([Int(3), Var("y")]),
             ),
             None,
+        )
+
+    def test_chris(self) -> None:
+        text = """
+| 1 -> 19
+| a -> a |> (x -> x + 1)
+"""
+        tokens = tokenize(text)
+        ast = parse(tokens)
+        self.assertEqual(
+            ast,
+            MatchFunction(
+                [
+                    MatchCase(Int(1), Int(19)),
+                    MatchCase(
+                        Var("a"),
+                        Apply(
+                            Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(1))),
+                            Var("a"),
+                        ),
+                    ),
+                ]
+            ),
+        )
+
+    def test_parse_right_pipe(self) -> None:
+        text = "3 + 4 |> $$quote"
+        ast = parse(tokenize(text))
+        self.assertEqual(ast, Apply(Var("$$quote"), Binop(BinopKind.ADD, Int(3), Int(4))))
+
+    def test_parse_left_pipe(self) -> None:
+        text = "$$quote <| 3 + 4"
+        ast = parse(tokenize(text))
+        self.assertEqual(ast, Apply(Var("$$quote"), Binop(BinopKind.ADD, Int(3), Int(4))))
+
+    def test_parse_match_with_left_apply(self) -> None:
+        text = """| a -> b <| c
+                  | d -> e"""
+        tokens = tokenize(text)
+        self.assertEqual(
+            tokens,
+            [
+                Operator("|"),
+                Name("a"),
+                Operator("->"),
+                # TODO(max): Remove?
+                # LeftParen(),
+                Name("b"),
+                Operator("<|"),
+                Name("c"),
+                # TODO(max): Remove?
+                # RightParen(),
+                Operator("|"),
+                Name("d"),
+                Operator("->"),
+                Name("e"),
+            ],
+        )
+        ast = parse(tokens)
+        self.assertEqual(
+            ast, MatchFunction([MatchCase(Var("a"), Apply(Var("b"), Var("c"))), MatchCase(Var("d"), Var("e"))])
         )
 
 

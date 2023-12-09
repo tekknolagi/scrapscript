@@ -18,9 +18,10 @@ handler = parse(
         """
 handler
 . handler =
-  | { path = "/" } -> page "you're on the index"
-  | { path = "/about" } -> page "you're on the about page"
-  | x -> page "page not found"
+  | { path = "/" } -> (status 200 <| page "you're on the index")
+  | { path = "/about" } -> (status 200 <| page "you're on the about page")
+  | x -> (status 404 <| page "not found")
+. status = code -> content -> { code = code, content = content }
 . page = body -> "<!doctype html><html><body>" ++ body ++ "</body></html>"
 """
     )

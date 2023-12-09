@@ -292,11 +292,11 @@ PS = {
     ">=": np(9),
     "&&": rp(8),
     "||": rp(7),
+    "|>": rp(6),
+    "<|": lp(6),
     "->": lp(5),
     "|": rp(4.5),
     ":": lp(4.5),
-    "|>": rp(4.11),
-    "<|": lp(4.11),
     "=": rp(4),
     "!": lp(3),
     ".": rp(3),
@@ -1661,6 +1661,63 @@ class MatchTests(unittest.TestCase):
                 pattern=List([Int(3), Var("y")]),
             ),
             None,
+        )
+
+    def test_parse_right_pipe(self) -> None:
+        text = "3 + 4 |> $$quote"
+        ast = parse(tokenize(text))
+        self.assertEqual(ast, Apply(Var("$$quote"), Binop(BinopKind.ADD, Int(3), Int(4))))
+
+    def test_parse_left_pipe(self) -> None:
+        text = "$$quote <| 3 + 4"
+        ast = parse(tokenize(text))
+        self.assertEqual(ast, Apply(Var("$$quote"), Binop(BinopKind.ADD, Int(3), Int(4))))
+
+    def test_parse_match_with_left_apply(self) -> None:
+        text = """| a -> b <| c
+                  | d -> e"""
+        tokens = tokenize(text)
+        self.assertEqual(
+            tokens,
+            [
+                Operator("|"),
+                Name("a"),
+                Operator("->"),
+                Name("b"),
+                Operator("<|"),
+                Name("c"),
+                Operator("|"),
+                Name("d"),
+                Operator("->"),
+                Name("e"),
+            ],
+        )
+        ast = parse(tokens)
+        self.assertEqual(
+            ast, MatchFunction([MatchCase(Var("a"), Apply(Var("b"), Var("c"))), MatchCase(Var("d"), Var("e"))])
+        )
+
+    def test_parse_match_with_right_apply(self) -> None:
+        text = """
+| 1 -> 19
+| a -> a |> (x -> x + 1)
+"""
+        tokens = tokenize(text)
+        ast = parse(tokens)
+        self.assertEqual(
+            ast,
+            MatchFunction(
+                [
+                    MatchCase(Int(1), Int(19)),
+                    MatchCase(
+                        Var("a"),
+                        Apply(
+                            Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(1))),
+                            Var("a"),
+                        ),
+                    ),
+                ]
+            ),
         )
 
 

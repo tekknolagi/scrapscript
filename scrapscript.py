@@ -3249,8 +3249,9 @@ def yard_commit_command(args: argparse.Namespace) -> None:
     repo = git.Repository(repo_path, git.GIT_REPOSITORY_OPEN_BARE)
     result = eval_exp(STDLIB, parse(tokenize(args.program_file.read())))
     serialized = serialize(result)
-    # Make a git tree
-    root = repo.TreeBuilder()
+    # Make a git tree starting from previous commit's tree
+    prev_commit = repo.get(repo.head.target)
+    root = repo.TreeBuilder(prev_commit.tree)
     obj_id = repo.create_blob(serialized)
     # TODO(max): Figure out how to handle names like a/b; make directories?
     root.insert(args.scrap_name, obj_id, git.GIT_FILEMODE_BLOB)

@@ -14,7 +14,7 @@ import unittest
 import urllib.request
 from dataclasses import dataclass
 from enum import auto
-from types import ModuleType
+from types import ModuleType, FunctionType
 from typing import Any, Callable, Dict, Mapping, Optional, Union
 
 readline: Optional[ModuleType]
@@ -451,8 +451,20 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     return l
 
 
+OBJECT_DESERIALIZERS: Dict[str, FunctionType] = {}
+
+
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Object:
+    def __init_subclass__(cls, /, **kwargs: Dict[Any, Any]) -> None:
+        super().__init_subclass__(**kwargs)
+        deserializer = cls.__dict__.get("deserialize", None)
+        if deserializer:
+            assert isinstance(deserializer, staticmethod)
+            func = deserializer.__func__
+            assert isinstance(func, FunctionType)
+            OBJECT_DESERIALIZERS[cls.__name__] = func
+
     def serialize(self) -> Dict[bytes, object]:
         cls = type(self)
         result: Dict[bytes, object] = {b"type": cls.__name__.encode("utf-8")}
@@ -470,6 +482,18 @@ class Object:
             **{key.encode("utf-8"): value for key, value in kwargs.items()},
         }
 
+    @staticmethod
+    def deserialize(msg: Dict[str, Any]) -> "Object":
+        assert "type" in msg, f"No idea what to do with {msg!r}"
+        ty = msg["type"]
+        assert isinstance(ty, str)
+        deserializer = OBJECT_DESERIALIZERS.get(ty)
+        if not deserializer:
+            raise NotImplementedError(f"unknown type {ty}")
+        result = deserializer(msg)
+        assert isinstance(result, Object)
+        return result
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Int(Object):
@@ -477,6 +501,12 @@ class Int(Object):
 
     def serialize(self) -> Dict[bytes, object]:
         return self._serialize(value=self.value)
+
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Int":
+        assert msg["type"] == "Int"
+        assert isinstance(msg["value"], int)
+        return Int(msg["value"])
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -486,6 +516,12 @@ class String(Object):
     def serialize(self) -> Dict[bytes, object]:
         return {b"type": b"String", b"value": self.value.encode("utf-8")}
 
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "String":
+        assert msg["type"] == "String"
+        assert isinstance(msg["value"], str)
+        return String(msg["value"])
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Bytes(Object):
@@ -493,6 +529,12 @@ class Bytes(Object):
 
     def serialize(self) -> Dict[bytes, object]:
         return {b"type": b"Bytes", b"value": self.value}
+
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Bytes":
+        assert msg["type"] == "Bytes"
+        assert isinstance(msg["value"], bytes)
+        return Bytes(msg["value"])
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -502,6 +544,12 @@ class Var(Object):
     def serialize(self) -> Dict[bytes, object]:
         return {b"type": b"Var", b"name": self.name.encode("utf-8")}
 
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Var":
+        assert msg["type"] == "Var"
+        assert isinstance(msg["name"], str)
+        return Var(msg["name"])
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Bool(Object):
@@ -509,6 +557,12 @@ class Bool(Object):
 
     def serialize(self) -> Dict[bytes, object]:
         return {b"type": b"Bool", b"value": self.value}
+
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Bool":
+        assert msg["type"] == "Bool"
+        assert isinstance(msg["value"], int)
+        return Bool(bool(msg["value"]))
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -583,6 +637,21 @@ class Binop(Object):
             b"right": self.right.serialize(),
         }
 
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Binop":
+        assert msg["type"] == "Binop"
+        opname = msg["op"]
+        assert isinstance(opname, str)
+        op = BinopKind[opname]
+        assert isinstance(op, BinopKind)
+        left_obj = msg["left"]
+        assert isinstance(left_obj, dict)
+        right_obj = msg["right"]
+        assert isinstance(right_obj, dict)
+        left = Object.deserialize(left_obj)
+        right = Object.deserialize(right_obj)
+        return Binop(op, left, right)
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class List(Object):
@@ -603,11 +672,33 @@ class Function(Object):
     arg: Object
     body: Object
 
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Function":
+        assert msg["type"] == "Function"
+        arg_obj = msg["arg"]
+        assert isinstance(arg_obj, dict)
+        arg = Object.deserialize(arg_obj)
+        body_obj = msg["body"]
+        assert isinstance(body_obj, dict)
+        body = Object.deserialize(body_obj)
+        return Function(arg, body)
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Apply(Object):
     func: Object
     arg: Object
+
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Apply":
+        assert msg["type"] == "Apply"
+        func_obj = msg["func"]
+        assert isinstance(func_obj, dict)
+        func = Object.deserialize(func_obj)
+        arg_obj = msg["arg"]
+        assert isinstance(arg_obj, dict)
+        arg = Object.deserialize(arg_obj)
+        return Apply(func, arg)
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -632,12 +723,24 @@ def serialize_env(env: Env) -> Dict[bytes, object]:
     return {key.encode("utf-8"): value.serialize() for key, value in env.items()}
 
 
+def deserialize_env(msg: Dict[str, Any]) -> Env:
+    return {key: Object.deserialize(value) for key, value in msg.items()}
+
+
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class EnvObject(Object):
     env: Env
 
     def serialize(self) -> Dict[bytes, object]:
-        return self._serialize(value=serialize_env(self.env))
+        return self._serialize(env=serialize_env(self.env))
+
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "EnvObject":
+        assert msg["type"] == "EnvObject"
+        env_obj = msg["env"]
+        assert isinstance(env_obj, dict)
+        env = deserialize_env(env_obj)
+        return EnvObject(env)
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -655,8 +758,35 @@ class MatchFunction(Object):
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Relocation(Object):
+    name: str
+
+    def serialize(self) -> Dict[bytes, object]:
+        return self._serialize(name=self.name.encode("utf-8"))
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class NativeFunctionRelocation(Relocation):
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "NativeFunction":
+        # TODO(max): Should this return a Var or an actual
+        # NativeFunctionRelocation object instead of doing the relocation in
+        # the deserialization?
+        assert msg["type"] == "NativeFunctionRelocation"
+        name = msg["name"]
+        assert isinstance(name, str)
+        result = STDLIB[name]
+        assert isinstance(result, NativeFunction)
+        return result
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class NativeFunction(Object):
+    name: str
     func: Callable[[Object], Object]
+
+    def serialize(self) -> Dict[bytes, object]:
+        return NativeFunctionRelocation(self.name).serialize()
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -667,6 +797,18 @@ class Closure(Object):
     def serialize(self) -> Dict[bytes, object]:
         return self._serialize(env=serialize_env(self.env), func=self.func.serialize())
 
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Closure":
+        assert msg["type"] == "Closure"
+        env_obj = msg["env"]
+        assert isinstance(env_obj, dict)
+        env = deserialize_env(env_obj)
+        func_obj = msg["func"]
+        assert isinstance(func_obj, dict)
+        func = Object.deserialize(func_obj)
+        assert isinstance(func, (Function, MatchFunction))
+        return Closure(env, func)
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Record(Object):
@@ -674,6 +816,14 @@ class Record(Object):
 
     def serialize(self) -> Dict[bytes, object]:
         return self._serialize(data={key.encode("utf-8"): value.serialize() for key, value in self.data.items()})
+
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Record":
+        assert msg["type"] == "Record"
+        data_obj = msg["data"]
+        assert isinstance(data_obj, dict)
+        data = {key: Object.deserialize(value) for key, value in data_obj.items()}
+        return Record(data)
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -892,6 +1042,13 @@ def bencode(obj: object) -> bytes:
 
 def serialize(obj: Object) -> bytes:
     return bencode(obj.serialize())
+
+
+def deserialize(msg: str) -> Object:
+    logging.debug("deserialize %s", msg)
+    decoded = bdecode(msg)
+    assert isinstance(decoded, dict)
+    return Object.deserialize(decoded)
 
 
 class TokenizerTests(unittest.TestCase):
@@ -2030,11 +2187,11 @@ class EvalTests(unittest.TestCase):
         )
 
     def test_eval_native_function_returns_function(self) -> None:
-        exp = NativeFunction(lambda x: Int(x.value * 2))  # type: ignore [attr-defined]
+        exp = NativeFunction("times2", lambda x: Int(x.value * 2))  # type: ignore [attr-defined]
         self.assertIs(eval_exp({}, exp), exp)
 
     def test_eval_apply_native_function_calls_function(self) -> None:
-        exp = Apply(NativeFunction(lambda x: Int(x.value * 2)), Int(3))  # type: ignore [attr-defined]
+        exp = Apply(NativeFunction("times2", lambda x: Int(x.value * 2)), Int(3))  # type: ignore [attr-defined]
         self.assertEqual(eval_exp({}, exp), Int(6))
 
     def test_eval_apply_quote_returns_ast(self) -> None:
@@ -2102,7 +2259,7 @@ class EvalTests(unittest.TestCase):
                 raise TypeError(f"raise_func expected String, but got {type(message).__name__}")
             raise RuntimeError(message)
 
-        error = NativeFunction(raise_func)
+        error = NativeFunction("error", raise_func)
         apply = Apply(Var("error"), String("expected failure"))
         ast = Binop(BinopKind.BOOL_AND, Bool(False), apply)
         self.assertEqual(eval_exp({"error": error}, ast), Bool(False))
@@ -2113,7 +2270,7 @@ class EvalTests(unittest.TestCase):
                 raise TypeError(f"raise_func expected String, but got {type(message).__name__}")
             raise RuntimeError(message)
 
-        error = NativeFunction(raise_func)
+        error = NativeFunction("error", raise_func)
         apply = Apply(Var("error"), String("expected failure"))
         ast = Binop(BinopKind.BOOL_OR, Bool(True), apply)
         self.assertEqual(eval_exp({"error": error}, ast), Bool(True))
@@ -2548,12 +2705,13 @@ class BencodeTests(unittest.TestCase):
         self.assertEqual(bencode(123), b"i123e")
 
     def test_bencode_bool(self) -> None:
+        # TODO(max): Should we discriminate between bool and int?
         self.assertEqual(bencode(True), b"i1e")
 
     def test_bencode_negative_int(self) -> None:
         self.assertEqual(bencode(-123), b"i-123e")
 
-    def test_serialize_bytes(self) -> None:
+    def test_bencode_bytes(self) -> None:
         self.assertEqual(bencode(b"abc"), b"3:abc")
 
     def test_bencode_empty_list(self) -> None:
@@ -2629,6 +2787,149 @@ class ObjectSerializeTests(unittest.TestCase):
     def test_serialize_record(self) -> None:
         obj = Record({"x": Int(1)})
         self.assertEqual(obj.serialize(), {b"data": {b"x": {b"type": b"Int", b"value": 1}}, b"type": b"Record"})
+
+    def test_serialize_env_object(self) -> None:
+        obj = EnvObject({"x": Int(1)})
+        self.assertEqual(
+            obj.serialize(),
+            {b"env": {b"x": {b"type": b"Int", b"value": 1}}, b"type": b"EnvObject"},
+        )
+
+    def test_serialize_function(self) -> None:
+        obj = Function(Var("x"), Var("x"))
+        self.assertEqual(
+            obj.serialize(),
+            {
+                b"arg": {b"name": b"x", b"type": b"Var"},
+                b"body": {b"name": b"x", b"type": b"Var"},
+                b"type": b"Function",
+            },
+        )
+
+    def test_serialize_apply(self) -> None:
+        obj = Apply(Var("f"), Var("x"))
+        self.assertEqual(
+            obj.serialize(),
+            {
+                b"func": {b"name": b"f", b"type": b"Var"},
+                b"arg": {b"name": b"x", b"type": b"Var"},
+                b"type": b"Apply",
+            },
+        )
+
+    def test_serialize_closure(self) -> None:
+        obj = Closure({"a": Int(123)}, Function(Var("x"), Var("x")))
+        self.assertEqual(
+            obj.serialize(),
+            {
+                b"env": {b"a": {b"type": b"Int", b"value": 123}},
+                b"func": {
+                    b"arg": {b"name": b"x", b"type": b"Var"},
+                    b"body": {b"name": b"x", b"type": b"Var"},
+                    b"type": b"Function",
+                },
+                b"type": b"Closure",
+            },
+        )
+
+
+class ObjectDeserializeTests(unittest.TestCase):
+    def test_deserialize_int(self) -> None:
+        msg = {"type": "Int", "value": 123}
+        self.assertEqual(Object.deserialize(msg), Int(123))
+
+    def test_deserialize_negative_int(self) -> None:
+        msg = {"type": "Int", "value": -123}
+        self.assertEqual(Object.deserialize(msg), Int(-123))
+
+    def test_deserialize_str(self) -> None:
+        msg = {"type": "String", "value": "abc"}
+        self.assertEqual(Object.deserialize(msg), String("abc"))
+
+    def test_deserialize_bytes(self) -> None:
+        msg = {"type": "Bytes", "value": b"abc"}
+        self.assertEqual(Object.deserialize(msg), Bytes(b"abc"))
+
+    def test_deserialize_var(self) -> None:
+        msg = {"type": "Var", "name": "abc"}
+        self.assertEqual(Object.deserialize(msg), Var("abc"))
+
+    def test_deserialize_bool_true(self) -> None:
+        msg = {"type": "Bool", "value": True}
+        self.assertEqual(Object.deserialize(msg), Bool(True))
+
+    def test_deserialize_bool_false(self) -> None:
+        msg = {"type": "Bool", "value": False}
+        self.assertEqual(Object.deserialize(msg), Bool(False))
+
+    def test_deserialize_bool_int_one(self) -> None:
+        msg = {"type": "Bool", "value": 1}
+        self.assertEqual(Object.deserialize(msg), Bool(True))
+
+    def test_deserialize_bool_int_zero(self) -> None:
+        msg = {"type": "Bool", "value": 0}
+        self.assertEqual(Object.deserialize(msg), Bool(False))
+
+    def test_deserialize_binary_add(self) -> None:
+        msg = {
+            "left": {"type": "Int", "value": 123},
+            "op": "ADD",
+            "right": {"type": "Int", "value": 456},
+            "type": "Binop",
+        }
+        obj = Binop(BinopKind.ADD, Int(123), Int(456))
+        self.assertEqual(Object.deserialize(msg), obj)
+
+    def test_deserialize_env_object(self) -> None:
+        obj = EnvObject({"x": Int(1)})
+        msg = {"env": {"x": {"type": "Int", "value": 1}}, "type": "EnvObject"}
+        self.assertEqual(Object.deserialize(msg), obj)
+
+    def test_deserialize_function(self) -> None:
+        obj = Function(Var("x"), Var("x"))
+        msg = {
+            "arg": {"name": "x", "type": "Var"},
+            "body": {"name": "x", "type": "Var"},
+            "type": "Function",
+        }
+        self.assertEqual(Object.deserialize(msg), obj)
+
+    def test_deserialize_closure(self) -> None:
+        obj = Closure({"a": Int(123)}, Function(Var("x"), Var("x")))
+        msg = {
+            "env": {"a": {"type": "Int", "value": 123}},
+            "func": {
+                "arg": {"name": "x", "type": "Var"},
+                "body": {"name": "x", "type": "Var"},
+                "type": "Function",
+            },
+            "type": "Closure",
+        }
+        self.assertEqual(Object.deserialize(msg), obj)
+
+    def test_deserialize_native_function_relocation_returns_native_function_from_stdlib(self) -> None:
+        obj = STDLIB["$$fetch"]
+        msg = {"type": "NativeFunctionRelocation", "name": "$$fetch"}
+        result = Object.deserialize(msg)
+        self.assertEqual(result, obj)
+        self.assertIs(result, obj)
+
+    def test_deserialize_apply(self) -> None:
+        obj = Apply(Var("f"), Var("x"))
+        msg = {
+            "func": {"name": "f", "type": "Var"},
+            "arg": {"name": "x", "type": "Var"},
+            "type": "Apply",
+        }
+        self.assertEqual(Object.deserialize(msg), obj)
+
+    def test_deserialize_record(self) -> None:
+        obj = Record({"x": Int(1), "y": Int(2)})
+        msg = {
+            "data": {"x": {"type": "Int", "value": 1}, "y": {"type": "Int", "value": 2}},
+            "type": "Record",
+        }
+        self.assertEqual(Object.deserialize(msg), obj)
 
 
 class SerializeTests(unittest.TestCase):
@@ -2724,11 +3025,11 @@ def listlength(obj: Object) -> Object:
 
 
 STDLIB = {
-    "$$add": NativeFunction(lambda x: NativeFunction(lambda y: Int(unpack_int(x) + unpack_int(y)))),
-    "$$fetch": NativeFunction(fetch),
-    "$$jsondecode": NativeFunction(jsondecode),
-    "$$serialize": NativeFunction(lambda obj: Bytes(serialize(obj))),
-    "$$listlength": NativeFunction(listlength),
+    "$$add": Closure({}, Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))),
+    "$$fetch": NativeFunction("$$fetch", fetch),
+    "$$jsondecode": NativeFunction("$$jsondecode", jsondecode),
+    "$$serialize": NativeFunction("$$serialize", lambda obj: Bytes(serialize(obj))),
+    "$$listlength": NativeFunction("$$listlength", listlength),
     "true": Bool(True),
     "false": Bool(False),
 }

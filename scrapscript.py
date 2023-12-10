@@ -506,7 +506,6 @@ class Object:
         return result
 
 
-
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Int(Object):
     value: int

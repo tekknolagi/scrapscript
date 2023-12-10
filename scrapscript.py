@@ -3041,31 +3041,6 @@ class SerializeTests(unittest.TestCase):
         )
 
 
-def eval_command(args: argparse.Namespace) -> None:
-    if args.debug:
-        logging.basicConfig(level=logging.DEBUG)
-
-    program = args.program_file.read()
-    tokens = tokenize(program)
-    logger.debug("Tokens: %s", tokens)
-    ast = parse(tokens)
-    logger.debug("AST: %s", ast)
-    result = eval_exp({}, ast)
-    print(result)
-
-
-def apply_command(args: argparse.Namespace) -> None:
-    if args.debug:
-        logging.basicConfig(level=logging.DEBUG)
-
-    tokens = tokenize(args.program)
-    logger.debug("Tokens: %s", tokens)
-    ast = parse(tokens)
-    logger.debug("AST: %s", ast)
-    result = eval_exp({}, ast)
-    print(result)
-
-
 def fetch(url: Object) -> Object:
     if not isinstance(url, String):
         raise TypeError(f"fetch expected String, but got {type(url).__name__}")
@@ -3181,6 +3156,31 @@ class ScrapRepl(code.InteractiveConsole):
         except Exception as e:
             print(f"Error: {e}", file=sys.stderr)
         return False
+
+
+def eval_command(args: argparse.Namespace) -> None:
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+
+    program = args.program_file.read()
+    tokens = tokenize(program)
+    logger.debug("Tokens: %s", tokens)
+    ast = parse(tokens)
+    logger.debug("AST: %s", ast)
+    result = eval_exp({}, ast)
+    print(result)
+
+
+def apply_command(args: argparse.Namespace) -> None:
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+
+    tokens = tokenize(args.program)
+    logger.debug("Tokens: %s", tokens)
+    ast = parse(tokens)
+    logger.debug("AST: %s", ast)
+    result = eval_exp({}, ast)
+    print(result)
 
 
 def repl_command(args: argparse.Namespace) -> None:

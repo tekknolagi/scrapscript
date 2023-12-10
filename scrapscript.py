@@ -1040,6 +1040,70 @@ def bencode(obj: object) -> bytes:
     raise NotImplementedError(f"bencode not implemented for {type(obj)}")
 
 
+class Bdecoder:
+    def __init__(self, msg: str) -> None:
+        self.msg: str = msg
+        self.idx: int = 0
+
+    def peek(self) -> str:
+        return self.msg[self.idx]
+
+    def read(self) -> str:
+        c = self.peek()
+        self.idx += 1
+        return c
+
+    def decode_int(self) -> int:
+        buf = ""
+        while (c := self.read()) != "e":
+            buf += c
+        return int(buf)
+
+    def decode_list(self) -> typing.List[Any]:
+        result = []
+        while self.peek() != "e":
+            result.append(self.decode())
+        assert self.read() == "e"
+        return result
+
+    def decode_dict(self) -> typing.Dict[Any, Any]:
+        result: Dict[Any, Any] = {}
+        while self.peek() != "e":
+            key = self.decode()
+            value = self.decode()
+            result[key] = value
+        assert self.read() == "e"
+        return result
+
+    def decode_str(self, start: str) -> str:
+        len_buf = start
+        while (c := self.peek()) != ":":
+            assert c.isdigit()
+            len_buf += c
+            self.read()
+        assert self.read() == ":"
+        buf = ""
+        for _ in range(int(len_buf)):
+            buf += self.read()
+        return buf
+
+    def decode(self) -> object:
+        ty = self.read()
+        if ty == "i":
+            return self.decode_int()
+        if ty == "l":
+            return self.decode_list()
+        if ty == "d":
+            return self.decode_dict()
+        if ty.isdigit():
+            return self.decode_str(ty)
+        raise NotImplementedError(ty)
+
+
+def bdecode(msg: str) -> object:
+    return Bdecoder(msg).decode()
+
+
 def serialize(obj: Object) -> bytes:
     return bencode(obj.serialize())
 
@@ -2731,6 +2795,33 @@ class BencodeTests(unittest.TestCase):
         self.assertEqual([*d], [b"b", b"a"])
         # It's sorted lexicographically
         self.assertEqual(bencode(d), b"d1:ai2e1:bi1ee")
+
+
+class BdecodeTests(unittest.TestCase):
+    def test_bdecode_int(self) -> None:
+        self.assertEqual(bdecode("i123e"), 123)
+
+    def test_bdecode_bool(self) -> None:
+        # TODO(max): Should we discriminate between bool and int?
+        self.assertEqual(bdecode("i1e"), 1)
+
+    def test_bdecode_negative_int(self) -> None:
+        self.assertEqual(bdecode("i-123e"), -123)
+
+    def test_bdecode_bytes(self) -> None:
+        self.assertEqual(bdecode("3:abc"), "abc")
+
+    def test_bdecode_empty_list(self) -> None:
+        self.assertEqual(bdecode("le"), [])
+
+    def test_bdecode_list_of_ints(self) -> None:
+        self.assertEqual(bdecode("li1ei2ei3ee"), [1, 2, 3])
+
+    def test_bdecode_list_of_lists(self) -> None:
+        self.assertEqual(bdecode("lli1ei2eeli3ei4eee"), [[1, 2], [3, 4]])
+
+    def test_bdecode_dict_sorts_keys(self) -> None:
+        self.assertEqual(bdecode("d1:ai2e1:bi1ee"), {"b": 1, "a": 2})
 
 
 class ObjectSerializeTests(unittest.TestCase):

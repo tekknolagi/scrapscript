@@ -18,7 +18,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Get deadsnakes repo
-      run: sudo add-apt-repository --yes ppa:deadsnakes/ppa
+      run: sudo add-apt-repository --keyserver hkp://keys.openpgp.org --yes ppa:deadsnakes/ppa
     - name: Update local package lists
       run: sudo apt update
     - name: Install Python

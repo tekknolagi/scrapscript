@@ -3219,7 +3219,8 @@ def _ensure_pygit2() -> ModuleType:
 
 def yard_init_command(args: argparse.Namespace) -> None:
     git = _ensure_pygit2()
-    repo = git.init_repository(args.yard, initial_head="trunk", bare=True)
+    branch_name = "trunk"
+    repo = git.init_repository(args.yard, initial_head=branch_name, bare=True)
     try:
         repo.head
     except git.GitError:
@@ -3234,7 +3235,9 @@ def yard_init_command(args: argparse.Namespace) -> None:
     tree_id = repo.TreeBuilder().write()
     message = "Initialize scrapyard"
     parents: object = []
-    repo.create_commit(ref, author, author, message, tree_id, parents)
+    commit = repo.create_commit(ref, author, author, message, tree_id, parents)
+    assert commit == repo.branches[branch_name].target
+    assert commit == repo.head.target
 
 
 def yard_commit_command(args: argparse.Namespace) -> None:
@@ -3257,7 +3260,9 @@ def yard_commit_command(args: argparse.Namespace) -> None:
     author = repo.default_signature
     message = f"Update {args.scrap_name}"
     parents = [repo.head.target]
-    repo.create_commit(ref, author, author, message, tree_id, parents)
+    commit = repo.create_commit(ref, author, author, message, tree_id, parents)
+    assert commit == repo.branches["trunk"].target
+    assert commit == repo.head.target
 
 
 def main() -> None:

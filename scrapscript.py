@@ -3219,7 +3219,7 @@ def _ensure_pygit2() -> ModuleType:
 
 def yard_init_command(args: argparse.Namespace) -> None:
     git = _ensure_pygit2()
-    repo = git.init_repository(args.directory, bare=True)
+    repo = git.init_repository(args.yard, bare=True)
     if not repo.is_empty:
         raise ScrapError("Scrapyard already initialized; cannot init scrapyard again")
     # Make an initial commit so that all other commands can do the normal
@@ -3283,7 +3283,7 @@ def main() -> None:
     yard = subparsers.add_parser("yard").add_subparsers(dest="command", required=True)
     yard_init = yard.add_parser("init")
     yard_init.set_defaults(func=yard_init_command)
-    yard_init.add_argument("directory")
+    yard_init.add_argument("yard")
     yard_commit = yard.add_parser("commit")
     yard_commit.set_defaults(func=yard_commit_command)
     yard_commit.add_argument("yard")

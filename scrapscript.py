@@ -3219,12 +3219,15 @@ def _ensure_pygit2() -> ModuleType:
 
 def yard_init_command(args: argparse.Namespace) -> None:
     git = _ensure_pygit2()
-    repo = git.init_repository(args.yard, bare=True)
-    if not repo.is_empty:
+    repo = git.init_repository(args.yard, initial_head="trunk", bare=True)
+    try:
+        repo.head
+    except git.GitError:
+        pass
+    else:
         raise ScrapError("Scrapyard already initialized; cannot init scrapyard again")
     # Make an initial commit so that all other commands can do the normal
     # commit flow
-    # TODO(max): Settle on an agreed-upon branch name like 'trunk'
     ref = "HEAD"
     author = repo.default_signature
     # Make an empty tree

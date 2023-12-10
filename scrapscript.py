@@ -3167,7 +3167,7 @@ def eval_command(args: argparse.Namespace) -> None:
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
-    result = eval_exp({}, ast)
+    result = eval_exp(STDLIB, ast)
     print(result)
 
 
@@ -3179,7 +3179,7 @@ def apply_command(args: argparse.Namespace) -> None:
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
-    result = eval_exp({}, ast)
+    result = eval_exp(STDLIB, ast)
     print(result)
 
 

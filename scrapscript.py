@@ -452,12 +452,14 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
 
 
 OBJECT_DESERIALIZERS: Dict[str, FunctionType] = {}
+OBJECT_TYPES: Dict[str, type] = {}
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Object:
     def __init_subclass__(cls, /, **kwargs: Dict[Any, Any]) -> None:
         super().__init_subclass__(**kwargs)
+        OBJECT_TYPES[cls.__name__] = cls
         deserializer = cls.__dict__.get("deserialize", None)
         if deserializer:
             assert isinstance(deserializer, staticmethod)
@@ -488,11 +490,21 @@ class Object:
         ty = msg["type"]
         assert isinstance(ty, str)
         deserializer = OBJECT_DESERIALIZERS.get(ty)
-        if not deserializer:
-            raise NotImplementedError(f"unknown type {ty}")
-        result = deserializer(msg)
+        if deserializer:
+            result = deserializer(msg)
+            assert isinstance(result, Object)
+            return result
+        cls = OBJECT_TYPES[ty]
+        kwargs = {}
+        for field in dataclasses.fields(cls):
+            if issubclass(field.type, Object):
+                kwargs[field.name] = Object.deserialize(msg[field.name])
+            else:
+                raise NotImplementedError("deserializing non-Object fields; write your own deserialize function")
+        result = cls(**kwargs)
         assert isinstance(result, Object)
         return result
+
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -672,33 +684,11 @@ class Function(Object):
     arg: Object
     body: Object
 
-    @staticmethod
-    def deserialize(msg: Dict[str, object]) -> "Function":
-        assert msg["type"] == "Function"
-        arg_obj = msg["arg"]
-        assert isinstance(arg_obj, dict)
-        arg = Object.deserialize(arg_obj)
-        body_obj = msg["body"]
-        assert isinstance(body_obj, dict)
-        body = Object.deserialize(body_obj)
-        return Function(arg, body)
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Apply(Object):
     func: Object
     arg: Object
-
-    @staticmethod
-    def deserialize(msg: Dict[str, object]) -> "Apply":
-        assert msg["type"] == "Apply"
-        func_obj = msg["func"]
-        assert isinstance(func_obj, dict)
-        func = Object.deserialize(func_obj)
-        arg_obj = msg["arg"]
-        assert isinstance(arg_obj, dict)
-        arg = Object.deserialize(arg_obj)
-        return Apply(func, arg)
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)

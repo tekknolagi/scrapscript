@@ -35,6 +35,15 @@ docker run -i -t ghcr.io/tekknolagi/scrapscript:trunk apply "1 + 2"
 docker run -i -t ghcr.io/tekknolagi/scrapscript:trunk repl
 ```
 
+## Advanced usage
+
+```bash
+# Create a scrapyard
+python3 scrapscript.py yard init /desired/path/to/your/scrapyard
+# Evaluates the file and stores the serialized scrap object to the yard
+python3 scrapscript.py yard commit /desired/path/to/your/scrapyard SCRAP_NAME SCRAPSCRIPT_FILE
+```
+
 ## Running Tests
 
 ```bash

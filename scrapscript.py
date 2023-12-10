@@ -2414,7 +2414,7 @@ class EvalTests(unittest.TestCase):
                 raise TypeError(f"raise_func expected String, but got {type(message).__name__}")
             raise RuntimeError(message)
 
-        error = NativeFunction(raise_func)
+        error = NativeFunction("error", raise_func)
         apply = Apply(Var("error"), String("expected failure"))
         ast = Binop(BinopKind.BOOL_AND, Bool(False), apply)
         self.assertEqual(eval_exp({"error": error}, ast), Bool(False))
@@ -2425,7 +2425,7 @@ class EvalTests(unittest.TestCase):
                 raise TypeError(f"raise_func expected String, but got {type(message).__name__}")
             raise RuntimeError(message)
 
-        error = NativeFunction(raise_func)
+        error = NativeFunction("error", raise_func)
         apply = Apply(Var("error"), String("expected failure"))
         ast = Binop(BinopKind.BOOL_OR, Bool(True), apply)
         self.assertEqual(eval_exp({"error": error}, ast), Bool(True))

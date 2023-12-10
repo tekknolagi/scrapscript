@@ -3203,6 +3203,60 @@ def test_command(args: argparse.Namespace) -> None:
     unittest.main(argv=[__file__, *args.unittest_args])
 
 
+class ScrapError(Exception):
+    pass
+
+
+def _ensure_pygit2() -> ModuleType:
+    try:
+        import pygit2
+
+        assert isinstance(pygit2, ModuleType)
+        return pygit2
+    except ImportError:
+        raise ScrapError("Please install pygit2 to work with scrapyards")
+
+
+def yard_init_command(args: argparse.Namespace) -> None:
+    git = _ensure_pygit2()
+    repo = git.init_repository(args.directory, bare=True)
+    if not repo.is_empty:
+        raise ScrapError("Scrapyard already initialized; cannot init scrapyard again")
+    # Make an initial commit so that all other commands can do the normal
+    # commit flow
+    # TODO(max): Settle on an agreed-upon branch name like 'trunk'
+    ref = "HEAD"
+    author = repo.default_signature
+    # Make an empty tree
+    tree_id = repo.TreeBuilder().write()
+    message = "Initialize scrapyard"
+    parents: object = []
+    repo.create_commit(ref, author, author, message, tree_id, parents)
+
+
+def yard_commit_command(args: argparse.Namespace) -> None:
+    git = _ensure_pygit2()
+    # Find the scrapyard
+    repo_path = git.discover_repository(args.yard)
+    if repo_path is None:
+        raise ScrapError(f"Please create a scrapyard; {args.yard!r} is not initialized")
+    repo = git.Repository(repo_path, git.GIT_REPOSITORY_OPEN_BARE)
+    result = eval_exp(STDLIB, parse(tokenize(args.program_file.read())))
+    serialized = serialize(result)
+    # Make a git tree
+    root = repo.TreeBuilder()
+    obj_id = repo.create_blob(serialized)
+    # TODO(max): Figure out how to handle names like a/b; make directories?
+    root.insert(args.scrap_name, obj_id, git.GIT_FILEMODE_BLOB)
+    tree_id = root.write()
+    # Commit the tree
+    ref = repo.head.name
+    author = repo.default_signature
+    message = f"Update {args.scrap_name}"
+    parents = [repo.head.target]
+    repo.create_commit(ref, author, author, message, tree_id, parents)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="scrapscript")
     subparsers = parser.add_subparsers(dest="command")
@@ -3225,6 +3279,16 @@ def main() -> None:
     apply.set_defaults(func=apply_command)
     apply.add_argument("program")
     apply.add_argument("--debug", action="store_true")
+
+    yard = subparsers.add_parser("yard").add_subparsers(dest="command", required=True)
+    yard_init = yard.add_parser("init")
+    yard_init.set_defaults(func=yard_init_command)
+    yard_init.add_argument("directory")
+    yard_commit = yard.add_parser("commit")
+    yard_commit.set_defaults(func=yard_commit_command)
+    yard_commit.add_argument("yard")
+    yard_commit.add_argument("scrap_name")
+    yard_commit.add_argument("program_file", type=argparse.FileType("r"))
 
     args = parser.parse_args()
     if not args.command:

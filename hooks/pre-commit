@@ -11,7 +11,8 @@ else
 	against=$(git hash-object -t tree /dev/null)
 fi
 # cat always has error code 0
-filenames=$(git diff --cached --name-only $against | grep '\.py$' | cat)
+# ignore deleted files (can't be formatted)
+filenames=$(git diff --cached --name-only --diff-filter=d $against | grep '\.py$' | cat)
 if [ -n "$filenames" ]
 then
   ./scrapscript.py test

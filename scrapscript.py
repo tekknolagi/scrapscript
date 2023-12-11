@@ -1965,6 +1965,15 @@ class MatchTests(unittest.TestCase):
         )
 
 
+def _dont_have_pygit2() -> bool:
+    try:
+        import pygit2
+
+        return False
+    except ImportError:
+        return True
+
+
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:
         exp = Int(5)
@@ -2372,10 +2381,12 @@ class EvalTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, re.escape("expected Bool, got Int")):
             eval_exp({}, exp)
 
+    @unittest.skipIf(_dont_have_pygit2(), "Can't run test without pygit2")
     def test_hash_var_looks_up_in_scrapyard(self) -> None:
         # TODO(max): Do this in-memory instead of on-disk
         with tempfile.TemporaryDirectory() as tempdir:
             yard_init(tempdir)
+            # TODO(max): Use object id
             yard_commit(tempdir, "a_test_object", Int(100))
             env = {"$$scrapyard": String(tempdir)}
             result = eval_exp(env, HashVar("a8788e4ad848bac02d1c6ad76375aad65b7c5387"))

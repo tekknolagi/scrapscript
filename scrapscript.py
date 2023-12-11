@@ -338,8 +338,13 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     if isinstance(token, NumLit):
         l = Int(token.value)
     elif isinstance(token, Name):
-        # TODO: Handle kebab case vars
-        l = Var(token.value)
+        sha_prefix = "$sha1'"
+        if token.value.startswith(sha_prefix):
+            hash = token.value[len(sha_prefix) :]
+            l = HashVar(hash)
+        else:
+            # TODO: Handle kebab case vars
+            l = Var(token.value)
     elif isinstance(token, BytesLit):
         base = token.base
         if base == 85:
@@ -560,6 +565,20 @@ class Var(Object):
         assert msg["type"] == "Var"
         assert isinstance(msg["name"], str)
         return Var(msg["name"])
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class HashVar(Object):
+    name: str
+
+    def serialize(self) -> Dict[bytes, object]:
+        return {b"type": b"HashVar", b"name": self.name.encode("utf-8")}
+
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "HashVar":
+        assert msg["type"] == "HashVar"
+        assert isinstance(msg["name"], str)
+        return HashVar(msg["name"])
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -1448,8 +1467,8 @@ class ParserTests(unittest.TestCase):
     def test_parse_var_returns_var(self) -> None:
         self.assertEqual(parse([Name("abc_123")]), Var("abc_123"))
 
-    def test_parse_sha_var_returns_var(self) -> None:
-        self.assertEqual(parse([Name("$sha1'abc")]), Var("$sha1'abc"))
+    def test_parse_sha_var_returns_hash_var(self) -> None:
+        self.assertEqual(parse([Name("$sha1'abc")]), HashVar("abc"))
 
     def test_parse_sha_var_without_quote_returns_var(self) -> None:
         self.assertEqual(parse([Name("$sha1abc")]), Var("$sha1abc"))

@@ -9,13 +9,14 @@ import logging
 import os
 import re
 import sys
+import tempfile
 import typing
 import unittest
 import urllib.request
 from dataclasses import dataclass
 from enum import auto
 from types import ModuleType, FunctionType
-from typing import Any, Callable, Dict, Mapping, Optional, Union
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Union
 
 readline: Optional[ModuleType]
 try:
@@ -338,8 +339,13 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     if isinstance(token, NumLit):
         l = Int(token.value)
     elif isinstance(token, Name):
-        # TODO: Handle kebab case vars
-        l = Var(token.value)
+        sha_prefix = "$sha1'"
+        if token.value.startswith(sha_prefix):
+            hash = token.value[len(sha_prefix) :]
+            l = HashVar(hash)
+        else:
+            # TODO: Handle kebab case vars
+            l = Var(token.value)
     elif isinstance(token, BytesLit):
         base = token.base
         if base == 85:
@@ -560,6 +566,20 @@ class Var(Object):
         assert msg["type"] == "Var"
         assert isinstance(msg["name"], str)
         return Var(msg["name"])
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class HashVar(Object):
+    name: str
+
+    def serialize(self) -> Dict[bytes, object]:
+        return {b"type": b"HashVar", b"name": self.name.encode("utf-8")}
+
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "HashVar":
+        assert msg["type"] == "HashVar"
+        assert isinstance(msg["name"], str)
+        return HashVar(msg["name"])
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -1013,6 +1033,20 @@ def eval_exp(env: Env, exp: Object) -> Object:
         clo_inner = eval_exp(env, exp.inner)
         clo_outer = eval_exp(env, exp.outer)
         return Closure({}, Function(Var("x"), Apply(clo_outer, Apply(clo_inner, Var("x")))))
+    if isinstance(exp, HashVar):
+        yard_location = env["$$scrapyard"]
+        assert isinstance(yard_location, String)
+        git = _ensure_pygit2()
+        repo_path = git.discover_repository(yard_location.value)
+        if repo_path is None:
+            raise ScrapError(f"Please create a scrapyard; {yard_location.value!r} is not initialized")
+        repo = git.Repository(repo_path, git.GIT_REPOSITORY_OPEN_BARE)
+        obj = repo.get(exp.name)
+        if obj is None:
+            raise ScrapError(f"Could not find object $sha1'{exp.name}")
+        if not isinstance(obj, git.Blob):
+            raise ScrapError(f"Object $sha1'{exp.name} is not a blob")
+        return deserialize(obj.data.decode("utf-8"))
     raise NotImplementedError(f"eval_exp not implemented for {exp}")
 
 
@@ -1448,8 +1482,8 @@ class ParserTests(unittest.TestCase):
     def test_parse_var_returns_var(self) -> None:
         self.assertEqual(parse([Name("abc_123")]), Var("abc_123"))
 
-    def test_parse_sha_var_returns_var(self) -> None:
-        self.assertEqual(parse([Name("$sha1'abc")]), Var("$sha1'abc"))
+    def test_parse_sha_var_returns_hash_var(self) -> None:
+        self.assertEqual(parse([Name("$sha1'abc")]), HashVar("abc"))
 
     def test_parse_sha_var_without_quote_returns_var(self) -> None:
         self.assertEqual(parse([Name("$sha1abc")]), Var("$sha1abc"))
@@ -1931,6 +1965,15 @@ class MatchTests(unittest.TestCase):
         )
 
 
+def _dont_have_pygit2() -> bool:
+    try:
+        import pygit2
+
+        return False
+    except ImportError:
+        return True
+
+
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:
         exp = Int(5)
@@ -2337,6 +2380,17 @@ class EvalTests(unittest.TestCase):
         exp = Binop(BinopKind.BOOL_OR, Int(1), Int(2))
         with self.assertRaisesRegex(TypeError, re.escape("expected Bool, got Int")):
             eval_exp({}, exp)
+
+    @unittest.skipIf(_dont_have_pygit2(), "Can't run test without pygit2")
+    def test_hash_var_looks_up_in_scrapyard(self) -> None:
+        # TODO(max): Do this in-memory instead of on-disk
+        with tempfile.TemporaryDirectory() as tempdir:
+            yard_init(tempdir)
+            # TODO(max): Use object id
+            yard_commit(tempdir, "a_test_object", Int(100))
+            env = {"$$scrapyard": String(tempdir)}
+            result = eval_exp(env, HashVar("a8788e4ad848bac02d1c6ad76375aad65b7c5387"))
+            self.assertEqual(result, Int(100))
 
 
 class EndToEndTests(unittest.TestCase):
@@ -2751,6 +2805,19 @@ class EndToEndTests(unittest.TestCase):
 
     def test_compare_binds_tighter_than_boolean_and(self) -> None:
         self.assertEqual(self._run("1 < 2 && 2 < 1"), Bool(False))
+
+    def test_hash_var_looks_up_in_scrapyard(self) -> None:
+        func = self._run("fac = | 0 -> 1 | n -> n * fac (n-1)")
+        print(func)
+        # TODO(max): Do this in-memory instead of on-disk
+        with tempfile.TemporaryDirectory() as tempdir:
+            yard_init(tempdir)
+            # TODO(max): Use object id
+            _, obj_id = yard_commit(tempdir, "a_test_object", func)
+            result = eval_exp(env, HashVar(obj_id))
+            self.assertEqual(result, Int(100))
+            env = {"$$scrapyard": String(tempdir)}
+            self.assertEqual(self._run(f"$sha1'{obj_id} 5", env), Int(120))
 
 
 class BencodeTests(unittest.TestCase):
@@ -3203,6 +3270,79 @@ def test_command(args: argparse.Namespace) -> None:
     unittest.main(argv=[__file__, *args.unittest_args])
 
 
+class ScrapError(Exception):
+    pass
+
+
+def _ensure_pygit2() -> ModuleType:
+    try:
+        import pygit2
+
+        assert isinstance(pygit2, ModuleType)
+        return pygit2
+    except ImportError:
+        raise ScrapError("Please install pygit2 to work with scrapyards")
+
+
+def yard_init(path: str) -> None:
+    git = _ensure_pygit2()
+    branch_name = "trunk"
+    repo = git.init_repository(path, initial_head=branch_name, bare=True)
+    try:
+        repo.head
+    except git.GitError:
+        pass
+    else:
+        raise ScrapError("Scrapyard already initialized; cannot init scrapyard again")
+    # Make an initial commit so that all other commands can do the normal
+    # commit flow
+    ref = "HEAD"
+    author = repo.default_signature
+    # Make an empty tree
+    tree_id = repo.TreeBuilder().write()
+    message = "Initialize scrapyard"
+    parents: object = []
+    commit = repo.create_commit(ref, author, author, message, tree_id, parents)
+    assert commit == repo.branches[branch_name].target
+    assert commit == repo.head.target
+
+
+def yard_init_command(args: argparse.Namespace) -> None:
+    yard_init(args.yard)
+
+
+def yard_commit(path: str, scrap_name: str, obj: Object) -> Tuple[str, str]:
+    git = _ensure_pygit2()
+    # Find the scrapyard
+    repo_path = git.discover_repository(path)
+    if repo_path is None:
+        raise ScrapError(f"Please create a scrapyard; {path!r} is not initialized")
+    repo = git.Repository(repo_path, git.GIT_REPOSITORY_OPEN_BARE)
+    serialized = serialize(obj)
+    # Make a git tree starting from previous commit's tree
+    prev_commit = repo.get(repo.head.target)
+    root = repo.TreeBuilder(prev_commit.tree)
+    obj_id = repo.create_blob(serialized)
+    # TODO(max): Figure out how to handle names like a/b; make directories?
+    root.insert(scrap_name, obj_id, git.GIT_FILEMODE_BLOB)
+    tree_id = root.write()
+    # Commit the tree
+    ref = repo.head.name
+    author = repo.default_signature
+    message = f"Update {scrap_name}"
+    parents = [repo.head.target]
+    commit = repo.create_commit(ref, author, author, message, tree_id, parents)
+    assert commit == repo.branches["trunk"].target
+    assert commit == repo.head.target
+    return scrap_name, obj_id
+
+
+def yard_commit_command(args: argparse.Namespace) -> None:
+    obj = eval_exp(STDLIB, parse(tokenize(args.program_file.read())))
+    scrap_name, obj_id = yard_commit(args.yard, args.scrap_name, obj)
+    print(args.scrap_name, obj_id)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="scrapscript")
     subparsers = parser.add_subparsers(dest="command")
@@ -3225,6 +3365,16 @@ def main() -> None:
     apply.set_defaults(func=apply_command)
     apply.add_argument("program")
     apply.add_argument("--debug", action="store_true")
+
+    yard = subparsers.add_parser("yard").add_subparsers(dest="command", required=True)
+    yard_init = yard.add_parser("init")
+    yard_init.set_defaults(func=yard_init_command)
+    yard_init.add_argument("yard")
+    yard_commit = yard.add_parser("commit")
+    yard_commit.set_defaults(func=yard_commit_command)
+    yard_commit.add_argument("yard")
+    yard_commit.add_argument("scrap_name")
+    yard_commit.add_argument("program_file", type=argparse.FileType("r"))
 
     args = parser.parse_args()
     if not args.command:

@@ -2806,6 +2806,19 @@ class EndToEndTests(unittest.TestCase):
     def test_compare_binds_tighter_than_boolean_and(self) -> None:
         self.assertEqual(self._run("1 < 2 && 2 < 1"), Bool(False))
 
+    def test_hash_var_looks_up_in_scrapyard(self) -> None:
+        func = self._run("fac = | 0 -> 1 | n -> n * fac (n-1)")
+        print(func)
+        # TODO(max): Do this in-memory instead of on-disk
+        with tempfile.TemporaryDirectory() as tempdir:
+            yard_init(tempdir)
+            # TODO(max): Use object id
+            _, obj_id = yard_commit(tempdir, "a_test_object", func)
+            result = eval_exp(env, HashVar(obj_id))
+            self.assertEqual(result, Int(100))
+            env = {"$$scrapyard": String(tempdir)}
+            self.assertEqual(self._run(f"$sha1'{obj_id} 5", env), Int(120))
+
 
 class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:

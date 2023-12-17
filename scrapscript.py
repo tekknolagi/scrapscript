@@ -1670,6 +1670,44 @@ class ParserTests(unittest.TestCase):
             Record({"a": Int(4), "b": String("z")}),
         )
 
+    def test_parse_type_alts(self) -> None:
+        self.assertEqual(
+            parse(
+                [
+                    Operator("#"),
+                    Name("point"),
+                    LeftBrace(),
+                    Name("x"),
+                    Operator(":"),
+                    Name("int"),
+                    Operator(","),
+                    Name("y"),
+                    Operator(":"),
+                    Name("int"),
+                    RightBrace(),
+                ]
+            ),
+            Alts({ "point": RecordType({ "x": Var("int"), "y": Var("int") }) })
+        )
+
+    def test_parse_multiple_type_alts(self) -> None:
+        self.assertEqual(
+            parse(
+                [
+                    Operator("#"), Name("vanilla"), LeftParen(), RightParen(),
+                    Operator("#"), Name("chocolate"), LeftParen(), RightParen(),
+                    Operator("#"), Name("strawberry"), LeftParen(), RightParen(),
+                ]
+            ),
+            Alts({ "vanilla": Hole(), "chocolate": Hole(), "strawberry": Hole() })
+        )
+
+    def test_parse_alt(self) -> None:
+        self.assertEqual(
+            parse([ Operator("#"), Name("a"), Name("int"), Operator("::"), Name("a"), NumLit(8)]),
+            Alts({ "a": Var("int") }, "a", Int(8))
+        )
+
     def test_non_variable_in_assignment_raises_parse_error(self) -> None:
         with self.assertRaises(ParseError) as ctx:
             parse([NumLit(3), Operator("="), NumLit(4)])
@@ -1739,7 +1777,6 @@ class ParserTests(unittest.TestCase):
             parse([Name("true"), Operator("||"), Name("true"), Operator("&&"), Name("false")]),
             Binop(BinopKind.BOOL_OR, Var("true"), Binop(BinopKind.BOOL_AND, Var("true"), Var("false"))),
         )
-
 
 class MatchTests(unittest.TestCase):
     def test_match_with_equal_ints_returns_empty_dict(self) -> None:
@@ -1871,6 +1908,33 @@ class MatchTests(unittest.TestCase):
                 pattern=List([Int(3), Var("y")]),
             ),
             None,
+        )
+
+    def test_match_alts_returns_none(self) -> None:
+        self.assertEqual(
+            match(
+                Alt("a", Var("x")),
+                pattern=Alts({ "a": Var("int"), "b" : Var("int") }, "b", Int(123)),
+            ),
+            None,
+        )
+
+    def test_match_alts_returns_var(self) -> None:
+        self.assertEqual(
+            match(
+                Alt("a", Var("x")),
+                pattern=Alts({ "a": Var("int"), "b" : Var("int") }, "a", Int(123)),
+            ),
+            {"x": Int(123)},
+        )
+
+    def test_match_alts_returns_nested_var(self) -> None:
+        self.assertEqual(
+            match(
+                Alt("a", List([Var("x")])),
+                pattern=Alts({ "a": Apply(Var("list"),Var("int")) }, "a", List([Int(123)])),
+            ),
+            {"x": Int(123)},
         )
 
     def test_parse_right_pipe(self) -> None:
@@ -2112,6 +2176,14 @@ class EvalTests(unittest.TestCase):
     def test_eval_hole(self) -> None:
         exp = Hole()
         self.assertEqual(eval_exp({}, exp), Hole())
+
+    def test_eval_alts(self) -> None:
+        exp = Alts({ "a": Hole() })
+        self.assertEqual(eval_exp({}, exp), Alts({ "a": Hole() }))
+
+    def test_eval_alt(self) -> None:
+        exp = Alts({ "a": Hole() }, "a", Hole())
+        self.assertEqual(eval_exp({}, exp), Alts({ "a": Hole() }, "a", Hole()))
 
     def test_eval_function_application_one_arg(self) -> None:
         exp = Apply(Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(1))), Int(2))

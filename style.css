@@ -194,7 +194,7 @@ input[type="text"], textarea {
   background-color: #2d2d2d;
   color: #d4d4d4;
   border: none;
-  padding: 0.5em 1.2em;
+  padding: 0.5em 0.8em;
   border-radius: 5px;
   transition: background-color 200ms;
 }

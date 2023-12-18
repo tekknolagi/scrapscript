@@ -3330,7 +3330,8 @@ def serve_command(args: argparse.Namespace) -> None:
         server = socketserver.TCPServer
     server.allow_reuse_address = True
     with server(("", args.port), ScrapReplServer) as httpd:
-        print("serving at port", args.port)
+        host, port = httpd.server_address
+        print(f"serving at http://{host!s}:{port}")
         httpd.serve_forever()
 
 

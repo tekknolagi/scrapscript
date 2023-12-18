@@ -147,8 +147,8 @@ pre[class*="language-"] {
 }
 pre[class*="language-"] {
   padding: 0.5em 0.5em;
+  margin: 0em;
   z-index: 2;
-  margin: 0;
 }
 code,
 pre > code {

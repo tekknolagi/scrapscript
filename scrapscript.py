@@ -3481,8 +3481,8 @@ id = x -> x
 .
 filter = f ->
 | [] -> []
-| [x, ...xs] -> (f x) |> (| #true -> x >+ (filter f xs)
-                          | #false -> filter f xs)
+| [x, ...xs] -> f x |> | #true -> x >+ (filter f xs)
+                       | #false -> filter f xs
 """
 
 

@@ -1864,6 +1864,11 @@ class ParserTests(unittest.TestCase):
             List([Int(1), Spread()]),
         )
 
+    @unittest.skip("TODO(max): Raise if ...x is used with non-name")
+    def test_parse_list_with_non_name_expr_after_spread_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token NumLit(lineno=-1, value=1)")):
+            parse([LeftBracket(), NumLit(1), Operator(","), Operator("..."), NumLit(2), RightBracket()])
+
     def test_parse_list_with_named_spread(self) -> None:
         self.assertEqual(
             parse(

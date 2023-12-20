@@ -3137,6 +3137,9 @@ class EndToEndTests(unittest.TestCase):
             String("omg"),
         )
 
+    def test_id_returns_input(self) -> None:
+        self.assertEqual(self._run("id 123"), Int(123))
+
     def test_filter_returns_matching(self) -> None:
         self.assertEqual(
             self._run(
@@ -3470,6 +3473,8 @@ STDLIB = {
 
 
 PRELUDE = """
+id = x -> x
+.
 filter = f ->
 | [] -> []
 | [x, ...xs] -> (f x) |> (| #true -> x >+ (filter f xs)

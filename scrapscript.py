@@ -2670,7 +2670,7 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(eval_exp({}, Symbol("abc")), Symbol("abc"))
 
 
-class EndToEndTests(unittest.TestCase):
+class EndToEndTestsBase(unittest.TestCase):
     def _run(self, text: str, env: Optional[Env] = None) -> Object:
         tokens = tokenize(text)
         ast = parse(tokens)
@@ -2678,6 +2678,8 @@ class EndToEndTests(unittest.TestCase):
             env = boot_env()
         return eval_exp(env, ast)
 
+
+class EndToEndTests(EndToEndTestsBase):
     def test_int_returns_int(self) -> None:
         self.assertEqual(self._run("1"), Int(1))
 
@@ -3137,6 +3139,8 @@ class EndToEndTests(unittest.TestCase):
             String("omg"),
         )
 
+
+class PreludeTests(EndToEndTestsBase):
     def test_id_returns_input(self) -> None:
         self.assertEqual(self._run("id 123"), Int(123))
 

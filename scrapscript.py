@@ -1069,6 +1069,7 @@ def eval_exp(env: Env, exp: Object) -> Object:
 
 
 def bencode(obj: object) -> bytes:
+    assert not isinstance(obj, bool)
     if isinstance(obj, int):
         return b"i" + str(int(obj)).encode("ascii") + b"e"
     if isinstance(obj, bytes):
@@ -3138,10 +3139,6 @@ class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:
         self.assertEqual(bencode(123), b"i123e")
 
-    def test_bencode_bool(self) -> None:
-        # TODO(max): Should we discriminate between bool and int?
-        self.assertEqual(bencode(True), b"i1e")
-
     def test_bencode_negative_int(self) -> None:
         self.assertEqual(bencode(-123), b"i-123e")
 
@@ -3170,10 +3167,6 @@ class BencodeTests(unittest.TestCase):
 class BdecodeTests(unittest.TestCase):
     def test_bdecode_int(self) -> None:
         self.assertEqual(bdecode("i123e"), 123)
-
-    def test_bdecode_bool(self) -> None:
-        # TODO(max): Should we discriminate between bool and int?
-        self.assertEqual(bdecode("i1e"), 1)
 
     def test_bdecode_negative_int(self) -> None:
         self.assertEqual(bdecode("i-123e"), -123)

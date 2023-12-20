@@ -105,6 +105,11 @@ class Juxt(Token):
 
 
 @dataclass(eq=True)
+class SymbolToken(Token):
+    value: str
+
+
+@dataclass(eq=True)
 class EOF(Token):
     pass
 
@@ -156,6 +161,13 @@ class Lexer:
                 self.read_comment()
                 return self.read_one()
             return self.read_op(c)
+        if c == "#":
+            value = self.read_one()
+            if isinstance(value, EOF):
+                raise UnexpectedEOFError("while reading symbol")
+            if not isinstance(value, Name):
+                raise ParseError(f"expected name after #, got {value!r}")
+            return self.make_token(SymbolToken, value.value)
         if c == "~":
             if self.has_input() and self.peek_char() == "~":
                 self.read_char()
@@ -1510,6 +1522,20 @@ class TokenizerTests(unittest.TestCase):
                 RightBrace(),
             ],
         )
+
+    def test_tokenize_symbol_with_space(self) -> None:
+        self.assertEqual(tokenize("# abc"), [SymbolToken("abc")])
+
+    def test_tokenize_symbol_with_no_space(self) -> None:
+        self.assertEqual(tokenize("#abc"), [SymbolToken("abc")])
+
+    def test_tokenize_symbol_non_name_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, "expected name"):
+            tokenize("#1")
+
+    def test_tokenize_symbol_eof_raises_unexpected_eof_error(self) -> None:
+        with self.assertRaisesRegex(UnexpectedEOFError, "while reading symbol"):
+            tokenize("#")
 
 
 class ParserTests(unittest.TestCase):

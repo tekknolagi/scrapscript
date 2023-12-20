@@ -902,6 +902,8 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
         return {} if isinstance(obj, Int) and obj.value == pattern.value else None
     if isinstance(pattern, String):
         return {} if isinstance(obj, String) and obj.value == pattern.value else None
+    if isinstance(pattern, Bool):
+        return {} if isinstance(obj, Bool) and obj.value == pattern.value else None
     if isinstance(pattern, Var):
         return {pattern.name: obj}
     if isinstance(pattern, Record):
@@ -1965,6 +1967,15 @@ class MatchTests(unittest.TestCase):
     def test_match_int_with_non_int_returns_none(self) -> None:
         self.assertEqual(match(String("abc"), pattern=Int(1)), None)
 
+    def test_match_with_equal_bools_returns_empty_dict(self) -> None:
+        self.assertEqual(match(Bool(True), pattern=Bool(True)), {})
+
+    def test_match_with_inequal_bools_returns_none(self) -> None:
+        self.assertEqual(match(Bool(False), pattern=Bool(True)), None)
+
+    def test_match_bool_with_non_bool_returns_none(self) -> None:
+        self.assertEqual(match(Int(1), pattern=Bool(True)), None)
+
     def test_match_with_equal_strings_returns_empty_dict(self) -> None:
         self.assertEqual(match(String("a"), pattern=String("a")), {})
 
@@ -2471,6 +2482,15 @@ class EvalTests(unittest.TestCase):
 
     def test_match_int_with_inequal_int_raises_match_error(self) -> None:
         exp = Apply(MatchFunction([MatchCase(pattern=Int(1), body=Int(2))]), Int(3))
+        with self.assertRaisesRegex(MatchError, "no matching cases"):
+            eval_exp({}, exp)
+
+    def test_match_bool_with_equal_bool_matches(self) -> None:
+        exp = Apply(MatchFunction([MatchCase(pattern=Bool(True), body=Bool(False))]), Bool(True))
+        self.assertEqual(eval_exp({}, exp), Bool(False))
+
+    def test_match_bool_with_inequal_bool_raises_match_error(self) -> None:
+        exp = Apply(MatchFunction([MatchCase(pattern=Bool(True), body=Bool(False))]), Bool(False))
         with self.assertRaisesRegex(MatchError, "no matching cases"):
             eval_exp({}, exp)
 
@@ -3076,6 +3096,20 @@ class EndToEndTests(unittest.TestCase):
         """
             ),
             Int(4),
+        )
+
+    @unittest.skip("TODO: fix matching on Var")
+    def test_match_bool_and_var(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        f (1 == 2)
+        . f =
+          | true -> 1
+          | false -> 2
+        """
+            ),
+            Int(2),
         )
 
 

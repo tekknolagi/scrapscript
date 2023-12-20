@@ -3137,6 +3137,24 @@ class EndToEndTests(unittest.TestCase):
             String("omg"),
         )
 
+    def test_filter_returns_matching(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        filter (x -> x < 4) [2, 6, 3, 7, 1, 8]
+        """
+            ),
+            List([Int(2), Int(3), Int(1)]),
+        )
+
+    def test_filter_with_function_returning_non_bool_raises_match_error(self) -> None:
+        with self.assertRaises(MatchError):
+            self._run(
+                """
+        filter (x -> #no) [1]
+        """
+            )
+
 
 class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:

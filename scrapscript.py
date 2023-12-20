@@ -972,7 +972,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
 # pylint: disable=redefined-builtin
 def eval_exp(env: Env, exp: Object) -> Object:
     logger.debug(exp)
-    if isinstance(exp, (Int, Bool, String, Bytes, Hole, Closure, NativeFunction)):
+    if isinstance(exp, (Int, Bool, String, Bytes, Hole, Closure, NativeFunction, Symbol)):
         return exp
     if isinstance(exp, Var):
         value = env.get(exp.name)
@@ -2659,6 +2659,9 @@ class EvalTests(unittest.TestCase):
         exp = Record({"x": Spread()})
         with self.assertRaisesRegex(RuntimeError, "cannot evaluate a spread"):
             eval_exp({}, exp)
+
+    def test_eval_symbol_returns_symbol(self) -> None:
+        self.assertEqual(eval_exp({}, Symbol("abc")), Symbol("abc"))
 
 
 class EndToEndTests(unittest.TestCase):

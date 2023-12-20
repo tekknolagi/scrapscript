@@ -3120,6 +3120,19 @@ class EndToEndTests(unittest.TestCase):
             Int(4),
         )
 
+    def test_match_expr_as_boolean_symbols(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        say (1 < 2)
+        . say =
+          | #false -> "oh no"
+          | #true -> "omg"
+        """
+            ),
+            String("omg"),
+        )
+
 
 class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:

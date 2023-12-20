@@ -4,5 +4,5 @@ filter lt5 [2, 8, 4, 5, 1, 6, 3, 7]
   | [] -> []
   | [x, ...xs] -> (get_rest (f x)
     . get_rest =
-      | true -> (false >+ (filter f xs))
-      | false -> (2 >+ filter f xs))
+      | true -> (x >+ (filter f xs))
+      | false -> (filter f xs))

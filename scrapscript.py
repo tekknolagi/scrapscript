@@ -932,6 +932,9 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
         for i, pattern_item in enumerate(pattern.items):
             if isinstance(pattern_item, Spread):
                 use_spread = True
+                if pattern_item.name is not None:
+                    assert isinstance(result, dict)  # for .update()
+                    result.update({pattern_item.name: List(obj.items[i:])})
                 break
             if i >= len(obj.items):
                 return None
@@ -2150,6 +2153,24 @@ class MatchTests(unittest.TestCase):
             {},
         )
 
+    def test_match_list_with_named_spread_returns_name_bound_to_rest(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2), Int(3), Int(4)]),
+                pattern=List([Var("a"), Int(2), Spread("rest")]),
+            ),
+            {"a": Int(1), "rest": List([Int(3), Int(4)])},
+        )
+
+    def test_match_list_with_named_spread_returns_name_bound_to_empty_rest(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2)]),
+                pattern=List([Var("a"), Int(2), Spread("rest")]),
+            ),
+            {"a": Int(1), "rest": List([])},
+        )
+
     def test_match_list_with_mismatched_spread_returns_none(self) -> None:
         self.assertEqual(
             match(
@@ -3029,6 +3050,18 @@ class EndToEndTests(unittest.TestCase):
         """
             ),
             Int(2),
+        )
+
+    def test_match_list_named_spread(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        tail [1,2,3]
+        . tail =
+          | [first, ...rest] -> rest
+        """
+            ),
+            List([Int(2), Int(3)]),
         )
 
     def test_match_record_spread(self) -> None:

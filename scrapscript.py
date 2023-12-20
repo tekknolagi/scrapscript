@@ -354,6 +354,8 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     elif isinstance(token, Name):
         # TODO: Handle kebab case vars
         l = Var(token.value)
+    elif isinstance(token, SymbolToken):
+        l = Symbol(token.value)
     elif isinstance(token, BytesLit):
         base = token.base
         if base == 85:
@@ -849,6 +851,11 @@ class Record(Object):
 class Access(Object):
     obj: Object
     at: Object
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Symbol(Object):
+    value: str
 
 
 def unpack_int(obj: Object) -> int:
@@ -1979,6 +1986,9 @@ class ParserTests(unittest.TestCase):
     def test_parse_record_with_trailing_comma_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, re.escape("unexpected token RightBrace(lineno=-1)")):
             parse([LeftBrace(), Name("x"), Operator("="), NumLit(1), Operator(","), RightBrace()])
+
+    def test_parse_symbol_returns_symbol(self) -> None:
+        self.assertEqual(parse([SymbolToken("abc")]), Symbol("abc"))
 
 
 class MatchTests(unittest.TestCase):

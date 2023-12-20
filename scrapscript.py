@@ -3208,7 +3208,7 @@ class ObjectSerializeTests(unittest.TestCase):
         obj = Var("abc")
         self.assertEqual(obj.serialize(), {b"type": b"Var", b"name": b"abc"})
 
-    def test_serialize_bool(self) -> None:
+    def test_serialize_symbol(self) -> None:
         obj = Symbol("true")
         self.assertEqual(obj.serialize(), {b"type": b"Symbol", b"value": b"true"})
 
@@ -3308,13 +3308,9 @@ class ObjectDeserializeTests(unittest.TestCase):
         msg = {"type": "Var", "name": "abc"}
         self.assertEqual(Object.deserialize(msg), Var("abc"))
 
-    def test_deserialize_bool_true(self) -> None:
-        msg = {"type": "Symbol", "value": "true"}
-        self.assertEqual(Object.deserialize(msg), Symbol("true"))
-
-    def test_deserialize_bool_false(self) -> None:
-        msg = {"type": "Symbol", "value": "false"}
-        self.assertEqual(Object.deserialize(msg), Symbol("false"))
+    def test_deserialize_symbol(self) -> None:
+        msg = {"type": "Symbol", "value": "abc"}
+        self.assertEqual(Object.deserialize(msg), Symbol("abc"))
 
     def test_deserialize_binary_add(self) -> None:
         msg = {
@@ -3395,9 +3391,9 @@ class SerializeTests(unittest.TestCase):
         obj = Var("abc")
         self.assertEqual(serialize(obj), b"d4:name3:abc4:type3:Vare")
 
-    def test_serialize_bool(self) -> None:
-        obj = Symbol("true")
-        self.assertEqual(serialize(obj), b"d4:type6:Symbol5:value4:truee")
+    def test_serialize_symbol(self) -> None:
+        obj = Symbol("abcd")
+        self.assertEqual(serialize(obj), b"d4:type6:Symbol5:value4:abcde")
 
     def test_serialize_function(self) -> None:
         obj = Function(Var("x"), Binop(BinopKind.ADD, Int(1), Var("x")))

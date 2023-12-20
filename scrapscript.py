@@ -357,7 +357,12 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     elif isinstance(token, StringLit):
         l = String(token.value)
     elif token == Operator("..."):
-        l = Spread()
+        if tokens and isinstance(tokens[0], Name):
+            name = tokens[0].value
+            tokens.pop(0)
+            l = Spread(name)
+        else:
+            l = Spread()
     elif token == Operator("|"):
         expr = parse(tokens, PS["|"].pr)  # TODO: make this work for larger arities
         if not isinstance(expr, Function):
@@ -591,7 +596,7 @@ class Hole(Object):
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Spread(Object):
-    pass
+    name: Optional[str] = None
 
 
 Env = Mapping[str, Object]
@@ -1452,6 +1457,19 @@ class TokenizerTests(unittest.TestCase):
             ],
         )
 
+    def test_tokenize_list_with_named_spread(self) -> None:
+        self.assertEqual(
+            tokenize("[1,...rest]"),
+            [
+                LeftBracket(),
+                NumLit(1),
+                Operator(","),
+                Operator("..."),
+                Name("rest"),
+                RightBracket(),
+            ],
+        )
+
     def test_tokenize_record_with_only_spread(self) -> None:
         self.assertEqual(
             tokenize("{ ... }"),
@@ -1846,13 +1864,47 @@ class ParserTests(unittest.TestCase):
             List([Int(1), Spread()]),
         )
 
+    def test_parse_list_with_named_spread(self) -> None:
+        self.assertEqual(
+            parse(
+                [
+                    LeftBracket(),
+                    NumLit(1),
+                    Operator(","),
+                    Operator("..."),
+                    Name("rest"),
+                    RightBracket(),
+                ]
+            ),
+            List([Int(1), Spread("rest")]),
+        )
+
     def test_parse_list_spread_beginning_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of list match")):
             parse([LeftBracket(), Operator("..."), Operator(","), NumLit(1), RightBracket()])
 
+    def test_parse_list_named_spread_beginning_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of list match")):
+            parse([LeftBracket(), Operator("..."), Name("rest"), Operator(","), NumLit(1), RightBracket()])
+
     def test_parse_list_spread_middle_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of list match")):
             parse([LeftBracket(), NumLit(1), Operator(","), Operator("..."), Operator(","), NumLit(1), RightBracket()])
+
+    def test_parse_list_named_spread_middle_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of list match")):
+            parse(
+                [
+                    LeftBracket(),
+                    NumLit(1),
+                    Operator(","),
+                    Operator("..."),
+                    Name("rest"),
+                    Operator(","),
+                    NumLit(1),
+                    RightBracket(),
+                ]
+            )
 
     def test_parse_record_spread(self) -> None:
         self.assertEqual(

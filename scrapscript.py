@@ -105,6 +105,11 @@ class Juxt(Token):
 
 
 @dataclass(eq=True)
+class SymbolToken(Token):
+    value: str
+
+
+@dataclass(eq=True)
 class EOF(Token):
     pass
 
@@ -156,6 +161,13 @@ class Lexer:
                 self.read_comment()
                 return self.read_one()
             return self.read_op(c)
+        if c == "#":
+            value = self.read_one()
+            if isinstance(value, EOF):
+                raise UnexpectedEOFError("while reading symbol")
+            if not isinstance(value, Name):
+                raise ParseError(f"expected name after #, got {value!r}")
+            return self.make_token(SymbolToken, value.value)
         if c == "~":
             if self.has_input() and self.peek_char() == "~":
                 self.read_char()
@@ -342,6 +354,8 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     elif isinstance(token, Name):
         # TODO: Handle kebab case vars
         l = Var(token.value)
+    elif isinstance(token, SymbolToken):
+        l = Symbol(token.value)
     elif isinstance(token, BytesLit):
         base = token.base
         if base == 85:
@@ -573,20 +587,6 @@ class Var(Object):
         assert msg["type"] == "Var"
         assert isinstance(msg["name"], str)
         return Var(msg["name"])
-
-
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
-class Bool(Object):
-    value: bool
-
-    def serialize(self) -> Dict[bytes, object]:
-        return {b"type": b"Bool", b"value": self.value}
-
-    @staticmethod
-    def deserialize(msg: Dict[str, object]) -> "Bool":
-        assert msg["type"] == "Bool"
-        assert isinstance(msg["value"], int)
-        return Bool(bool(msg["value"]))
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -839,6 +839,21 @@ class Access(Object):
     at: Object
 
 
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Symbol(Object):
+    value: str
+
+    def serialize(self) -> Dict[bytes, object]:
+        return self._serialize(value=self.value.encode("utf-8"))
+
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Symbol":
+        assert msg["type"] == "Symbol"
+        value_obj = msg["value"]
+        assert isinstance(value_obj, str)
+        return Symbol(value_obj)
+
+
 def unpack_int(obj: Object) -> int:
     if not isinstance(obj, Int):
         raise TypeError(f"expected Int, got {type(obj).__name__}")
@@ -859,9 +874,9 @@ def eval_str(env: Env, exp: Object) -> str:
 
 def eval_bool(env: Env, exp: Object) -> bool:
     result = eval_exp(env, exp)
-    if not isinstance(result, Bool):
-        raise TypeError(f"expected Bool, got {type(result).__name__}")
-    return result.value
+    if isinstance(result, Symbol) and result.value in ("true", "false"):
+        return result.value == "true"
+    raise TypeError(f"expected #true or #false, got {type(result).__name__}")
 
 
 def eval_list(env: Env, exp: Object) -> typing.List[Object]:
@@ -871,6 +886,10 @@ def eval_list(env: Env, exp: Object) -> typing.List[Object]:
     return result.items
 
 
+def make_bool(x: bool) -> Object:
+    return Symbol("true" if x else "false")
+
+
 BINOP_HANDLERS: Dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.ADD: lambda env, x, y: Int(eval_int(env, x) + eval_int(env, y)),
     BinopKind.SUB: lambda env, x, y: Int(eval_int(env, x) - eval_int(env, y)),
@@ -878,14 +897,14 @@ BINOP_HANDLERS: Dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.DIV: lambda env, x, y: Int(eval_int(env, x) // eval_int(env, y)),
     BinopKind.EXP: lambda env, x, y: Int(eval_int(env, x) ** eval_int(env, y)),
     BinopKind.MOD: lambda env, x, y: Int(eval_int(env, x) % eval_int(env, y)),
-    BinopKind.EQUAL: lambda env, x, y: Bool(eval_exp(env, x) == eval_exp(env, y)),
-    BinopKind.NOT_EQUAL: lambda env, x, y: Bool(eval_exp(env, x) != eval_exp(env, y)),
-    BinopKind.LESS: lambda env, x, y: Bool(eval_int(env, x) < eval_int(env, y)),
-    BinopKind.GREATER: lambda env, x, y: Bool(eval_int(env, x) > eval_int(env, y)),
-    BinopKind.LESS_EQUAL: lambda env, x, y: Bool(eval_int(env, x) <= eval_int(env, y)),
-    BinopKind.GREATER_EQUAL: lambda env, x, y: Bool(eval_int(env, x) >= eval_int(env, y)),
-    BinopKind.BOOL_AND: lambda env, x, y: Bool(eval_bool(env, x) and eval_bool(env, y)),
-    BinopKind.BOOL_OR: lambda env, x, y: Bool(eval_bool(env, x) or eval_bool(env, y)),
+    BinopKind.EQUAL: lambda env, x, y: make_bool(eval_exp(env, x) == eval_exp(env, y)),
+    BinopKind.NOT_EQUAL: lambda env, x, y: make_bool(eval_exp(env, x) != eval_exp(env, y)),
+    BinopKind.LESS: lambda env, x, y: make_bool(eval_int(env, x) < eval_int(env, y)),
+    BinopKind.GREATER: lambda env, x, y: make_bool(eval_int(env, x) > eval_int(env, y)),
+    BinopKind.LESS_EQUAL: lambda env, x, y: make_bool(eval_int(env, x) <= eval_int(env, y)),
+    BinopKind.GREATER_EQUAL: lambda env, x, y: make_bool(eval_int(env, x) >= eval_int(env, y)),
+    BinopKind.BOOL_AND: lambda env, x, y: make_bool(eval_bool(env, x) and eval_bool(env, y)),
+    BinopKind.BOOL_OR: lambda env, x, y: make_bool(eval_bool(env, x) or eval_bool(env, y)),
     BinopKind.STRING_CONCAT: lambda env, x, y: String(eval_str(env, x) + eval_str(env, y)),
     BinopKind.LIST_CONS: lambda env, x, y: List([eval_exp(env, x)] + eval_list(env, y)),
     BinopKind.LIST_APPEND: lambda env, x, y: List(eval_list(env, x) + [eval_exp(env, y)]),
@@ -904,6 +923,8 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
         return {} if isinstance(obj, String) and obj.value == pattern.value else None
     if isinstance(pattern, Var):
         return {pattern.name: obj}
+    if isinstance(pattern, Symbol):
+        return {} if isinstance(obj, Symbol) and obj.value == pattern.value else None
     if isinstance(pattern, Record):
         if not isinstance(obj, Record):
             return None
@@ -953,7 +974,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
 # pylint: disable=redefined-builtin
 def eval_exp(env: Env, exp: Object) -> Object:
     logger.debug(exp)
-    if isinstance(exp, (Int, Bool, String, Bytes, Hole, Closure, NativeFunction)):
+    if isinstance(exp, (Int, String, Bytes, Hole, Closure, NativeFunction, Symbol)):
         return exp
     if isinstance(exp, Var):
         value = env.get(exp.name)
@@ -989,7 +1010,7 @@ def eval_exp(env: Env, exp: Object) -> Object:
         return eval_exp(new_env, exp.body)
     if isinstance(exp, Assert):
         cond = eval_exp(env, exp.cond)
-        if cond != Bool(True):
+        if cond != Symbol("true"):
             raise AssertionError(f"condition {exp.cond} failed")
         return eval_exp(env, exp.value)
     if isinstance(exp, Function):
@@ -1048,6 +1069,7 @@ def eval_exp(env: Env, exp: Object) -> Object:
 
 
 def bencode(obj: object) -> bytes:
+    assert not isinstance(obj, bool)
     if isinstance(obj, int):
         return b"i" + str(int(obj)).encode("ascii") + b"e"
     if isinstance(obj, bytes):
@@ -1511,6 +1533,20 @@ class TokenizerTests(unittest.TestCase):
             ],
         )
 
+    def test_tokenize_symbol_with_space(self) -> None:
+        self.assertEqual(tokenize("# abc"), [SymbolToken("abc")])
+
+    def test_tokenize_symbol_with_no_space(self) -> None:
+        self.assertEqual(tokenize("#abc"), [SymbolToken("abc")])
+
+    def test_tokenize_symbol_non_name_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, "expected name"):
+            tokenize("#1")
+
+    def test_tokenize_symbol_eof_raises_unexpected_eof_error(self) -> None:
+        with self.assertRaisesRegex(UnexpectedEOFError, "while reading symbol"):
+            tokenize("#")
+
 
 class ParserTests(unittest.TestCase):
     def test_parse_with_empty_tokens_raises_parse_error(self) -> None:
@@ -1857,8 +1893,8 @@ class ParserTests(unittest.TestCase):
 
     def test_boolean_and_binds_tighter_than_or(self) -> None:
         self.assertEqual(
-            parse([Name("true"), Operator("||"), Name("true"), Operator("&&"), Name("false")]),
-            Binop(BinopKind.BOOL_OR, Var("true"), Binop(BinopKind.BOOL_AND, Var("true"), Var("false"))),
+            parse([Name("x"), Operator("||"), Name("y"), Operator("&&"), Name("z")]),
+            Binop(BinopKind.BOOL_OR, Var("x"), Binop(BinopKind.BOOL_AND, Var("y"), Var("z"))),
         )
 
     def test_parse_list_spread(self) -> None:
@@ -1953,6 +1989,9 @@ class ParserTests(unittest.TestCase):
     def test_parse_record_with_trailing_comma_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, re.escape("unexpected token RightBrace(lineno=-1)")):
             parse([LeftBrace(), Name("x"), Operator("="), NumLit(1), Operator(","), RightBrace()])
+
+    def test_parse_symbol_returns_symbol(self) -> None:
+        self.assertEqual(parse([SymbolToken("abc")]), Symbol("abc"))
 
 
 class MatchTests(unittest.TestCase):
@@ -2207,6 +2246,15 @@ class MatchTests(unittest.TestCase):
             None,
         )
 
+    def test_match_symbol_with_equal_symbol_returns_empty_dict(self) -> None:
+        self.assertEqual(match(Symbol("abc"), pattern=Symbol("abc")), {})
+
+    def test_match_symbol_with_inequal_symbol_returns_none(self) -> None:
+        self.assertEqual(match(Symbol("def"), pattern=Symbol("abc")), None)
+
+    def test_match_symbol_with_different_type_returns_none(self) -> None:
+        self.assertEqual(match(Int(123), pattern=Symbol("abc")), None)
+
 
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:
@@ -2220,12 +2268,6 @@ class EvalTests(unittest.TestCase):
     def test_eval_bytes_returns_bytes(self) -> None:
         exp = Bytes(b"xyz")
         self.assertEqual(eval_exp({}, exp), Bytes(b"xyz"))
-
-    def test_eval_true_returns_true(self) -> None:
-        self.assertEqual(eval_exp({}, Bool(True)), Bool(True))
-
-    def test_eval_false_returns_false(self) -> None:
-        self.assertEqual(eval_exp({}, Bool(False)), Bool(False))
 
     def test_eval_with_non_existent_var_raises_name_error(self) -> None:
         exp = Var("no")
@@ -2274,19 +2316,19 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_with_binop_equal_with_equal_returns_true(self) -> None:
         exp = Binop(BinopKind.EQUAL, Int(1), Int(1))
-        self.assertEqual(eval_exp({}, exp), Bool(True))
+        self.assertEqual(eval_exp({}, exp), Symbol("true"))
 
     def test_eval_with_binop_equal_with_inequal_returns_false(self) -> None:
         exp = Binop(BinopKind.EQUAL, Int(1), Int(2))
-        self.assertEqual(eval_exp({}, exp), Bool(False))
+        self.assertEqual(eval_exp({}, exp), Symbol("false"))
 
     def test_eval_with_binop_not_equal_with_equal_returns_false(self) -> None:
         exp = Binop(BinopKind.NOT_EQUAL, Int(1), Int(1))
-        self.assertEqual(eval_exp({}, exp), Bool(False))
+        self.assertEqual(eval_exp({}, exp), Symbol("false"))
 
     def test_eval_with_binop_not_equal_with_inequal_returns_true(self) -> None:
         exp = Binop(BinopKind.NOT_EQUAL, Int(1), Int(2))
-        self.assertEqual(eval_exp({}, exp), Bool(True))
+        self.assertEqual(eval_exp({}, exp), Symbol("true"))
 
     def test_eval_with_binop_concat_with_strings_returns_string(self) -> None:
         exp = Binop(BinopKind.STRING_CONCAT, String("hello"), String(" world"))
@@ -2374,16 +2416,16 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(env, {})
 
     def test_eval_assert_with_truthy_cond_returns_value(self) -> None:
-        exp = Assert(Int(123), Bool(True))
+        exp = Assert(Int(123), Symbol("true"))
         self.assertEqual(eval_exp({}, exp), Int(123))
 
     def test_eval_assert_with_falsey_cond_raises_assertion_error(self) -> None:
-        exp = Assert(Int(123), Bool(False))
-        with self.assertRaisesRegex(AssertionError, re.escape("condition Bool(value=False) failed")):
+        exp = Assert(Int(123), Symbol("false"))
+        with self.assertRaisesRegex(AssertionError, re.escape("condition Symbol(value='false') failed")):
             eval_exp({}, exp)
 
     def test_eval_nested_assert(self) -> None:
-        exp = Assert(Assert(Int(123), Bool(True)), Bool(True))
+        exp = Assert(Assert(Int(123), Symbol("true")), Symbol("true"))
         self.assertEqual(eval_exp({}, exp), Int(123))
 
     def test_eval_hole(self) -> None:
@@ -2539,53 +2581,53 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_less_returns_bool(self) -> None:
         ast = Binop(BinopKind.LESS, Int(3), Int(4))
-        self.assertEqual(eval_exp({}, ast), Bool(True))
+        self.assertEqual(eval_exp({}, ast), Symbol("true"))
 
     def test_eval_less_on_non_bool_raises_type_error(self) -> None:
-        ast = Binop(BinopKind.LESS, Bool(True), Int(4))
-        with self.assertRaisesRegex(TypeError, re.escape("expected Int, got Bool")):
+        ast = Binop(BinopKind.LESS, String("xyz"), Int(4))
+        with self.assertRaisesRegex(TypeError, re.escape("expected Int, got String")):
             eval_exp({}, ast)
 
     def test_eval_less_equal_returns_bool(self) -> None:
         ast = Binop(BinopKind.LESS_EQUAL, Int(3), Int(4))
-        self.assertEqual(eval_exp({}, ast), Bool(True))
+        self.assertEqual(eval_exp({}, ast), Symbol("true"))
 
     def test_eval_less_equal_on_non_bool_raises_type_error(self) -> None:
-        ast = Binop(BinopKind.LESS_EQUAL, Bool(True), Int(4))
-        with self.assertRaisesRegex(TypeError, re.escape("expected Int, got Bool")):
+        ast = Binop(BinopKind.LESS_EQUAL, String("xyz"), Int(4))
+        with self.assertRaisesRegex(TypeError, re.escape("expected Int, got String")):
             eval_exp({}, ast)
 
     def test_eval_greater_returns_bool(self) -> None:
         ast = Binop(BinopKind.GREATER, Int(3), Int(4))
-        self.assertEqual(eval_exp({}, ast), Bool(False))
+        self.assertEqual(eval_exp({}, ast), Symbol("false"))
 
     def test_eval_greater_on_non_bool_raises_type_error(self) -> None:
-        ast = Binop(BinopKind.GREATER, Bool(True), Int(4))
-        with self.assertRaisesRegex(TypeError, re.escape("expected Int, got Bool")):
+        ast = Binop(BinopKind.GREATER, String("xyz"), Int(4))
+        with self.assertRaisesRegex(TypeError, re.escape("expected Int, got String")):
             eval_exp({}, ast)
 
     def test_eval_greater_equal_returns_bool(self) -> None:
         ast = Binop(BinopKind.GREATER_EQUAL, Int(3), Int(4))
-        self.assertEqual(eval_exp({}, ast), Bool(False))
+        self.assertEqual(eval_exp({}, ast), Symbol("false"))
 
     def test_eval_greater_equal_on_non_bool_raises_type_error(self) -> None:
-        ast = Binop(BinopKind.GREATER_EQUAL, Bool(True), Int(4))
-        with self.assertRaisesRegex(TypeError, re.escape("expected Int, got Bool")):
+        ast = Binop(BinopKind.GREATER_EQUAL, String("xyz"), Int(4))
+        with self.assertRaisesRegex(TypeError, re.escape("expected Int, got String")):
             eval_exp({}, ast)
 
     def test_boolean_and_evaluates_args(self) -> None:
-        ast = Binop(BinopKind.BOOL_AND, Bool(True), Var("a"))
-        self.assertEqual(eval_exp({"a": Bool(False)}, ast), Bool(False))
+        ast = Binop(BinopKind.BOOL_AND, Symbol("true"), Var("a"))
+        self.assertEqual(eval_exp({"a": Symbol("false")}, ast), Symbol("false"))
 
-        ast = Binop(BinopKind.BOOL_AND, Var("a"), Bool(False))
-        self.assertEqual(eval_exp({"a": Bool(True)}, ast), Bool(False))
+        ast = Binop(BinopKind.BOOL_AND, Var("a"), Symbol("false"))
+        self.assertEqual(eval_exp({"a": Symbol("true")}, ast), Symbol("false"))
 
     def test_boolean_or_evaluates_args(self) -> None:
-        ast = Binop(BinopKind.BOOL_OR, Bool(False), Var("a"))
-        self.assertEqual(eval_exp({"a": Bool(True)}, ast), Bool(True))
+        ast = Binop(BinopKind.BOOL_OR, Symbol("false"), Var("a"))
+        self.assertEqual(eval_exp({"a": Symbol("true")}, ast), Symbol("true"))
 
-        ast = Binop(BinopKind.BOOL_OR, Var("a"), Bool(True))
-        self.assertEqual(eval_exp({"a": Bool(False)}, ast), Bool(True))
+        ast = Binop(BinopKind.BOOL_OR, Var("a"), Symbol("true"))
+        self.assertEqual(eval_exp({"a": Symbol("false")}, ast), Symbol("true"))
 
     def test_boolean_and_short_circuit(self) -> None:
         def raise_func(message: Object) -> Object:
@@ -2595,8 +2637,8 @@ class EvalTests(unittest.TestCase):
 
         error = NativeFunction("error", raise_func)
         apply = Apply(Var("error"), String("expected failure"))
-        ast = Binop(BinopKind.BOOL_AND, Bool(False), apply)
-        self.assertEqual(eval_exp({"error": error}, ast), Bool(False))
+        ast = Binop(BinopKind.BOOL_AND, Symbol("false"), apply)
+        self.assertEqual(eval_exp({"error": error}, ast), Symbol("false"))
 
     def test_boolean_or_short_circuit(self) -> None:
         def raise_func(message: Object) -> Object:
@@ -2606,23 +2648,26 @@ class EvalTests(unittest.TestCase):
 
         error = NativeFunction("error", raise_func)
         apply = Apply(Var("error"), String("expected failure"))
-        ast = Binop(BinopKind.BOOL_OR, Bool(True), apply)
-        self.assertEqual(eval_exp({"error": error}, ast), Bool(True))
+        ast = Binop(BinopKind.BOOL_OR, Symbol("true"), apply)
+        self.assertEqual(eval_exp({"error": error}, ast), Symbol("true"))
 
     def test_boolean_and_on_int_raises_type_error(self) -> None:
         exp = Binop(BinopKind.BOOL_AND, Int(1), Int(2))
-        with self.assertRaisesRegex(TypeError, re.escape("expected Bool, got Int")):
+        with self.assertRaisesRegex(TypeError, re.escape("expected #true or #false, got Int")):
             eval_exp({}, exp)
 
     def test_boolean_or_on_int_raises_type_error(self) -> None:
         exp = Binop(BinopKind.BOOL_OR, Int(1), Int(2))
-        with self.assertRaisesRegex(TypeError, re.escape("expected Bool, got Int")):
+        with self.assertRaisesRegex(TypeError, re.escape("expected #true or #false, got Int")):
             eval_exp({}, exp)
 
     def test_eval_record_with_spread_fails(self) -> None:
         exp = Record({"x": Spread()})
         with self.assertRaisesRegex(RuntimeError, "cannot evaluate a spread"):
             eval_exp({}, exp)
+
+    def test_eval_symbol_returns_symbol(self) -> None:
+        self.assertEqual(eval_exp({}, Symbol("abc")), Symbol("abc"))
 
 
 class EndToEndTests(unittest.TestCase):
@@ -3024,19 +3069,17 @@ class EndToEndTests(unittest.TestCase):
     def test_exp_binds_tighter_than_mul(self) -> None:
         self.assertEqual(self._run("5 * 2 ^ 3"), Int(40))
 
-    def test_stdlib_true_returns_true(self) -> None:
-        # TODO: replace true/false stdlib def with alternate
-        self.assertEqual(self._run("true", STDLIB), Bool(True))
+    def test_symbol_true_returns_true(self) -> None:
+        self.assertEqual(self._run("# true", {}), Symbol("true"))
 
-    def test_stdlib_false_returns_false(self) -> None:
-        # TODO: replace true/false stdlib def with alternate
-        self.assertEqual(self._run("false", STDLIB), Bool(False))
+    def test_symbol_false_returns_false(self) -> None:
+        self.assertEqual(self._run("#false", {}), Symbol("false"))
 
     def test_boolean_and_binds_tighter_than_or(self) -> None:
-        self.assertEqual(self._run("true || true && false", STDLIB), Bool(True))
+        self.assertEqual(self._run("#true || #true && boom", {}), Symbol("true"))
 
     def test_compare_binds_tighter_than_boolean_and(self) -> None:
-        self.assertEqual(self._run("1 < 2 && 2 < 1"), Bool(False))
+        self.assertEqual(self._run("1 < 2 && 2 < 1"), Symbol("false"))
 
     def test_match_list_spread(self) -> None:
         self.assertEqual(
@@ -3078,14 +3121,23 @@ class EndToEndTests(unittest.TestCase):
             Int(4),
         )
 
+    def test_match_expr_as_boolean_symbols(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        say (1 < 2)
+        . say =
+          | #false -> "oh no"
+          | #true -> "omg"
+        """
+            ),
+            String("omg"),
+        )
+
 
 class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:
         self.assertEqual(bencode(123), b"i123e")
-
-    def test_bencode_bool(self) -> None:
-        # TODO(max): Should we discriminate between bool and int?
-        self.assertEqual(bencode(True), b"i1e")
 
     def test_bencode_negative_int(self) -> None:
         self.assertEqual(bencode(-123), b"i-123e")
@@ -3115,10 +3167,6 @@ class BencodeTests(unittest.TestCase):
 class BdecodeTests(unittest.TestCase):
     def test_bdecode_int(self) -> None:
         self.assertEqual(bdecode("i123e"), 123)
-
-    def test_bdecode_bool(self) -> None:
-        # TODO(max): Should we discriminate between bool and int?
-        self.assertEqual(bdecode("i1e"), 1)
 
     def test_bdecode_negative_int(self) -> None:
         self.assertEqual(bdecode("i-123e"), -123)
@@ -3160,9 +3208,9 @@ class ObjectSerializeTests(unittest.TestCase):
         obj = Var("abc")
         self.assertEqual(obj.serialize(), {b"type": b"Var", b"name": b"abc"})
 
-    def test_serialize_bool(self) -> None:
-        obj = Bool(True)
-        self.assertEqual(obj.serialize(), {b"type": b"Bool", b"value": True})
+    def test_serialize_symbol(self) -> None:
+        obj = Symbol("true")
+        self.assertEqual(obj.serialize(), {b"type": b"Symbol", b"value": b"true"})
 
     def test_serialize_binary_add(self) -> None:
         obj = Binop(BinopKind.ADD, Int(123), Int(456))
@@ -3260,21 +3308,9 @@ class ObjectDeserializeTests(unittest.TestCase):
         msg = {"type": "Var", "name": "abc"}
         self.assertEqual(Object.deserialize(msg), Var("abc"))
 
-    def test_deserialize_bool_true(self) -> None:
-        msg = {"type": "Bool", "value": True}
-        self.assertEqual(Object.deserialize(msg), Bool(True))
-
-    def test_deserialize_bool_false(self) -> None:
-        msg = {"type": "Bool", "value": False}
-        self.assertEqual(Object.deserialize(msg), Bool(False))
-
-    def test_deserialize_bool_int_one(self) -> None:
-        msg = {"type": "Bool", "value": 1}
-        self.assertEqual(Object.deserialize(msg), Bool(True))
-
-    def test_deserialize_bool_int_zero(self) -> None:
-        msg = {"type": "Bool", "value": 0}
-        self.assertEqual(Object.deserialize(msg), Bool(False))
+    def test_deserialize_symbol(self) -> None:
+        msg = {"type": "Symbol", "value": "abc"}
+        self.assertEqual(Object.deserialize(msg), Symbol("abc"))
 
     def test_deserialize_binary_add(self) -> None:
         msg = {
@@ -3355,9 +3391,9 @@ class SerializeTests(unittest.TestCase):
         obj = Var("abc")
         self.assertEqual(serialize(obj), b"d4:name3:abc4:type3:Vare")
 
-    def test_serialize_bool(self) -> None:
-        obj = Bool(True)
-        self.assertEqual(serialize(obj), b"d4:type4:Bool5:valuei1ee")
+    def test_serialize_symbol(self) -> None:
+        obj = Symbol("abcd")
+        self.assertEqual(serialize(obj), b"d4:type6:Symbol5:value4:abcde")
 
     def test_serialize_function(self) -> None:
         obj = Function(Var("x"), Binop(BinopKind.ADD, Int(1), Var("x")))
@@ -3376,8 +3412,6 @@ def fetch(url: Object) -> Object:
 
 def make_object(pyobj: object) -> Object:
     assert not isinstance(pyobj, Object)
-    if isinstance(pyobj, bool):
-        return Bool(pyobj)
     if isinstance(pyobj, int):
         return Int(pyobj)
     if isinstance(pyobj, str):
@@ -3411,8 +3445,6 @@ STDLIB = {
     "$$jsondecode": NativeFunction("$$jsondecode", jsondecode),
     "$$serialize": NativeFunction("$$serialize", lambda obj: Bytes(serialize(obj))),
     "$$listlength": NativeFunction("$$listlength", listlength),
-    "true": Bool(True),
-    "false": Bool(False),
 }
 
 

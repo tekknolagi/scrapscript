@@ -2344,6 +2344,10 @@ class EvalTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, re.escape("attempted to access from type Int")):
             eval_exp({}, exp)
 
+    def test_eval_record_evaluates_value_expressions(self) -> None:
+        exp = Record({"a": Binop(BinopKind.ADD, Int(1), Int(2))})
+        self.assertEqual(eval_exp({}, exp), Record({"a": Int(3)}))
+
     def test_eval_record_access_with_invalid_accessor_raises_type_error(self) -> None:
         exp = Access(Record({"a": Int(4)}), Int(0))
         with self.assertRaisesRegex(

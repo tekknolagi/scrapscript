@@ -3076,7 +3076,7 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(self._run("#false", {}), Symbol("false"))
 
     def test_boolean_and_binds_tighter_than_or(self) -> None:
-        self.assertEqual(self._run("#true || #true && false", {}), Symbol("true"))
+        self.assertEqual(self._run("#true || #true && boom", {}), Symbol("true"))
 
     def test_compare_binds_tighter_than_boolean_and(self) -> None:
         self.assertEqual(self._run("1 < 2 && 2 < 1"), Symbol("false"))

@@ -923,6 +923,8 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
         return {} if isinstance(obj, String) and obj.value == pattern.value else None
     if isinstance(pattern, Var):
         return {pattern.name: obj}
+    if isinstance(pattern, Symbol):
+        return {} if isinstance(obj, Symbol) and obj.value == pattern.value else None
     if isinstance(pattern, Record):
         if not isinstance(obj, Record):
             return None
@@ -2242,6 +2244,15 @@ class MatchTests(unittest.TestCase):
             ),
             None,
         )
+
+    def test_match_symbol_with_equal_symbol_returns_empty_dict(self) -> None:
+        self.assertEqual(match(Symbol("abc"), pattern=Symbol("abc")), {})
+
+    def test_match_symbol_with_inequal_symbol_returns_none(self) -> None:
+        self.assertEqual(match(Symbol("def"), pattern=Symbol("abc")), None)
+
+    def test_match_symbol_with_different_type_returns_none(self) -> None:
+        self.assertEqual(match(Int(123), pattern=Symbol("abc")), None)
 
 
 class EvalTests(unittest.TestCase):

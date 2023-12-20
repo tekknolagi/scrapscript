@@ -2674,7 +2674,9 @@ class EndToEndTests(unittest.TestCase):
     def _run(self, text: str, env: Optional[Env] = None) -> Object:
         tokens = tokenize(text)
         ast = parse(tokens)
-        return eval_exp(env or {}, ast)
+        if env is None:
+            env = boot_env()
+        return eval_exp(env, ast)
 
     def test_int_returns_int(self) -> None:
         self.assertEqual(self._run("1"), Int(1))
@@ -2998,7 +3000,8 @@ class EndToEndTests(unittest.TestCase):
             """
     f 1
     . f = n -> f
-    """
+    """,
+            {},
         )
         self.assertEqual(result, Closure({"f": result}, Function(Var("n"), Var("f"))))
 
@@ -3448,6 +3451,20 @@ STDLIB = {
 }
 
 
+PRELUDE = """
+filter = f ->
+| [] -> []
+| [x, ...xs] -> (f x) |> (| #true -> x >+ (filter f xs)
+                          | #false -> filter f xs)
+"""
+
+
+def boot_env() -> Env:
+    env_object = eval_exp(STDLIB, parse(tokenize(PRELUDE)))
+    assert isinstance(env_object, EnvObject)
+    return env_object.env
+
+
 class Completer:
     def __init__(self, env: Env) -> None:
         self.env: Env = env
@@ -3473,7 +3490,7 @@ REPL_HISTFILE = os.path.expanduser(".scrap-history")
 class ScrapRepl(code.InteractiveConsole):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.env: Env = STDLIB.copy()
+        self.env: Env = boot_env()
 
     def enable_readline(self) -> None:
         assert readline, "Can't enable readline without readline module"
@@ -3525,7 +3542,7 @@ def eval_command(args: argparse.Namespace) -> None:
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
-    result = eval_exp(STDLIB, ast)
+    result = eval_exp(boot_env(), ast)
     print(result)
 
 
@@ -3537,7 +3554,7 @@ def apply_command(args: argparse.Namespace) -> None:
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
-    result = eval_exp(STDLIB, ast)
+    result = eval_exp(boot_env(), ast)
     print(result)
 
 

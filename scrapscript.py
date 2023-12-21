@@ -350,6 +350,7 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     token = tokens.pop(0)
     l: Object
     if isinstance(token, NumLit):
+        # TODO: Handle float literals
         l = Int(token.value)
     elif isinstance(token, Name):
         # TODO: Handle kebab case vars

@@ -50,3 +50,6 @@ dmypy.json
 
 # System
 .DS_Store
+
+# Scrapscript
+.scrap-history

@@ -13,7 +13,7 @@ We support python3.8+.
 
 ```bash
 # With a file
-python3 scrapscript.py eval examples/0_home/triangle.ss
+python3 scrapscript.py eval examples/0_home/factorial.scrap
 
 # With a string literal
 python3 scrapscript.py apply "1 + 2"
@@ -26,7 +26,7 @@ or with Docker:
 
 ```bash
 # With a file (mount your local directory)
-docker run --mount type=bind,source="$(pwd)",target=/mnt -i -t ghcr.io/tekknolagi/scrapscript:trunk eval /mnt/examples/0_home/triangle.ss
+docker run --mount type=bind,source="$(pwd)",target=/mnt -i -t ghcr.io/tekknolagi/scrapscript:trunk eval /mnt/examples/0_home/factorial.scrap
 
 # With a string literal
 docker run -i -t ghcr.io/tekknolagi/scrapscript:trunk apply "1 + 2"

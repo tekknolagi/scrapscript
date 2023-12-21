@@ -3279,6 +3279,262 @@ class PreludeTests(EndToEndTestsBase):
         """
             )
 
+    def test_quicksort(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        quicksort [2, 6, 3, 7, 1, 8]
+        """
+            ),
+            List([Int(1), Int(2), Int(3), Int(6), Int(7), Int(8)]),
+        )
+
+    def test_quicksort_on_empty_list(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        quicksort []
+        """
+            ),
+            List([]),
+        )
+
+    def test_quicksort_on_non_int_raises_type_error(self) -> None:
+        with self.assertRaises(TypeError):
+            self._run(
+                """
+        quicksort ["a", "c", "b"]
+        """
+            )
+
+    def test_concat(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        concat [1, 2, 3] [4, 5, 6]
+        """
+            ),
+            List([Int(1), Int(2), Int(3), Int(4), Int(5), Int(6)]),
+        )
+
+    def test_concat_on_first_list_empty(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        concat [] [4, 5, 6]
+        """
+            ),
+            List([Int(4), Int(5), Int(6)]),
+        )
+
+    def test_concat_on_second_list_empty(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        concat [1, 2, 3] []
+        """
+            ),
+            List([Int(1), Int(2), Int(3)]),
+        )
+
+    def test_concat_on_both_lists_empty(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        concat [] []
+        """
+            ),
+            List([]),
+        )
+
+    def test_map(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        map (x -> x * 2) [3, 1, 2]
+        """
+            ),
+            List([Int(6), Int(2), Int(4)]),
+        )
+
+    def test_map_non_function_raises_type_error(self) -> None:
+        with self.assertRaises(TypeError):
+            self._run(
+                """
+        map 4 [3, 1, 2]
+        """
+            )
+
+    def test_map_non_list_raises_match_error(self) -> None:
+        with self.assertRaises(MatchError):
+            self._run(
+                """
+        map (x -> x * 2) 3
+        """
+            )
+
+    def test_range(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        range 3
+        """
+            ),
+            List([Int(0), Int(1), Int(2)]),
+        )
+
+    def test_range_non_int_raises_type_error(self) -> None:
+        with self.assertRaises(TypeError):
+            self._run(
+                """
+        range "a"
+        """
+            )
+
+    def test_foldr(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        foldr (x -> a -> a + x) 0 [1, 2, 3]
+        """
+            ),
+            Int(6),
+        )
+
+    def test_foldr_on_empty_list(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        foldr (x -> a -> a + x) 0 []
+        """
+            ),
+            Int(0),
+        )
+
+    def test_take(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        take 3 [1, 2, 3, 4, 5]
+        """
+            ),
+            List([Int(1), Int(2), Int(3)]),
+        )
+
+    def test_take_n_more_than_list_length(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        take 5 [1, 2, 3]
+        """
+            ),
+            List([Int(1), Int(2), Int(3)]),
+        )
+
+    def test_take_non_int_raises_type_error(self) -> None:
+        with self.assertRaises(TypeError):
+            self._run(
+                """
+        take "a" [1, 2, 3]
+        """
+            )
+
+    def test_all_returns_true(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        all (x -> x < 5) [1, 2, 3, 4]
+        """
+            ),
+            Symbol("true"),
+        )
+
+    def test_all_returns_false(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        all (x -> x < 5) [2, 4, 6]
+        """
+            ),
+            Symbol("false"),
+        )
+
+    def test_all_on_empty_list(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        all (x -> x == 5) []
+        """
+            ),
+            Symbol("true"),
+        )
+
+    def test_all_non_bool_raises_type_error(self) -> None:
+        with self.assertRaises(TypeError):
+            self._run(
+                """
+        all (x -> x) [1, 2, 3]
+        """
+            )
+
+    def test_all_short_circuits(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        all (x -> x > 1) [1, "a", "b"]
+        """
+            ),
+            Symbol("false"),
+        )
+
+    def test_any_returns_true(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        any (x -> x < 4) [1, 3, 5]
+        """
+            ),
+            Symbol("true"),
+        )
+
+    def test_any_returns_false(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        any (x -> x < 3) [4, 5, 6]
+        """
+            ),
+            Symbol("false"),
+        )
+
+    def test_any_on_empty_list(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        any (x -> x == 5) []
+        """
+            ),
+            Symbol("false"),
+        )
+
+    def test_any_non_bool_raises_type_error(self) -> None:
+        with self.assertRaises(TypeError):
+            self._run(
+                """
+        any (x -> x) [1, 2, 3]
+        """
+            )
+
+    def test_any_short_circuits(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        any (x -> x > 1) [2, "a", "b"]
+        """
+            ),
+            Symbol("true"),
+        )
+
 
 class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:
@@ -3717,11 +3973,47 @@ STDLIB = {
 
 PRELUDE = """
 id = x -> x
-.
-filter = f ->
-| [] -> []
-| [x, ...xs] -> f x |> | #true -> x >+ (filter f xs)
-                       | #false -> filter f xs
+
+. quicksort =
+  | [] -> []
+  | [p, ...xs] -> (concat ((quicksort (ltp xs p)) +< p) (quicksort (gtp xs p))
+    . gtp = xs -> p -> filter (x -> x >= p) xs
+    . ltp = xs -> p -> filter (x -> x < p) xs)
+
+. filter = f ->
+  | [] -> []
+  | [x, ...xs] -> f x |> | #true -> x >+ filter f xs
+                         | #false -> filter f xs
+
+. concat = xs ->
+  | [] -> xs
+  | [y, ...ys] -> concat (xs +< y) ys
+
+. map = f ->
+  | [] -> []
+  | [x, ...xs] -> f x >+ map f xs
+
+. range =
+  | 1 -> [0]
+  | i -> range (i - 1) +< (i - 1)
+
+. foldr = f -> a ->
+  | [] -> a
+  | [x, ...xs] -> f x (foldr f a xs)
+
+. take =
+  | 0 -> xs -> []
+  | n ->
+    | [] -> []
+    | [x, ...xs] -> x >+ take (n - 1) xs
+    
+. all = f ->
+  | [] -> #true
+  | [x, ...xs] -> f x && all f xs
+
+. any = f ->
+  | [] -> #false
+  | [x, ...xs] -> f x || any f xs
 """
 
 

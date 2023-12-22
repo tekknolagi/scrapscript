@@ -3031,38 +3031,6 @@ class EndToEndTests(EndToEndTestsBase):
             Int(120),
         )
 
-    def test_stdlib_add(self) -> None:
-        self.assertEqual(self._run("$$add 3 4", STDLIB), Int(7))
-
-    def test_stdlib_quote(self) -> None:
-        self.assertEqual(self._run("$$quote (3 + 4)"), Binop(BinopKind.ADD, Int(3), Int(4)))
-
-    def test_stdlib_quote_pipe(self) -> None:
-        self.assertEqual(self._run("3 + 4 |> $$quote"), Binop(BinopKind.ADD, Int(3), Int(4)))
-
-    def test_stdlib_quote_reverse_pipe(self) -> None:
-        self.assertEqual(self._run("$$quote <| 3 + 4"), Binop(BinopKind.ADD, Int(3), Int(4)))
-
-    def test_stdlib_serialize(self) -> None:
-        self.assertEqual(self._run("$$serialize 3", STDLIB), Bytes(value=b"d4:type3:Int5:valuei3ee"))
-
-    def test_stdlib_serialize_expr(self) -> None:
-        self.assertEqual(
-            self._run("(1+2) |> $$quote |> $$serialize", STDLIB),
-            Bytes(value=b"d4:leftd4:type3:Int5:valuei1ee2:op3:ADD5:rightd4:type3:Int5:valuei2ee4:type5:Binope"),
-        )
-
-    def test_stdlib_listlength_empty_list_returns_zero(self) -> None:
-        self.assertEqual(self._run("$$listlength []", STDLIB), Int(0))
-
-    def test_stdlib_listlength_returns_length(self) -> None:
-        self.assertEqual(self._run("$$listlength [1,2,3]", STDLIB), Int(3))
-
-    def test_stdlib_listlength_with_non_list_raises_type_error(self) -> None:
-        with self.assertRaises(TypeError) as ctx:
-            self._run("$$listlength 1", STDLIB)
-        self.assertEqual(ctx.exception.args[0], "listlength expected List, but got Int")
-
     def test_list_access_binds_tighter_than_append(self) -> None:
         self.assertEqual(self._run("[1, 2, 3] +< xs@0 . xs = [4]"), List([Int(1), Int(2), Int(3), Int(4)]))
 
@@ -3139,6 +3107,40 @@ class EndToEndTests(EndToEndTestsBase):
             ),
             String("omg"),
         )
+
+
+class StdLibTests(EndToEndTestsBase):
+    def test_stdlib_add(self) -> None:
+        self.assertEqual(self._run("$$add 3 4", STDLIB), Int(7))
+
+    def test_stdlib_quote(self) -> None:
+        self.assertEqual(self._run("$$quote (3 + 4)"), Binop(BinopKind.ADD, Int(3), Int(4)))
+
+    def test_stdlib_quote_pipe(self) -> None:
+        self.assertEqual(self._run("3 + 4 |> $$quote"), Binop(BinopKind.ADD, Int(3), Int(4)))
+
+    def test_stdlib_quote_reverse_pipe(self) -> None:
+        self.assertEqual(self._run("$$quote <| 3 + 4"), Binop(BinopKind.ADD, Int(3), Int(4)))
+
+    def test_stdlib_serialize(self) -> None:
+        self.assertEqual(self._run("$$serialize 3", STDLIB), Bytes(value=b"d4:type3:Int5:valuei3ee"))
+
+    def test_stdlib_serialize_expr(self) -> None:
+        self.assertEqual(
+            self._run("(1+2) |> $$quote |> $$serialize", STDLIB),
+            Bytes(value=b"d4:leftd4:type3:Int5:valuei1ee2:op3:ADD5:rightd4:type3:Int5:valuei2ee4:type5:Binope"),
+        )
+
+    def test_stdlib_listlength_empty_list_returns_zero(self) -> None:
+        self.assertEqual(self._run("$$listlength []", STDLIB), Int(0))
+
+    def test_stdlib_listlength_returns_length(self) -> None:
+        self.assertEqual(self._run("$$listlength [1,2,3]", STDLIB), Int(3))
+
+    def test_stdlib_listlength_with_non_list_raises_type_error(self) -> None:
+        with self.assertRaises(TypeError) as ctx:
+            self._run("$$listlength 1", STDLIB)
+        self.assertEqual(ctx.exception.args[0], "listlength expected List, but got Int")
 
 
 class PreludeTests(EndToEndTestsBase):

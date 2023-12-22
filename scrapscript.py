@@ -568,6 +568,7 @@ class String(Object):
         return String(msg["value"])
 
     def __str__(self) -> str:
+        # TODO: handle nested quotes
         return f'"{self.value}"'
 
 
@@ -585,7 +586,7 @@ class Bytes(Object):
         return Bytes(msg["value"])
 
     def __str__(self) -> str:
-        return str(self.value)
+        return f"~~{base64.b64encode(self.value).decode()}"
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)

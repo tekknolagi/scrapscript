@@ -7,6 +7,7 @@ import enum
 import json
 import logging
 import os
+import random
 import re
 import sys
 import typing
@@ -3669,6 +3670,17 @@ class StdLibTests(EndToEndTestsBase):
             self._run("$$listlength 1", STDLIB)
         self.assertEqual(ctx.exception.args[0], "listlength expected List, but got Int")
 
+    def test_stdlib_randint_capped_returns_zero(self) -> None:
+        self.assertEqual(self._run("$$randint 1", STDLIB), Int(0))
+
+    def test_stdlib_randint_returns_int(self) -> None:
+        assert isinstance(self._run("$$randint 4", STDLIB), Int)
+
+    def test_stdlib_randint_of_non_int_raises_type_error(self) -> None:
+        with self.assertRaises(TypeError) as ctx:
+            self._run('$$randint "a"', STDLIB)
+        self.assertEqual(ctx.exception.args[0], "randint expected Int, but got String")
+
 
 class PreludeTests(EndToEndTestsBase):
     def test_id_returns_input(self) -> None:
@@ -4409,12 +4421,21 @@ def listlength(obj: Object) -> Object:
     return Int(len(obj.items))
 
 
+def randint(obj: Object) -> Object:
+    if not isinstance(obj, Int):
+        raise TypeError(f"randint expected Int, but got {type(obj).__name__}")
+
+    r = random.Random()
+    return Int(r.randint(0, obj.value - 1))
+
+
 STDLIB = {
     "$$add": Closure({}, Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))),
     "$$fetch": NativeFunction("$$fetch", fetch),
     "$$jsondecode": NativeFunction("$$jsondecode", jsondecode),
     "$$serialize": NativeFunction("$$serialize", lambda obj: Bytes(serialize(obj))),
     "$$listlength": NativeFunction("$$listlength", listlength),
+    "$$randint": NativeFunction("$$randint", randint),
 }
 
 

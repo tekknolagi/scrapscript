@@ -7,6 +7,7 @@ import enum
 import json
 import logging
 import os
+import random
 import re
 import sys
 import typing
@@ -3706,12 +3707,21 @@ def listlength(obj: Object) -> Object:
     return Int(len(obj.items))
 
 
+def randint(obj: Object) -> Object:
+    if not isinstance(obj, Int):
+        raise TypeError(f"randint expected Int, but got {type(obj).__name__}")
+
+    r = random.Random()
+    return Int(r.randint(0, obj.value - 1))
+
+
 STDLIB = {
     "$$add": Closure({}, Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))),
     "$$fetch": NativeFunction("$$fetch", fetch),
     "$$jsondecode": NativeFunction("$$jsondecode", jsondecode),
     "$$serialize": NativeFunction("$$serialize", lambda obj: Bytes(serialize(obj))),
     "$$listlength": NativeFunction("$$listlength", listlength),
+    "$$randint": NativeFunction("$$randint", randint),
 }
 
 

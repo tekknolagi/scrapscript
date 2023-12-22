@@ -3557,7 +3557,7 @@ class PrettyPrintTests(unittest.TestCase):
 
     def test_pretty_print_bytes(self) -> None:
         obj = Bytes(b"abc")
-        self.assertEqual(str(obj), "b'abc'")
+        self.assertEqual(str(obj), "~~YWJj")
 
     def test_pretty_print_var(self) -> None:
         obj = Var("ref")

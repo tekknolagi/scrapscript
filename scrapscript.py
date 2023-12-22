@@ -533,6 +533,9 @@ class Object:
         assert isinstance(result, Object)
         return result
 
+    def __str__(self) -> str:
+        raise NotImplementedError("__str__ not implemented for superclass Object")
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Int(Object):
@@ -546,6 +549,9 @@ class Int(Object):
         assert msg["type"] == "Int"
         assert isinstance(msg["value"], int)
         return Int(msg["value"])
+
+    def __str__(self) -> str:
+        return str(self.value)
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -561,6 +567,10 @@ class String(Object):
         assert isinstance(msg["value"], str)
         return String(msg["value"])
 
+    def __str__(self) -> str:
+        # TODO: handle nested quotes
+        return f'"{self.value}"'
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Bytes(Object):
@@ -574,6 +584,9 @@ class Bytes(Object):
         assert msg["type"] == "Bytes"
         assert isinstance(msg["value"], bytes)
         return Bytes(msg["value"])
+
+    def __str__(self) -> str:
+        return f"~~{base64.b64encode(self.value).decode()}"
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -589,15 +602,22 @@ class Var(Object):
         assert isinstance(msg["name"], str)
         return Var(msg["name"])
 
+    def __str__(self) -> str:
+        return self.name
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Hole(Object):
-    pass
+    def __str__(self) -> str:
+        return "()"
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Spread(Object):
     name: Optional[str] = None
+
+    def __str__(self) -> str:
+        return "..." if self.name is None else f"...{self.name}"
 
 
 Env = Mapping[str, Object]
@@ -652,6 +672,32 @@ class BinopKind(enum.Enum):
             "<|": cls.REVERSE_PIPE,
         }[x]
 
+    @classmethod
+    def to_str(cls, binop_kind: "BinopKind") -> str:
+        return {
+            cls.ADD: "+",
+            cls.SUB: "-",
+            cls.MUL: "*",
+            cls.DIV: "/",
+            cls.EXP: "^",
+            cls.MOD: "%",
+            cls.EQUAL: "==",
+            cls.NOT_EQUAL: "/=",
+            cls.LESS: "<",
+            cls.GREATER: ">",
+            cls.LESS_EQUAL: "<=",
+            cls.GREATER_EQUAL: ">=",
+            cls.BOOL_AND: "&&",
+            cls.BOOL_OR: "||",
+            cls.STRING_CONCAT: "++",
+            cls.LIST_CONS: ">+",
+            cls.LIST_APPEND: "+<",
+            cls.RIGHT_EVAL: "!",
+            cls.HASTYPE: ":",
+            cls.PIPE: "|>",
+            cls.REVERSE_PIPE: "<|",
+        }[binop_kind]
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Binop(Object):
@@ -682,6 +728,9 @@ class Binop(Object):
         right = Object.deserialize(right_obj)
         return Binop(op, left, right)
 
+    def __str__(self) -> str:
+        return f"{self.left} {BinopKind.to_str(self.op)} {self.right}"
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class List(Object):
@@ -690,11 +739,18 @@ class List(Object):
     def serialize(self) -> Dict[bytes, object]:
         return {b"type": b"List", b"items": [item.serialize() for item in self.items]}
 
+    def __str__(self) -> str:
+        inner = ", ".join(str(item) for item in self.items)
+        return f"[{inner}]"
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Assign(Object):
     name: Var
     value: Object
+
+    def __str__(self) -> str:
+        return f"{self.name} = {self.value}"
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -702,11 +758,19 @@ class Function(Object):
     arg: Object
     body: Object
 
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Function
+        return self.__repr__()
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Apply(Object):
     func: Object
     arg: Object
+
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Apply
+        return self.__repr__()
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -714,17 +778,29 @@ class Compose(Object):
     inner: Object
     outer: Object
 
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Compose
+        return self.__repr__()
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Where(Object):
     body: Object
     binding: Object
 
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Where
+        return self.__repr__()
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Assert(Object):
     value: Object
     cond: Object
+
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Assert
+        return self.__repr__()
 
 
 def serialize_env(env: Env) -> Dict[bytes, object]:
@@ -750,11 +826,18 @@ class EnvObject(Object):
         env = deserialize_env(env_obj)
         return EnvObject(env)
 
+    def __str__(self) -> str:
+        return f"EnvObject(keys={self.env.keys()})"
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class MatchCase(Object):
     pattern: Object
     body: Object
+
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for MatchCase
+        return self.__repr__()
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -764,6 +847,10 @@ class MatchFunction(Object):
     def serialize(self) -> Dict[bytes, object]:
         return self._serialize(cases=[case.serialize() for case in self.cases])
 
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for MatchFunction
+        return self.__repr__()
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Relocation(Object):
@@ -771,6 +858,10 @@ class Relocation(Object):
 
     def serialize(self) -> Dict[bytes, object]:
         return self._serialize(name=self.name.encode("utf-8"))
+
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Relocation
+        return self.__repr__()
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -787,6 +878,10 @@ class NativeFunctionRelocation(Relocation):
         assert isinstance(result, NativeFunction)
         return result
 
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for NativeFunctionRelocation
+        return self.__repr__()
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class NativeFunction(Object):
@@ -795,6 +890,10 @@ class NativeFunction(Object):
 
     def serialize(self) -> Dict[bytes, object]:
         return NativeFunctionRelocation(self.name).serialize()
+
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for NativeFunction
+        return f"NativeFunction(name={self.name})"
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -817,6 +916,10 @@ class Closure(Object):
         assert isinstance(func, (Function, MatchFunction))
         return Closure(env, func)
 
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Closure
+        return self.__repr__()
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Record(Object):
@@ -833,11 +936,19 @@ class Record(Object):
         data = {key: Object.deserialize(value) for key, value in data_obj.items()}
         return Record(data)
 
+    def __str__(self) -> str:
+        inner = ", ".join(f"{k} = {self.data[k]}" for k in self.data)
+        return f"{{{inner}}}"
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Access(Object):
     obj: Object
     at: Object
+
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Access
+        return self.__repr__()
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -853,6 +964,9 @@ class Symbol(Object):
         value_obj = msg["value"]
         assert isinstance(value_obj, str)
         return Symbol(value_obj)
+
+    def __str__(self) -> str:
+        return f"#{self.value}"
 
 
 def unpack_int(obj: Object) -> int:
@@ -2422,7 +2536,7 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_assert_with_falsey_cond_raises_assertion_error(self) -> None:
         exp = Assert(Int(123), Symbol("false"))
-        with self.assertRaisesRegex(AssertionError, re.escape("condition Symbol(value='false') failed")):
+        with self.assertRaisesRegex(AssertionError, re.escape("condition #false failed")):
             eval_exp({}, exp)
 
     def test_eval_nested_assert(self) -> None:
@@ -2742,7 +2856,7 @@ class EndToEndTests(EndToEndTestsBase):
         self.assertEqual(self._run("a + 1 ? a == 1 . a = 1"), Int(2))
 
     def test_assert_with_falsey_cond_raises_assertion_error(self) -> None:
-        with self.assertRaisesRegex(AssertionError, "condition Binop"):
+        with self.assertRaisesRegex(AssertionError, "condition a == 2 failed"):
             self._run("a + 1 ? a == 2 . a = 1")
 
     def test_nested_assert(self) -> None:
@@ -2783,7 +2897,7 @@ class EndToEndTests(EndToEndTestsBase):
     def test_non_var_function_arg_raises_parse_error(self) -> None:
         with self.assertRaises(RuntimeError) as ctx:
             self._run("1 -> a")
-        self.assertEqual(ctx.exception.args[0], "expected variable in function definition Int(value=1)")
+        self.assertEqual(ctx.exception.args[0], "expected variable in function definition 1")
 
     def test_compose(self) -> None:
         self.assertEqual(self._run("((a -> a + 1) >> (b -> b * 2)) 3"), Int(8))
@@ -3432,6 +3546,128 @@ class SerializeTests(unittest.TestCase):
             serialize(obj),
             b"d3:argd4:name1:x4:type3:Vare4:bodyd4:leftd4:type3:Int5:valuei1ee2:op3:ADD5:rightd4:name1:x4:type3:Vare4:type5:Binope4:type8:Functione",
         )
+
+
+class PrettyPrintTests(unittest.TestCase):
+    def test_pretty_print_int(self) -> None:
+        obj = Int(1)
+        self.assertEqual(str(obj), "1")
+
+    def test_pretty_print_string(self) -> None:
+        obj = String("hello")
+        self.assertEqual(str(obj), '"hello"')
+
+    def test_pretty_print_bytes(self) -> None:
+        obj = Bytes(b"abc")
+        self.assertEqual(str(obj), "~~YWJj")
+
+    def test_pretty_print_var(self) -> None:
+        obj = Var("ref")
+        self.assertEqual(str(obj), "ref")
+
+    def test_pretty_print_hole(self) -> None:
+        obj = Hole()
+        self.assertEqual(str(obj), "()")
+
+    def test_pretty_print_spread(self) -> None:
+        obj = Spread()
+        self.assertEqual(str(obj), "...")
+
+    def test_pretty_print_named_spread(self) -> None:
+        obj = Spread("rest")
+        self.assertEqual(str(obj), "...rest")
+
+    def test_pretty_print_binop(self) -> None:
+        obj = Binop(BinopKind.ADD, Int(1), Int(2))
+        self.assertEqual(str(obj), "1 + 2")
+
+    def test_pretty_print_int_list(self) -> None:
+        obj = List([Int(1), Int(2), Int(3)])
+        self.assertEqual(str(obj), "[1, 2, 3]")
+
+    def test_pretty_print_str_list(self) -> None:
+        obj = List([String("1"), String("2"), String("3")])
+        self.assertEqual(str(obj), '["1", "2", "3"]')
+
+    def test_pretty_print_assign(self) -> None:
+        obj = Assign(Var("x"), Int(3))
+        self.assertEqual(str(obj), "x = 3")
+
+    def test_pretty_print_function(self) -> None:
+        obj = Function(Var("x"), Binop(BinopKind.ADD, Int(1), Var("x")))
+        self.assertEqual(
+            str(obj),
+            "Function(arg=Var(name='x'), body=Binop(op=<BinopKind.ADD: 1>, left=Int(value=1), right=Var(name='x')))",
+        )
+
+    def test_pretty_print_apply(self) -> None:
+        obj = Apply(Var("x"), Var("y"))
+        self.assertEqual(str(obj), "Apply(func=Var(name='x'), arg=Var(name='y'))")
+
+    def test_pretty_print_compose(self) -> None:
+        obj = Compose(
+            Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3))),
+            Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2))),
+        )
+        self.assertEqual(
+            str(obj),
+            "Compose(inner=Function(arg=Var(name='x'), body=Binop(op=<BinopKind.ADD: 1>, "
+            "left=Var(name='x'), right=Int(value=3))), outer=Function(arg=Var(name='x'), "
+            "body=Binop(op=<BinopKind.MUL: 3>, left=Var(name='x'), right=Int(value=2))))",
+        )
+
+    def test_pretty_print_where(self) -> None:
+        obj = Where(
+            Binop(BinopKind.ADD, Var("a"), Var("b")),
+            Assign(Var("a"), Int(1)),
+        )
+        self.assertEqual(
+            str(obj),
+            "Where(body=Binop(op=<BinopKind.ADD: 1>, left=Var(name='a'), "
+            "right=Var(name='b')), binding=Assign(name=Var(name='a'), value=Int(value=1)))",
+        )
+
+    def test_pretty_print_assert(self) -> None:
+        obj = Assert(Int(123), Symbol("true"))
+        self.assertEqual(str(obj), "Assert(value=Int(value=123), cond=Symbol(value='true'))")
+
+    def test_pretty_print_envobject(self) -> None:
+        obj = EnvObject({"x": Int(1)})
+        self.assertEqual(str(obj), "EnvObject(keys=dict_keys(['x']))")
+
+    def test_pretty_print_matchcase(self) -> None:
+        obj = MatchCase(pattern=Int(1), body=Int(2))
+        self.assertEqual(str(obj), "MatchCase(pattern=Int(value=1), body=Int(value=2))")
+
+    def test_pretty_print_matchfunction(self) -> None:
+        obj = MatchFunction([MatchCase(Var("y"), Var("x"))])
+        self.assertEqual(str(obj), "MatchFunction(cases=[MatchCase(pattern=Var(name='y'), body=Var(name='x'))])")
+
+    def test_pretty_print_relocation(self) -> None:
+        obj = Relocation("relocate")
+        self.assertEqual(str(obj), "Relocation(name='relocate')")
+
+    def test_pretty_print_nativefunction(self) -> None:
+        obj = NativeFunction("times2", lambda x: Int(x.value * 2))  # type: ignore [attr-defined]
+        self.assertEqual(str(obj), "NativeFunction(name=times2)")
+
+    def test_pretty_print_closure(self) -> None:
+        obj = Closure({"a": Int(123)}, Function(Var("x"), Var("x")))
+        self.assertEqual(
+            str(obj), "Closure(env={'a': Int(value=123)}, func=Function(arg=Var(name='x'), body=Var(name='x')))"
+        )
+
+    def test_pretty_print_record(self) -> None:
+        obj = Record({"a": Int(1), "b": Int(2)})
+        self.assertEqual(str(obj), "{a = 1, b = 2}")
+
+    def test_pretty_print_access(self) -> None:
+        obj = Access(Record({"a": Int(4)}), Var("a"))
+        self.assertEqual(str(obj), "Access(obj=Record(data={'a': Int(value=4)}), at=Var(name='a'))")
+
+    def test_pretty_print_symbol(self) -> None:
+        obj = Symbol("x")
+        self.assertEqual(str(obj), "#x")
 
 
 def fetch(url: Object) -> Object:

@@ -18,6 +18,8 @@ from enum import auto
 from types import FunctionType, ModuleType
 from typing import Any, Callable, Dict, Mapping, Optional, Set, Tuple, Union
 
+import matplotlib.pyplot as plt
+
 readline: Optional[ModuleType]
 try:
     import readline
@@ -4429,6 +4431,41 @@ def randint(obj: Object) -> Object:
     return Int(r.randint(0, obj.value - 1))
 
 
+def render(obj: Object) -> Object:
+    if not isinstance(obj, List):
+        raise TypeError(f"render expected List, but got {type(obj).__name__}")
+
+    xs = []
+    ys = []
+    colors = []
+    for item in obj.items:
+        if not isinstance(item, Record):
+            raise TypeError(f"render expected List to contain items of type Record, but got {type(item).__name__}")
+
+        x_obj = item.data["x"]
+        if not isinstance(x_obj, Int):
+            raise TypeError(f"render expected points to have coordinates of type Int, but got {type(x_obj).__name__}")
+        xs.append(x_obj.value)
+
+        y_obj = item.data["y"]
+        if not isinstance(y_obj, Int):
+            raise TypeError(f"render expected points to have coordinates of type Int, but got {type(y_obj).__name__}")
+        ys.append(y_obj.value)
+
+        if "c" in item.data:
+            c_obj = item.data["c"]
+            if not isinstance(c_obj, String):
+                raise TypeError(f"render expected points to have colors of type String, but got {type(c_obj).__name__}")
+            colors.append(c_obj.value)
+        else:
+            colors.append("red")
+
+    plt.scatter(xs, ys, color=colors, s=8)
+    plt.show()
+
+    return Int(1)
+
+
 STDLIB = {
     "$$add": Closure({}, Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))),
     "$$fetch": NativeFunction("$$fetch", fetch),
@@ -4436,6 +4473,7 @@ STDLIB = {
     "$$serialize": NativeFunction("$$serialize", lambda obj: Bytes(serialize(obj))),
     "$$listlength": NativeFunction("$$listlength", listlength),
     "$$randint": NativeFunction("$$randint", randint),
+    "$$render": NativeFunction("$$render", render),
 }
 
 

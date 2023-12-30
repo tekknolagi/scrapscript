@@ -37,7 +37,7 @@ completely stateless. All persistence is in the browser.</p>
 Output:
 </div>
 <div>
-<code><span id="prompt-string">>>></span></code><input id="input" type="text" />
+<input id="input" type="text" /><input id="input-button" type="submit" value="Submit" onclick=submitInput />
 </div>
 <script type="module">
 "use strict";
@@ -120,38 +120,45 @@ function shrinkInput() {
     input.addEventListener("keyup", e => inputHandler(e));
 }
 
+async function submitInput() {
+    const response = await sendRequest(document.env, input.value);
+    if (response.ok) {
+        const {env, result} = await response.json();
+        updateHistory(input.value, result);
+        history.push([input.value, result]);
+        input.value = "";
+        document.env = env;
+        window.localStorage.setItem('env', env)
+        window.localStorage.setItem('history', JSON.stringify(history));
+    } else {
+        const msg = await response.text();
+        updateHistory(input.value, msg);
+        input.value = "";
+    }
+}
+
 loadFromLocalStorage();
 input.focus();
 async function inputHandler(e) {
     // TODO(max): Make up/down arrow keys navigate history
     if (e.key === "Enter") {
-        if (e.shiftKey && input.tagName === "INPUT") {
+        if (input.tagName === "INPUT" && e.shiftKey) {
             // Shift-Enter expands the input to a textarea and does not submit
             // input.
             expandInput();
             return;
         }
-        if (!e.shiftKey && input.tagName === "TEXTAREA") {
-            // Normal Enter in a textarea should not submit input.
-            return;
-        }
-        const response = await sendRequest(document.env, input.value);
-        if (response.ok) {
-            const {env, result} = await response.json();
-            updateHistory(input.value, result);
-            history.push([input.value, result]);
-            input.value = "";
-            document.env = env;
-            window.localStorage.setItem('env', env)
-            window.localStorage.setItem('history', JSON.stringify(history));
-        } else {
-            const msg = await response.text();
-            updateHistory(input.value, msg);
-            input.value = "";
-        }
         if (input.tagName === "TEXTAREA") {
-            shrinkInput();
+            // Enter in a textarea should not submit input.
+            if (e.shiftKey) {
+                shrinkInput();
+                return;
+            }
+            else {
+                return;
+            }
         }
+        submitInput()
     }
 }
 input.addEventListener("keyup", e => inputHandler(e));

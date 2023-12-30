@@ -194,15 +194,34 @@ input[type="text"], textarea {
   background-color: #2d2d2d;
   color: #d4d4d4;
   border: none;
-  padding: 0.5em 0.8em;
-  border-radius: 5px;
+  padding: 0.5em 1em;
+  border-radius: 5px 0px 0px 5px;
   transition: background-color 200ms;
+  width: 20em;
+}
+
+#submit-input {
+  font-family: "Nunito Sans", sans-serif;
+  background-color: #3a3a3a;
+  color: #c0c0c0;
+  border: none;
+  padding: 0.5em 1.2em;
+  font-weight: bold;
+  border-radius: 0px 5px 5px 0px;
+  transition: background-color 200ms;
+}
+#submit-input:hover {
+  cursor: pointer;
+  background-color: #434343;
+}
+#submit-input:active {
+  background-color: #3a3a3a;
 }
 
 #clear-local-storage {
   font-family: "Nunito Sans", sans-serif;
   background-color: #2d2d2d;
-  color: #d4d4d4;
+  color: #c0c0c0;
   border: none;
   padding: 0.5em 1.2em;
   font-weight: bold;

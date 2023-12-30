@@ -37,7 +37,7 @@ completely stateless. All persistence is in the browser.</p>
 Output:
 </div>
 <div>
-<code><span id="prompt-string">>>></span></code><input id="input" type="text" />
+<input id="input" type="text" /><input id="submit-input" type="submit" value="Submit" />
 </div>
 <script type="module">
 "use strict";
@@ -72,7 +72,8 @@ async function sendRequest(env, exp) {
 let input = document.getElementById("input");
 const output = document.getElementById("output");
 const history = [];
-const button = document.getElementById("clear-local-storage");
+const clearButton = document.getElementById("clear-local-storage");
+const submitButton = document.getElementById("submit-input");
 
 function renderHistory() {
     for (const [inp, out] of history) {
@@ -120,6 +121,23 @@ function shrinkInput() {
     input.addEventListener("keyup", e => inputHandler(e));
 }
 
+async function submitInput() {
+    const response = await sendRequest(document.env, input.value);
+    if (response.ok) {
+        const {env, result} = await response.json();
+        updateHistory(input.value, result);
+        history.push([input.value, result]);
+        input.value = "";
+        document.env = env;
+        window.localStorage.setItem('env', env)
+        window.localStorage.setItem('history', JSON.stringify(history));
+    } else {
+        const msg = await response.text();
+        updateHistory(input.value, msg);
+        input.value = "";
+    }
+}
+
 loadFromLocalStorage();
 input.focus();
 async function inputHandler(e) {
@@ -131,33 +149,27 @@ async function inputHandler(e) {
             expandInput();
             return;
         }
-        if (!e.shiftKey && input.tagName === "TEXTAREA") {
-            // Normal Enter in a textarea should not submit input.
-            return;
-        }
-        const response = await sendRequest(document.env, input.value);
-        if (response.ok) {
-            const {env, result} = await response.json();
-            updateHistory(input.value, result);
-            history.push([input.value, result]);
-            input.value = "";
-            document.env = env;
-            window.localStorage.setItem('env', env)
-            window.localStorage.setItem('history', JSON.stringify(history));
-        } else {
-            const msg = await response.text();
-            updateHistory(input.value, msg);
-            input.value = "";
-        }
         if (input.tagName === "TEXTAREA") {
-            shrinkInput();
+            // Enter in a textarea should not submit input.
+            if (e.shiftKey) {
+                shrinkInput();
+                return;
+            }
+            else {
+                return;
+            }
         }
+        submitInput()
     }
 }
 input.addEventListener("keyup", e => inputHandler(e));
-button.addEventListener("click", () => {
+clearButton.addEventListener("click", () => {
     window.localStorage.clear();
     loadFromLocalStorage();
+    input.focus();
+});
+submitButton.addEventListener("click", () => {
+    submitInput()
     input.focus();
 });
 </script>

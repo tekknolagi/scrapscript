@@ -143,7 +143,7 @@ input.focus();
 async function inputHandler(e) {
     // TODO(max): Make up/down arrow keys navigate history
     if (e.key === "Enter") {
-        if (input.tagName === "INPUT" && e.shiftKey) {
+        if (e.shiftKey && input.tagName === "INPUT") {
             // Shift-Enter expands the input to a textarea and does not submit
             // input.
             expandInput();

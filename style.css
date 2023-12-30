@@ -200,7 +200,7 @@ input[type="text"], textarea {
   width: 20em;
 }
 
-#input-button {
+#submit-input {
   font-family: "Nunito Sans", sans-serif;
   background-color: #3a3a3a;
   color: #c0c0c0;
@@ -210,11 +210,11 @@ input[type="text"], textarea {
   border-radius: 0px 5px 5px 0px;
   transition: background-color 200ms;
 }
-#input-button:hover {
+#submit-input:hover {
   cursor: pointer;
   background-color: #434343;
 }
-#input-button:active {
+#submit-input:active {
   background-color: #3a3a3a;
 }
 

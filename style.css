@@ -214,6 +214,9 @@ input[type="text"], textarea {
   cursor: pointer;
   background-color: #434343;
 }
+#input-button:active {
+  background-color: #3a3a3a;
+}
 
 #clear-local-storage {
   font-family: "Nunito Sans", sans-serif;

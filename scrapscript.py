@@ -628,6 +628,7 @@ class BinopKind(enum.Enum):
     SUB = auto()
     MUL = auto()
     DIV = auto()
+    FLOOR_DIV = auto()
     EXP = auto()
     MOD = auto()
     EQUAL = auto()
@@ -653,6 +654,7 @@ class BinopKind(enum.Enum):
             "-": cls.SUB,
             "*": cls.MUL,
             "/": cls.DIV,
+            "//": cls.FLOOR_DIV,
             "^": cls.EXP,
             "%": cls.MOD,
             "==": cls.EQUAL,
@@ -1010,6 +1012,7 @@ BINOP_HANDLERS: Dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.SUB: lambda env, x, y: Int(eval_int(env, x) - eval_int(env, y)),
     BinopKind.MUL: lambda env, x, y: Int(eval_int(env, x) * eval_int(env, y)),
     BinopKind.DIV: lambda env, x, y: Int(eval_int(env, x) // eval_int(env, y)),
+    BinopKind.FLOOR_DIV: lambda env, x, y: Int(eval_int(env, x) // eval_int(env, y)),
     BinopKind.EXP: lambda env, x, y: Int(eval_int(env, x) ** eval_int(env, y)),
     BinopKind.MOD: lambda env, x, y: Int(eval_int(env, x) % eval_int(env, y)),
     BinopKind.EQUAL: lambda env, x, y: make_bool(eval_exp(env, x) == eval_exp(env, y)),
@@ -2418,6 +2421,10 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(eval_exp({}, exp), Int(6))
 
     def test_eval_with_binop_div(self) -> None:
+        exp = Binop(BinopKind.DIV, Int(2), Int(3))
+        self.assertEqual(eval_exp({}, exp), Int(0))
+
+    def test_eval_with_binop_floor_div(self) -> None:
         exp = Binop(BinopKind.DIV, Int(2), Int(3))
         self.assertEqual(eval_exp({}, exp), Int(0))
 

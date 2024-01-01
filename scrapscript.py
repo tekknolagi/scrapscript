@@ -2425,7 +2425,7 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(eval_exp({}, exp), Int(0))
 
     def test_eval_with_binop_floor_div(self) -> None:
-        exp = Binop(BinopKind.DIV, Int(2), Int(3))
+        exp = Binop(BinopKind.FLOOR_DIV, Int(2), Int(3))
         self.assertEqual(eval_exp({}, exp), Int(0))
 
     def test_eval_with_binop_exp(self) -> None:

@@ -3289,7 +3289,7 @@ class PreludeTests(EndToEndTestsBase):
             List([Int(1), Int(2), Int(3), Int(6), Int(7), Int(8)]),
         )
 
-    def test_quicksort_on_empty_list(self) -> None:
+    def test_quicksort_with_empty_list(self) -> None:
         self.assertEqual(
             self._run(
                 """
@@ -3299,7 +3299,7 @@ class PreludeTests(EndToEndTestsBase):
             List([]),
         )
 
-    def test_quicksort_on_non_int_raises_type_error(self) -> None:
+    def test_quicksort_with_non_int_raises_type_error(self) -> None:
         with self.assertRaises(TypeError):
             self._run(
                 """
@@ -3317,7 +3317,7 @@ class PreludeTests(EndToEndTestsBase):
             List([Int(1), Int(2), Int(3), Int(4), Int(5), Int(6)]),
         )
 
-    def test_concat_on_first_list_empty(self) -> None:
+    def test_concat_with_first_list_empty(self) -> None:
         self.assertEqual(
             self._run(
                 """
@@ -3327,7 +3327,7 @@ class PreludeTests(EndToEndTestsBase):
             List([Int(4), Int(5), Int(6)]),
         )
 
-    def test_concat_on_second_list_empty(self) -> None:
+    def test_concat_with_second_list_empty(self) -> None:
         self.assertEqual(
             self._run(
                 """
@@ -3337,7 +3337,7 @@ class PreludeTests(EndToEndTestsBase):
             List([Int(1), Int(2), Int(3)]),
         )
 
-    def test_concat_on_both_lists_empty(self) -> None:
+    def test_concat_with_both_lists_empty(self) -> None:
         self.assertEqual(
             self._run(
                 """
@@ -3357,7 +3357,7 @@ class PreludeTests(EndToEndTestsBase):
             List([Int(6), Int(2), Int(4)]),
         )
 
-    def test_map_non_function_raises_type_error(self) -> None:
+    def test_map_with_non_function_raises_type_error(self) -> None:
         with self.assertRaises(TypeError):
             self._run(
                 """
@@ -3365,7 +3365,7 @@ class PreludeTests(EndToEndTestsBase):
         """
             )
 
-    def test_map_non_list_raises_match_error(self) -> None:
+    def test_map_with_non_list_raises_match_error(self) -> None:
         with self.assertRaises(MatchError):
             self._run(
                 """
@@ -3383,7 +3383,7 @@ class PreludeTests(EndToEndTestsBase):
             List([Int(0), Int(1), Int(2)]),
         )
 
-    def test_range_non_int_raises_type_error(self) -> None:
+    def test_range_with_non_int_raises_type_error(self) -> None:
         with self.assertRaises(TypeError):
             self._run(
                 """
@@ -3401,7 +3401,7 @@ class PreludeTests(EndToEndTestsBase):
             Int(6),
         )
 
-    def test_foldr_on_empty_list(self) -> None:
+    def test_foldr_on_empty_list_returns_empty_list(self) -> None:
         self.assertEqual(
             self._run(
                 """
@@ -3421,7 +3421,7 @@ class PreludeTests(EndToEndTestsBase):
             List([Int(1), Int(2), Int(3)]),
         )
 
-    def test_take_n_more_than_list_length(self) -> None:
+    def test_take_n_more_than_list_length_returns_full_list(self) -> None:
         self.assertEqual(
             self._run(
                 """
@@ -3431,7 +3431,7 @@ class PreludeTests(EndToEndTestsBase):
             List([Int(1), Int(2), Int(3)]),
         )
 
-    def test_take_non_int_raises_type_error(self) -> None:
+    def test_take_with_non_int_raises_type_error(self) -> None:
         with self.assertRaises(TypeError):
             self._run(
                 """
@@ -3459,7 +3459,7 @@ class PreludeTests(EndToEndTestsBase):
             Symbol("false"),
         )
 
-    def test_all_on_empty_list(self) -> None:
+    def test_all_with_empty_list_returns_true(self) -> None:
         self.assertEqual(
             self._run(
                 """
@@ -3469,7 +3469,7 @@ class PreludeTests(EndToEndTestsBase):
             Symbol("true"),
         )
 
-    def test_all_non_bool_raises_type_error(self) -> None:
+    def test_all_with_non_bool_raises_type_error(self) -> None:
         with self.assertRaises(TypeError):
             self._run(
                 """
@@ -3507,7 +3507,7 @@ class PreludeTests(EndToEndTestsBase):
             Symbol("false"),
         )
 
-    def test_any_on_empty_list(self) -> None:
+    def test_any_with_empty_list_returns_false(self) -> None:
         self.assertEqual(
             self._run(
                 """
@@ -3517,7 +3517,7 @@ class PreludeTests(EndToEndTestsBase):
             Symbol("false"),
         )
 
-    def test_any_non_bool_raises_type_error(self) -> None:
+    def test_any_with_non_bool_raises_type_error(self) -> None:
         with self.assertRaises(TypeError):
             self._run(
                 """

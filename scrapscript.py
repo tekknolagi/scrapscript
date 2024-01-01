@@ -179,7 +179,7 @@ class Lexer:
                 return self.read_bytes()
             raise ParseError(f"unexpected token {c!r}")
         if c.isdigit():
-            return self.read_integer(c)
+            return self.read_number(c)
         if c in "()[]{}":
             custom = {
                 "(": LeftParen,

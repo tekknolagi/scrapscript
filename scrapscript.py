@@ -1233,8 +1233,6 @@ def bencode(obj: object) -> bytes:
     assert not isinstance(obj, bool)
     if isinstance(obj, int):
         return b"i" + str(int(obj)).encode("ascii") + b"e"
-    if isinstance(obj, float):
-        return b"f" + str(float(obj)).encode("ascii") + b"e"
     if isinstance(obj, bytes):
         return str(len(obj)).encode("ascii") + b":" + obj
     if isinstance(obj, list):

@@ -575,13 +575,11 @@ class Float(Object):
     value: float
 
     def serialize(self) -> Dict[bytes, object]:
-        return self._serialize(value=self.value)
+        raise NotImplementedError("serialization for Float is not supported")
 
     @staticmethod
     def deserialize(msg: Dict[str, object]) -> "Float":
-        assert msg["type"] == "Float"
-        assert isinstance(msg["value"], float)
-        return Float(msg["value"])
+        raise NotImplementedError("serialization for Float is not supported")
 
     def __str__(self) -> str:
         return str(self.value)
@@ -1041,6 +1039,10 @@ def make_bool(x: bool) -> Object:
 
 
 def wrap_inferred_number_type(x: Union[int, float]) -> Object:
+    # TODO: Since this is intended to be a reference implementation
+    # we should avoid relying heavily on Python's implementation of
+    # arithmetic operations, type inference, and multiple dispatch.
+    # Update this to make the interpreter more language agnostic.
     if isinstance(x, int):
         return Int(x)
     return Float(x)
@@ -1262,12 +1264,6 @@ class Bdecoder:
             buf += c
         return int(buf)
 
-    def decode_float(self) -> float:
-        buf = ""
-        while (c := self.read()) != "e":
-            buf += c
-        return float(buf)
-
     def decode_list(self) -> typing.List[Any]:
         result = []
         while self.peek() != "e":
@@ -1300,8 +1296,6 @@ class Bdecoder:
         ty = self.read()
         if ty == "i":
             return self.decode_int()
-        if ty == "f":
-            return self.decode_float()
         if ty == "l":
             return self.decode_list()
         if ty == "d":
@@ -3641,9 +3635,6 @@ class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:
         self.assertEqual(bencode(123), b"i123e")
 
-    def test_bencode_float(self) -> None:
-        self.assertEqual(bencode(3.14), b"f3.14e")
-
     def test_bencode_negative_int(self) -> None:
         self.assertEqual(bencode(-123), b"i-123e")
 
@@ -3676,12 +3667,6 @@ class BdecodeTests(unittest.TestCase):
     def test_bdecode_negative_int(self) -> None:
         self.assertEqual(bdecode("i-123e"), -123)
 
-    def test_bdecode_float(self) -> None:
-        self.assertEqual(bdecode("f3.14e"), 3.14)
-
-    def test_bdecode_negative_float(self) -> None:
-        self.assertEqual(bdecode("f-3.14e"), -3.14)
-
     def test_bdecode_bytes(self) -> None:
         self.assertEqual(bdecode("3:abc"), "abc")
 
@@ -3707,13 +3692,10 @@ class ObjectSerializeTests(unittest.TestCase):
         obj = Int(-123)
         self.assertEqual(obj.serialize(), {b"type": b"Int", b"value": -123})
 
-    def test_serialize_float(self) -> None:
+    def test_serialize_float_raises_not_implemented_error(self) -> None:
         obj = Float(3.14)
-        self.assertEqual(obj.serialize(), {b"type": b"Float", b"value": 3.14})
-
-    def test_serialize_negative_float(self) -> None:
-        obj = Float(-3.14)
-        self.assertEqual(obj.serialize(), {b"type": b"Float", b"value": -3.14})
+        with self.assertRaisesRegex(NotImplementedError, re.escape("serialization for Float is not supported")):
+            obj.serialize()
 
     def test_serialize_str(self) -> None:
         obj = String("abc")
@@ -3815,14 +3797,6 @@ class ObjectDeserializeTests(unittest.TestCase):
         msg = {"type": "Int", "value": -123}
         self.assertEqual(Object.deserialize(msg), Int(-123))
 
-    def test_deserialize_float(self) -> None:
-        msg = {"type": "Float", "value": 3.14}
-        self.assertEqual(Object.deserialize(msg), Float(3.14))
-
-    def test_deserialize_negative_float(self) -> None:
-        msg = {"type": "Float", "value": -3.14}
-        self.assertEqual(Object.deserialize(msg), Float(-3.14))
-
     def test_deserialize_str(self) -> None:
         msg = {"type": "String", "value": "abc"}
         self.assertEqual(Object.deserialize(msg), String("abc"))
@@ -3905,10 +3879,6 @@ class SerializeTests(unittest.TestCase):
     def test_serialize_int(self) -> None:
         obj = Int(3)
         self.assertEqual(serialize(obj), b"d4:type3:Int5:valuei3ee")
-
-    def test_serialize_float(self) -> None:
-        obj = Float(3.14)
-        self.assertEqual(serialize(obj), b"d4:type5:Float5:valuef3.14ee")
 
     def test_serialize_str(self) -> None:
         obj = String("abc")

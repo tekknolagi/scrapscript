@@ -1081,7 +1081,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
     if isinstance(pattern, Int):
         return {} if isinstance(obj, Int) and obj.value == pattern.value else None
     if isinstance(pattern, Float):
-        return {} if isinstance(obj, Float) and obj.value == pattern.value else None
+        raise MatchError("pattern matching is not supported for Floats")
     if isinstance(pattern, String):
         return {} if isinstance(obj, String) and obj.value == pattern.value else None
     if isinstance(pattern, Var):
@@ -2190,14 +2190,17 @@ class MatchTests(unittest.TestCase):
     def test_match_int_with_non_int_returns_none(self) -> None:
         self.assertEqual(match(String("abc"), pattern=Int(1)), None)
 
-    def test_match_with_equal_floats_returns_empty_dict(self) -> None:
-        self.assertEqual(match(Float(1), pattern=Float(1)), {})
+    def test_match_with_equal_floats_raises_match_error(self) -> None:
+        with self.assertRaisesRegex(MatchError, re.escape("pattern matching is not supported for Floats")):
+            match(Float(1), pattern=Float(1))
 
-    def test_match_with_inequal_floats_returns_none(self) -> None:
-        self.assertEqual(match(Float(2), pattern=Float(1)), None)
+    def test_match_with_inequal_floats_raises_match_error(self) -> None:
+        with self.assertRaisesRegex(MatchError, re.escape("pattern matching is not supported for Floats")):
+            match(Float(2), pattern=Float(1))
 
-    def test_match_float_with_non_float_returns_none(self) -> None:
-        self.assertEqual(match(String("abc"), pattern=Float(1)), None)
+    def test_match_float_with_non_float_raises_match_error(self) -> None:
+        with self.assertRaisesRegex(MatchError, re.escape("pattern matching is not supported for Floats")):
+            match(String("abc"), pattern=Float(1))
 
     def test_match_with_equal_strings_returns_empty_dict(self) -> None:
         self.assertEqual(match(String("a"), pattern=String("a")), {})

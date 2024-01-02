@@ -217,6 +217,8 @@ class Lexer:
         while self.has_input():
             c = self.peek_char()
             if c == ".":
+                if has_decimal:
+                    raise ParseError(f"unexpected token {c!r}")
                 has_decimal = True
             elif not c.isdigit():
                 break
@@ -1333,6 +1335,17 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_negative_float(self) -> None:
         self.assertEqual(tokenize("-3.14"), [Operator("-"), FloatLit(3.14)])
+
+    @unittest.skip("TODO: support floats with no integer part")
+    def test_tokenize_float_with_no_integer_part(self) -> None:
+        self.assertEqual(tokenize(".14"), [FloatLit(0.14)])
+
+    def test_tokenize_float_with_no_decimal_part(self) -> None:
+        self.assertEqual(tokenize("10."), [FloatLit(10.0)])
+
+    def test_tokenize_float_with_multiple_decimal_points_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token '.'")):
+            tokenize("1.0.1")
 
     def test_tokenize_binop(self) -> None:
         self.assertEqual(tokenize("1 + 2"), [IntLit(1), Operator("+"), IntLit(2)])

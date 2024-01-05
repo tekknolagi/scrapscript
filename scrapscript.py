@@ -1166,6 +1166,8 @@ def eval_exp(env: Env, exp: Object) -> Object:
             # Y combinator or similar, so we bind functions (and only
             # functions) using a letrec-like strategy. We augment their
             # captured environment with a binding to themselves.
+            # TODO(max): Add "closure improve", which filters bindings to those
+            # used by the underlying function.
             assert isinstance(value.env, dict)
             value.env[exp.name.name] = value
         return EnvObject({**env, exp.name.name: value})
@@ -1182,8 +1184,12 @@ def eval_exp(env: Env, exp: Object) -> Object:
     if isinstance(exp, Function):
         if not isinstance(exp.arg, Var):
             raise RuntimeError(f"expected variable in function definition {exp.arg}")
+        # TODO(max): Add "closure improve", which filters bindings to those
+        # used by the underlying function.
         return Closure(env, exp)
     if isinstance(exp, MatchFunction):
+        # TODO(max): Add "closure improve", which filters bindings to those
+        # used by the underlying function.
         return Closure(env, exp)
     if isinstance(exp, Apply):
         if isinstance(exp.func, Var) and exp.func.name == "$$quote":

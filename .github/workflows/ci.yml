@@ -73,7 +73,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     if: |
-      github.repository == "tekknolagi/scrapscript" &&
+      github.repository == 'tekknolagi/scrapscript' &&
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     needs: [run_lint, run_unit_tests]
     steps:

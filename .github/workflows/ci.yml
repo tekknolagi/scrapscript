@@ -71,7 +71,6 @@ jobs:
     - name: Try a little hello world
       run: docker run ${{ steps.meta.outputs.tags }} apply "1 + 2"
   deploy:
-    name: Deploy app
     runs-on: ubuntu-latest
     if: |
       github.repository == "tekknolagi/scrapscript" &&

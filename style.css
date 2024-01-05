@@ -134,7 +134,7 @@ a:hover {
 }
 
 pre {
-  overflow-x: scroll;
+  overflow-x: auto;
 }
 code,
 pre,

@@ -22,6 +22,24 @@ python3 scrapscript.py apply "1 + 2"
 python3 scrapscript.py repl
 ```
 
+or with [Cosmopolitan](https://justine.lol/cosmopolitan/index.html):
+
+```bash
+./build-com
+
+# With a file
+./scrapscript.com eval examples/0_home/factorial.scrap
+
+# With a string literal
+./scrapscript.com apply "1 + 2"
+
+# With a REPL
+./scrapscript.com repl
+```
+
+(if you have an exec format error and use Zsh, either upgrade Zsh or prefix
+with `sh`)
+
 or with Docker:
 
 ```bash

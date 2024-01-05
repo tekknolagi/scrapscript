@@ -70,16 +70,3 @@ jobs:
         labels: ${{ steps.meta.outputs.labels }}
     - name: Try a little hello world
       run: docker run ${{ steps.meta.outputs.tags }} apply "1 + 2"
-  deploy:
-    name: Deploy app
-    runs-on: ubuntu-latest
-    if: |
-      github.repository == "tekknolagi/scrapscript" &&
-      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    needs: [run_lint, run_unit_tests]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

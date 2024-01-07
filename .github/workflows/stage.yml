@@ -15,7 +15,7 @@ jobs:
     # in the pull request UI.
     environment:
       name: scrapscript-pr-${{ github.event.number }}
-      url: ${{ steps.deploy.outputs.url }}
+      url: ${{ steps.deploy.outputs.url }}/repl
 
     steps:
       - uses: actions/checkout@v4

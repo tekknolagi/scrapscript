@@ -6,6 +6,7 @@ import dataclasses
 import enum
 import json
 import logging
+import math
 import os
 import random
 import re
@@ -4466,6 +4467,24 @@ def render(obj: Object) -> Object:
     return Int(1)
 
 
+def cos(obj: Object) -> Object:
+    if not isinstance(obj, (Int, Float)):
+        raise TypeError(f"cos expected Int or Float, but got {type(obj).__name__}")
+    return Float(math.cos(obj.value))
+
+
+def sin(obj: Object) -> Object:
+    if not isinstance(obj, (Int, Float)):
+        raise TypeError(f"sin expected Int or Float, but got {type(obj).__name__}")
+    return Float(math.sin(obj.value))
+
+
+def floor(obj: Object) -> Object:
+    if not isinstance(obj, (Int, Float)):
+        raise TypeError(f"floor expected Int or Float, but got {type(obj).__name__}")
+    return Float(math.floor(obj.value))
+
+
 STDLIB = {
     "$$add": Closure({}, Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))),
     "$$fetch": NativeFunction("$$fetch", fetch),
@@ -4474,6 +4493,9 @@ STDLIB = {
     "$$listlength": NativeFunction("$$listlength", listlength),
     "$$randint": NativeFunction("$$randint", randint),
     "$$render": NativeFunction("$$render", render),
+    "$$cos": NativeFunction("$$cos", cos),
+    "$$sin": NativeFunction("$$sin", sin),
+    "$$floor": NativeFunction("$$floor", floor),
 }
 
 

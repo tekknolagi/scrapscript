@@ -14,12 +14,12 @@ jobs:
 
     # Only run one deployment at a time per PR.
     concurrency:
-      group: pr-${{ github.event.number }}
+      group: scrapscript-pr-${{ github.event.number }}
 
     # Create a GitHub deployment environment per staging app so it shows up
     # in the pull request UI.
     environment:
-      name: pr-${{ github.event.number }}
+      name: scrapscript-pr-${{ github.event.number }}
       url: ${{ steps.deploy.outputs.url }}
 
     steps:

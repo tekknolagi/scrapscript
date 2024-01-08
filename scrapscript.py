@@ -1365,15 +1365,15 @@ def serialize(obj: Object) -> bytes:
 
 class Serializer:
     def __init__(self) -> None:
-        self.refs: typing.List[Dict[bytes, object]] = []
-        self.objs: typing.List[Object] = []
+        self.serialized: typing.List[Dict[bytes, object]] = []
+        self.seen: typing.List[Object] = []
 
     def ref(self, obj: Object) -> Tuple[Dict[bytes, object], bool]:
-        for idx, other in enumerate(self.objs):
+        for idx, other in enumerate(self.seen):
             if obj is other:
                 return {b"type": b"Ref", b"index": idx}, True
-        result = {b"type": b"Ref", b"index": len(self.objs)}
-        self.objs.append(obj)
+        result = {b"type": b"Ref", b"index": len(self.seen)}
+        self.seen.append(obj)
         return result, False
 
     def _serialize(self, ref: Dict[bytes, object], obj: Object, **kwargs: object) -> Dict[bytes, object]:
@@ -1383,15 +1383,15 @@ class Serializer:
         }
         idx = ref[b"index"]
         assert isinstance(idx, int)
-        assert not self.refs[idx]
-        self.refs[idx] = result
+        assert not self.serialized[idx]
+        self.serialized[idx] = result
         return ref
 
     def serialize(self, obj: Object) -> Dict[bytes, object]:
         ref, exists = self.ref(obj)
         if exists:
             return ref
-        self.refs.append({})
+        self.serialized.append({})
         if isinstance(obj, Int):
             return self._serialize(ref, obj, value=obj.value)
         if isinstance(obj, List):
@@ -1402,7 +1402,7 @@ class Serializer:
 def object_serialize(obj: Object) -> typing.List[Dict[bytes, object]]:
     serializer = Serializer()
     serializer.serialize(obj)
-    return serializer.refs
+    return serializer.serialized
 
 
 def deserialize(msg: str) -> Object:

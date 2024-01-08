@@ -1374,7 +1374,6 @@ def _refwrap(
         self.seen.append(obj)
         self.serialized.append({})
         result = f(self, obj)
-        assert isinstance(idx, int)
         assert not self.serialized[idx]
         self.serialized[idx] = result
         return {b"type": b"Ref", b"index": idx}

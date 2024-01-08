@@ -518,6 +518,7 @@ class Object:
 
     @staticmethod
     def deserialize(msg: Dict[str, Any]) -> "Object":
+        # TODO(max): Handle refs
         assert "type" in msg, f"No idea what to do with {msg!r}"
         ty = msg["type"]
         assert isinstance(ty, str)

@@ -1363,6 +1363,50 @@ def serialize(obj: Object) -> bytes:
     return bencode(obj.serialize())
 
 
+class Serializer:
+    def __init__(self) -> None:
+        self.refs: typing.List[Dict[bytes, object]] = []
+        self.objs: typing.List[Object] = []
+
+    def find_in_refs(self, obj: Object) -> Optional[Dict[bytes, object]]:
+        for idx, other in enumerate(self.objs):
+            if obj is other:
+                return {b"type": b"Ref", b"index": idx}
+        return None
+
+    def _serialize(self, obj: Object, **kwargs: object) -> Dict[bytes, object]:
+        return {
+            b"type": type(obj).__name__.encode("utf-8"),
+            **{key.encode("utf-8"): value for key, value in kwargs.items()},
+        }
+
+    def _serialize_ref(self, ref: Dict[bytes, object], obj: Object, **kwargs: object) -> Dict[bytes, object]:
+        result = self._serialize(obj, **kwargs)
+        idx = ref[b"index"]
+        assert isinstance(idx, int)
+        self.refs[idx] = result
+        return ref
+
+    def serialize(self, obj: Object) -> Dict[bytes, object]:
+        ref = self.find_in_refs(obj)
+        if ref:
+            return ref
+        self.objs.append(obj)
+        self.refs.append({})
+        ref = {b"type": b"Ref", b"index": len(self.objs) - 1}
+        if isinstance(obj, Int):
+            return self._serialize_ref(ref, obj, value=obj.value)
+        if isinstance(obj, List):
+            return self._serialize_ref(ref, obj, items=[self.serialize(item) for item in obj.items])
+        raise NotImplementedError("serialize", type(obj))
+
+
+def object_serialize(obj: Object) -> typing.List[Dict[bytes, object]]:
+    serializer = Serializer()
+    serializer.serialize(obj)
+    return serializer.refs
+
+
 def deserialize(msg: str) -> Object:
     logging.debug("deserialize %s", msg)
     decoded = bdecode(msg)
@@ -4027,6 +4071,56 @@ class ObjectSerializeTests(unittest.TestCase):
                 },
                 b"type": b"Closure",
             },
+        )
+
+
+class ObjectRecursiveSerializeTests(unittest.TestCase):
+    def test_serialize_int(self) -> None:
+        obj = Int(123)
+        self.assertEqual(object_serialize(obj), [{b"type": b"Int", b"value": 123}])
+
+    def test_serialize_list_of_int(self) -> None:
+        obj = List([Int(1), Int(2), Int(3)])
+        self.assertEqual(
+            object_serialize(obj),
+            [
+                {
+                    b"type": b"List",
+                    b"items": [
+                        {b"type": b"Ref", b"index": 1},
+                        {b"type": b"Ref", b"index": 2},
+                        {b"type": b"Ref", b"index": 3},
+                    ],
+                },
+                {b"type": b"Int", b"value": 1},
+                {b"type": b"Int", b"value": 2},
+                {b"type": b"Int", b"value": 3},
+            ],
+        )
+
+    def test_serialize_recursive_list(self) -> None:
+        obj = List([])
+        obj.items.append(obj)
+        self.assertEqual(
+            object_serialize(obj),
+            [{b"items": [{b"index": 0, b"type": b"Ref"}], b"type": b"List"}],
+        )
+
+    def test_serialize_recursive_list_2(self) -> None:
+        obj = List([Int(3)])
+        obj.items.append(obj)
+        self.assertEqual(
+            object_serialize(obj),
+            [
+                {
+                    b"type": b"List",
+                    b"items": [
+                        {b"type": b"Ref", b"index": 1},
+                        {b"type": b"Ref", b"index": 0},
+                    ],
+                },
+                {b"type": b"Int", b"value": 3},
+            ],
         )
 
 

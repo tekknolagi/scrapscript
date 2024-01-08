@@ -1368,34 +1368,37 @@ class Serializer:
         self.serialized: typing.List[Dict[bytes, object]] = []
         self.seen: typing.List[Object] = []
 
-    def ref(self, obj: Object) -> Tuple[Dict[bytes, object], bool]:
-        for idx, other in enumerate(self.seen):
-            if obj is other:
-                return {b"type": b"Ref", b"index": idx}, True
-        result = {b"type": b"Ref", b"index": len(self.seen)}
-        self.seen.append(obj)
-        return result, False
-
-    def _serialize(self, ref: Dict[bytes, object], obj: Object, **kwargs: object) -> Dict[bytes, object]:
-        result = {
+    def _serialize(self, obj: Object, **kwargs: object) -> Dict[bytes, object]:
+        return {
             b"type": type(obj).__name__.encode("utf-8"),
             **{key.encode("utf-8"): value for key, value in kwargs.items()},
         }
-        idx = ref[b"index"]
-        assert isinstance(idx, int)
-        assert not self.serialized[idx]
-        self.serialized[idx] = result
-        return ref
 
-    def serialize(self, obj: Object) -> Dict[bytes, object]:
-        ref, exists = self.ref(obj)
-        if exists:
+    @staticmethod
+    def _refwrap(
+        f: Callable[["Serializer", Object], Dict[bytes, object]],
+    ) -> Callable[["Serializer", Object], Dict[bytes, object]]:
+        def inner(self: "Serializer", obj: Object) -> Dict[bytes, object]:
+            for idx, other in enumerate(self.seen):
+                if obj is other:
+                    return {b"type": b"Ref", b"index": idx}
+            idx = len(self.seen)
+            ref = {b"type": b"Ref", b"index": idx}
+            self.seen.append(obj)
+            self.serialized.append({})
+            result = f(self, obj)
+            assert not self.serialized[idx]
+            self.serialized[idx] = result
             return ref
-        self.serialized.append({})
+
+        return inner
+
+    @_refwrap
+    def serialize(self, obj: Object) -> Dict[bytes, object]:
         if isinstance(obj, Int):
-            return self._serialize(ref, obj, value=obj.value)
+            return self._serialize(obj, value=obj.value)
         if isinstance(obj, List):
-            return self._serialize(ref, obj, items=[self.serialize(item) for item in obj.items])
+            return self._serialize(obj, items=[self.serialize(item) for item in obj.items])
         raise NotImplementedError("serialize", type(obj))
 
 

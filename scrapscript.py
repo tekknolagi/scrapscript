@@ -1367,11 +1367,10 @@ def _refwrap(
     f: Callable[["Serializer", Object], Dict[bytes, object]],
 ) -> Callable[["Serializer", Object], Dict[bytes, object]]:
     def inner(self: "Serializer", obj: Object) -> Dict[bytes, object]:
-        for idx, other in enumerate(self.seen):
-            if obj is other:
-                return {b"type": b"Ref", b"index": idx}
-        idx = len(self.seen)
-        self.seen.append(obj)
+        idx = self.seen.get(id(obj))
+        if idx is not None:
+            return {b"type": b"Ref", b"index": idx}
+        self.seen[id(obj)] = idx = len(self.seen)
         self.serialized.append({})
         assert not self.serialized[idx]
         self.serialized[idx] = f(self, obj)
@@ -1383,7 +1382,7 @@ def _refwrap(
 class Serializer:
     def __init__(self) -> None:
         self.serialized: typing.List[Dict[bytes, object]] = []
-        self.seen: typing.List[Object] = []
+        self.seen: typing.Dict[int, int] = {}
 
     def _serialize(self, obj: Object, **kwargs: object) -> Dict[bytes, object]:
         return {

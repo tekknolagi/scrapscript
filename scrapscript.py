@@ -1339,7 +1339,7 @@ class Serializer:
         if isinstance(obj, (String, Symbol)):
             return self._serialize(obj, value=obj.value.encode("utf-8"))
         if isinstance(obj, (Var, NativeFunctionRelocation)):
-            return self._serialize(obj, value=obj.name.encode("utf-8"))
+            return self._serialize(obj, name=obj.name.encode("utf-8"))
         if isinstance(obj, Binop):
             return self._serialize(
                 obj, op=obj.op.name.encode("utf-8"), left=self.serialize(obj.left), right=self.serialize(obj.right)
@@ -1358,7 +1358,13 @@ class Serializer:
             return self._serialize(
                 obj, data={key.encode("utf-8"): self.serialize(value) for key, value in obj.data.items()}
             )
-        raise NotImplementedError("serialize", type(obj))
+        if isinstance(obj, Assign):
+            return self._serialize(obj, name=self.serialize(obj.name), value=self.serialize(obj.value))
+        if isinstance(obj, Function):
+            return self._serialize(obj, arg=self.serialize(obj.arg), body=self.serialize(obj.body))
+        if isinstance(obj, Apply):
+            return self._serialize(obj, func=self.serialize(obj.func), arg=self.serialize(obj.arg))
+        raise NotImplementedError(f"serialization for {type(obj).__name__} is not supported")
 
     def serialize_env(self, env: Env) -> Dict[bytes, object]:
         # We assume Env is not recursive.
@@ -3934,127 +3940,119 @@ class SerializeTests(unittest.TestCase):
         obj = Int(123)
         self.assertEqual(serialize(obj), [{b"type": b"Int", b"value": 123}])
 
-    # def test_serialize_negative_int(self) -> None:
-    #     obj = Int(-123)
-    #     self.assertEqual(obj.serialize(), {b"type": b"Int", b"value": -123})
+    def test_serialize_negative_int(self) -> None:
+        obj = Int(-123)
+        self.assertEqual(serialize(obj), [{b"type": b"Int", b"value": -123}])
 
-    # def test_serialize_float_raises_not_implemented_error(self) -> None:
-    #     obj = Float(3.14)
-    #     with self.assertRaisesRegex(NotImplementedError, re.escape("serialization for Float is not supported")):
-    #         obj.serialize()
+    def test_serialize_float_raises_not_implemented_error(self) -> None:
+        obj = Float(3.14)
+        with self.assertRaisesRegex(NotImplementedError, re.escape("serialization for Float is not supported")):
+            serialize(obj)
 
-    # def test_serialize_str(self) -> None:
-    #     obj = String("abc")
-    #     self.assertEqual(obj.serialize(), {b"type": b"String", b"value": b"abc"})
+    def test_serialize_str(self) -> None:
+        obj = String("abc")
+        self.assertEqual(serialize(obj), [{b"type": b"String", b"value": b"abc"}])
 
-    # def test_serialize_bytes(self) -> None:
-    #     obj = Bytes(b"abc")
-    #     self.assertEqual(obj.serialize(), {b"type": b"Bytes", b"value": b"abc"})
+    def test_serialize_bytes(self) -> None:
+        obj = Bytes(b"abc")
+        self.assertEqual(serialize(obj), [{b"type": b"Bytes", b"value": b"abc"}])
 
-    # def test_serialize_var(self) -> None:
-    #     obj = Var("abc")
-    #     self.assertEqual(obj.serialize(), {b"type": b"Var", b"name": b"abc"})
+    def test_serialize_var(self) -> None:
+        obj = Var("abc")
+        self.assertEqual(serialize(obj), [{b"type": b"Var", b"name": b"abc"}])
 
-    # def test_serialize_symbol(self) -> None:
-    #     obj = Symbol("true")
-    #     self.assertEqual(obj.serialize(), {b"type": b"Symbol", b"value": b"true"})
+    def test_serialize_symbol(self) -> None:
+        obj = Symbol("true")
+        self.assertEqual(serialize(obj), [{b"type": b"Symbol", b"value": b"true"}])
 
-    # def test_serialize_binary_add(self) -> None:
-    #     obj = Binop(BinopKind.ADD, Int(123), Int(456))
-    #     self.assertEqual(
-    #         obj.serialize(),
-    #         {
-    #             b"left": {b"type": b"Int", b"value": 123},
-    #             b"op": b"ADD",
-    #             b"right": {b"type": b"Int", b"value": 456},
-    #             b"type": b"Binop",
-    #         },
-    #     )
-
-    # def test_serialize_list(self) -> None:
-    #     obj = List([Int(1), Int(2)])
-    #     self.assertEqual(
-    #         obj.serialize(),
-    #         {b"type": b"List", b"items": [{b"type": b"Int", b"value": 1}, {b"type": b"Int", b"value": 2}]},
-    #     )
-
-    # def test_serialize_assign(self) -> None:
-    #     obj = Assign(Var("x"), Int(2))
-    #     self.assertEqual(
-    #         obj.serialize(),
-    #         {b"type": b"Assign", b"name": {b"name": b"x", b"type": b"Var"}, b"value": {b"type": b"Int", b"value": 2}},
-    #     )
-
-    # def test_serialize_record(self) -> None:
-    #     obj = Record({"x": Int(1)})
-    #     self.assertEqual(obj.serialize(), {b"data": {b"x": {b"type": b"Int", b"value": 1}}, b"type": b"Record"})
-
-    # def test_serialize_env_object(self) -> None:
-    #     obj = EnvObject({"x": Int(1)})
-    #     self.assertEqual(
-    #         obj.serialize(),
-    #         {b"env": {b"x": {b"type": b"Int", b"value": 1}}, b"type": b"EnvObject"},
-    #     )
-
-    # def test_serialize_function(self) -> None:
-    #     obj = Function(Var("x"), Var("x"))
-    #     self.assertEqual(
-    #         obj.serialize(),
-    #         {
-    #             b"arg": {b"name": b"x", b"type": b"Var"},
-    #             b"body": {b"name": b"x", b"type": b"Var"},
-    #             b"type": b"Function",
-    #         },
-    #     )
-
-    # def test_serialize_apply(self) -> None:
-    #     obj = Apply(Var("f"), Var("x"))
-    #     self.assertEqual(
-    #         obj.serialize(),
-    #         {
-    #             b"func": {b"name": b"f", b"type": b"Var"},
-    #             b"arg": {b"name": b"x", b"type": b"Var"},
-    #             b"type": b"Apply",
-    #         },
-    #     )
-
-    # def test_serialize_closure(self) -> None:
-    #     obj = Closure({"a": Int(123)}, Function(Var("x"), Var("x")))
-    #     self.assertEqual(
-    #         obj.serialize(),
-    #         {
-    #             b"env": {b"a": {b"type": b"Int", b"value": 123}},
-    #             b"func": {
-    #                 b"arg": {b"name": b"x", b"type": b"Var"},
-    #                 b"body": {b"name": b"x", b"type": b"Var"},
-    #                 b"type": b"Function",
-    #             },
-    #             b"type": b"Closure",
-    #         },
-    #     )
-
-
-class ObjectRecursiveSerializeTests(unittest.TestCase):
-    def test_serialize_int(self) -> None:
-        obj = Int(123)
-        self.assertEqual(serialize(obj), [{b"type": b"Int", b"value": 123}])
-
-    def test_serialize_list_of_int(self) -> None:
-        obj = List([Int(1), Int(2), Int(3)])
+    def test_serialize_binary_add(self) -> None:
+        obj = Binop(BinopKind.ADD, Int(123), Int(456))
         self.assertEqual(
             serialize(obj),
             [
                 {
-                    b"type": b"List",
-                    b"items": [
-                        {b"type": b"Ref", b"index": 1},
-                        {b"type": b"Ref", b"index": 2},
-                        {b"type": b"Ref", b"index": 3},
-                    ],
+                    b"type": b"Binop",
+                    b"op": b"ADD",
+                    b"left": {b"type": b"Ref", b"index": 1},
+                    b"right": {b"type": b"Ref", b"index": 2},
                 },
+                {b"type": b"Int", b"value": 123},
+                {b"type": b"Int", b"value": 456},
+            ],
+        )
+
+    def test_serialize_list(self) -> None:
+        obj = List([Int(1), Int(2)])
+        self.assertEqual(
+            serialize(obj),
+            [
+                {b"type": b"List", b"items": [{b"type": b"Ref", b"index": 1}, {b"type": b"Ref", b"index": 2}]},
                 {b"type": b"Int", b"value": 1},
                 {b"type": b"Int", b"value": 2},
-                {b"type": b"Int", b"value": 3},
+            ],
+        )
+
+    def test_serialize_assign(self) -> None:
+        obj = Assign(Var("x"), Int(2))
+        self.assertEqual(
+            serialize(obj),
+            [
+                {b"type": b"Assign", b"name": {b"type": b"Ref", b"index": 1}, b"value": {b"type": b"Ref", b"index": 2}},
+                {b"type": b"Var", b"name": b"x"},
+                {b"type": b"Int", b"value": 2},
+            ],
+        )
+
+    def test_serialize_record(self) -> None:
+        obj = Record({"x": Int(1)})
+        self.assertEqual(
+            serialize(obj),
+            [{b"type": b"Record", b"data": {b"x": {b"type": b"Ref", b"index": 1}}}, {b"type": b"Int", b"value": 1}],
+        )
+
+    def test_serialize_env_object(self) -> None:
+        obj = EnvObject({"x": Int(1)})
+        self.assertEqual(
+            serialize(obj),
+            [{b"type": b"EnvObject", b"env": {b"x": {b"type": b"Ref", b"index": 1}}}, {b"type": b"Int", b"value": 1}],
+        )
+
+    def test_serialize_function(self) -> None:
+        obj = Function(Var("x"), Var("x"))
+        self.assertEqual(
+            serialize(obj),
+            [
+                {b"type": b"Function", b"arg": {b"type": b"Ref", b"index": 1}, b"body": {b"type": b"Ref", b"index": 2}},
+                {b"type": b"Var", b"name": b"x"},
+                {b"type": b"Var", b"name": b"x"},
+            ],
+        )
+
+    def test_serialize_apply(self) -> None:
+        obj = Apply(Var("f"), Var("x"))
+        self.assertEqual(
+            serialize(obj),
+            [
+                {b"type": b"Apply", b"func": {b"type": b"Ref", b"index": 1}, b"arg": {b"type": b"Ref", b"index": 2}},
+                {b"type": b"Var", b"name": b"f"},
+                {b"type": b"Var", b"name": b"x"},
+            ],
+        )
+
+    def test_serialize_closure(self) -> None:
+        obj = Closure({"a": Int(123)}, Function(Var("x"), Var("x")))
+        self.assertEqual(
+            serialize(obj),
+            [
+                {
+                    b"type": b"Closure",
+                    b"env": {b"a": {b"type": b"Ref", b"index": 1}},
+                    b"func": {b"type": b"Ref", b"index": 2},
+                },
+                {b"type": b"Int", b"value": 123},
+                {b"type": b"Function", b"arg": {b"type": b"Ref", b"index": 3}, b"body": {b"type": b"Ref", b"index": 4}},
+                {b"type": b"Var", b"name": b"x"},
+                {b"type": b"Var", b"name": b"x"},
             ],
         )
 
@@ -4066,9 +4064,10 @@ class ObjectRecursiveSerializeTests(unittest.TestCase):
             [{b"items": [{b"index": 0, b"type": b"Ref"}], b"type": b"List"}],
         )
 
-    def test_serialize_recursive_list_2(self) -> None:
+    def test_serialize_recursive_list_with_other_elements(self) -> None:
         obj = List([Int(3)])
         obj.items.append(obj)
+        obj.items.append(Int(4))
         self.assertEqual(
             serialize(obj),
             [
@@ -4077,9 +4076,11 @@ class ObjectRecursiveSerializeTests(unittest.TestCase):
                     b"items": [
                         {b"type": b"Ref", b"index": 1},
                         {b"type": b"Ref", b"index": 0},
+                        {b"type": b"Ref", b"index": 2},
                     ],
                 },
                 {b"type": b"Int", b"value": 3},
+                {b"type": b"Int", b"value": 4},
             ],
         )
 
@@ -4171,33 +4172,33 @@ class ObjectDeserializeTests(unittest.TestCase):
         self.assertEqual(Object.deserialize(msg), obj)
 
 
-# class SerializeBencodeTests(unittest.TestCase):
-#     def test_serialize_int(self) -> None:
-#         obj = Int(3)
-#         self.assertEqual(serialize(obj), b"d4:type3:Int5:valuei3ee")
-#
-#     def test_serialize_str(self) -> None:
-#         obj = String("abc")
-#         self.assertEqual(serialize(obj), b"d4:type6:String5:value3:abce")
-#
-#     def test_serialize_bytes(self) -> None:
-#         obj = Bytes(b"abc")
-#         self.assertEqual(serialize(obj), b"d4:type5:Bytes5:value3:abce")
-#
-#     def test_serialize_var(self) -> None:
-#         obj = Var("abc")
-#         self.assertEqual(serialize(obj), b"d4:name3:abc4:type3:Vare")
-#
-#     def test_serialize_symbol(self) -> None:
-#         obj = Symbol("abcd")
-#         self.assertEqual(serialize(obj), b"d4:type6:Symbol5:value4:abcde")
-#
-#     def test_serialize_function(self) -> None:
-#         obj = Function(Var("x"), Binop(BinopKind.ADD, Int(1), Var("x")))
-#         self.assertEqual(
-#             serialize(obj),
-#             b"d3:argd4:name1:x4:type3:Vare4:bodyd4:leftd4:type3:Int5:valuei1ee2:op3:ADD5:rightd4:name1:x4:type3:Vare4:type5:Binope4:type8:Functione",
-#         )
+class SerializeBencodeTests(unittest.TestCase):
+    def test_serialize_int(self) -> None:
+        obj = Int(3)
+        self.assertEqual(bencode(serialize(obj)), b"ld4:type3:Int5:valuei3eee")
+
+    def test_serialize_str(self) -> None:
+        obj = String("abc")
+        self.assertEqual(bencode(serialize(obj)), b"ld4:type6:String5:value3:abcee")
+
+    def test_serialize_bytes(self) -> None:
+        obj = Bytes(b"abc")
+        self.assertEqual(bencode(serialize(obj)), b"ld4:type5:Bytes5:value3:abcee")
+
+    def test_serialize_var(self) -> None:
+        obj = Var("abc")
+        self.assertEqual(bencode(serialize(obj)), b"ld4:name3:abc4:type3:Varee")
+
+    def test_serialize_symbol(self) -> None:
+        obj = Symbol("abcd")
+        self.assertEqual(bencode(serialize(obj)), b"ld4:type6:Symbol5:value4:abcdee")
+
+    def test_serialize_function(self) -> None:
+        obj = Function(Var("x"), Binop(BinopKind.ADD, Int(1), Var("x")))
+        self.assertEqual(
+            bencode(serialize(obj)),
+            b"ld3:argd5:indexi1e4:type3:Refe4:bodyd5:indexi2e4:type3:Refe4:type8:Functioned4:name1:x4:type3:Vared4:leftd5:indexi3e4:type3:Refe2:op3:ADD5:rightd5:indexi4e4:type3:Refe4:type5:Binoped4:type3:Int5:valuei1eed4:name1:x4:type3:Varee",
+        )
 
 
 class ScrapMonadTests(unittest.TestCase):

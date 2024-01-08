@@ -1376,14 +1376,11 @@ class Serializer:
         self.objs.append(obj)
         return result, False
 
-    def _serialize(self, obj: Object, **kwargs: object) -> Dict[bytes, object]:
-        return {
+    def _serialize(self, ref: Dict[bytes, object], obj: Object, **kwargs: object) -> Dict[bytes, object]:
+        result = {
             b"type": type(obj).__name__.encode("utf-8"),
             **{key.encode("utf-8"): value for key, value in kwargs.items()},
         }
-
-    def _serialize_ref(self, ref: Dict[bytes, object], obj: Object, **kwargs: object) -> Dict[bytes, object]:
-        result = self._serialize(obj, **kwargs)
         idx = ref[b"index"]
         assert isinstance(idx, int)
         assert not self.refs[idx]
@@ -1396,9 +1393,9 @@ class Serializer:
             return ref
         self.refs.append({})
         if isinstance(obj, Int):
-            return self._serialize_ref(ref, obj, value=obj.value)
+            return self._serialize(ref, obj, value=obj.value)
         if isinstance(obj, List):
-            return self._serialize_ref(ref, obj, items=[self.serialize(item) for item in obj.items])
+            return self._serialize(ref, obj, items=[self.serialize(item) for item in obj.items])
         raise NotImplementedError("serialize", type(obj))
 
 

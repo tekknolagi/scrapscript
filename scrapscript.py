@@ -1370,7 +1370,7 @@ def _refwrap(
         idx = self.seen.get(id(obj))
         if idx is not None:
             return {b"type": b"Ref", b"index": idx}
-        self.seen[id(obj)] = idx = len(self.seen)
+        self.seen[id(obj)] = idx = len(self.serialized)
         self.serialized.append({})
         assert not self.serialized[idx]
         self.serialized[idx] = f(self, obj)
@@ -1382,6 +1382,9 @@ def _refwrap(
 class Serializer:
     def __init__(self) -> None:
         self.serialized: typing.List[Dict[bytes, object]] = []
+        # Map of Object address to index in `self.serialized`. Using addresses
+        # is safe because we assume all Objects involved in serialization are
+        # live at least until serialization is complete.
         self.seen: typing.Dict[int, int] = {}
 
     def _serialize(self, obj: Object, **kwargs: object) -> Dict[bytes, object]:

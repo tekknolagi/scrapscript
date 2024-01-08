@@ -1368,11 +1368,13 @@ class Serializer:
         self.refs: typing.List[Dict[bytes, object]] = []
         self.objs: typing.List[Object] = []
 
-    def find_in_refs(self, obj: Object) -> Optional[Dict[bytes, object]]:
+    def ref(self, obj: Object) -> Tuple[Dict[bytes, object], bool]:
         for idx, other in enumerate(self.objs):
             if obj is other:
-                return {b"type": b"Ref", b"index": idx}
-        return None
+                return {b"type": b"Ref", b"index": idx}, True
+        result = {b"type": b"Ref", b"index": len(self.objs)}
+        self.objs.append(obj)
+        return result, False
 
     def _serialize(self, obj: Object, **kwargs: object) -> Dict[bytes, object]:
         return {
@@ -1388,12 +1390,10 @@ class Serializer:
         return ref
 
     def serialize(self, obj: Object) -> Dict[bytes, object]:
-        ref = self.find_in_refs(obj)
-        if ref:
+        ref, exists = self.ref(obj)
+        if exists:
             return ref
-        self.objs.append(obj)
         self.refs.append({})
-        ref = {b"type": b"Ref", b"index": len(self.objs) - 1}
         if isinstance(obj, Int):
             return self._serialize_ref(ref, obj, value=obj.value)
         if isinstance(obj, List):

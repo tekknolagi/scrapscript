@@ -1393,6 +1393,11 @@ class Serializer:
             **{key.encode("utf-8"): value for key, value in kwargs.items()},
         }
 
+    # A little bit of Python shenanigans to intercept function entry and exit.
+    # We memoize the function by keeping track of what Objects have already
+    # been serialized so as to 1) de-duplicate and b) serialize cycles with
+    # Refs. If your implementation language does not have cycles, you can put
+    # code at the begin and end of `serialize` and it will work just the same.
     @_refwrap
     def serialize(self, obj: Object) -> Dict[bytes, object]:
         if isinstance(obj, Int):

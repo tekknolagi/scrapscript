@@ -1345,6 +1345,7 @@ class Serializer:
         result = self._serialize(obj, **kwargs)
         idx = ref[b"index"]
         assert isinstance(idx, int)
+        assert not self.refs[idx]
         self.refs[idx] = result
         return ref
 

@@ -1363,6 +1363,25 @@ def serialize(obj: Object) -> bytes:
     return bencode(obj.serialize())
 
 
+def _refwrap(
+    f: Callable[["Serializer", Object], Dict[bytes, object]],
+) -> Callable[["Serializer", Object], Dict[bytes, object]]:
+    def inner(self: "Serializer", obj: Object) -> Dict[bytes, object]:
+        for idx, other in enumerate(self.seen):
+            if obj is other:
+                return {b"type": b"Ref", b"index": idx}
+        idx = len(self.seen)
+        self.seen.append(obj)
+        self.serialized.append({})
+        result = f(self, obj)
+        assert isinstance(idx, int)
+        assert not self.serialized[idx]
+        self.serialized[idx] = result
+        return {b"type": b"Ref", b"index": idx}
+
+    return inner
+
+
 class Serializer:
     def __init__(self) -> None:
         self.serialized: typing.List[Dict[bytes, object]] = []
@@ -1373,25 +1392,6 @@ class Serializer:
             b"type": type(obj).__name__.encode("utf-8"),
             **{key.encode("utf-8"): value for key, value in kwargs.items()},
         }
-
-    @staticmethod
-    def _refwrap(
-        f: Callable[["Serializer", Object], Dict[bytes, object]],
-    ) -> Callable[["Serializer", Object], Dict[bytes, object]]:
-        def inner(self: "Serializer", obj: Object) -> Dict[bytes, object]:
-            for idx, other in enumerate(self.seen):
-                if obj is other:
-                    return {b"type": b"Ref", b"index": idx}
-            idx = len(self.seen)
-            ref = {b"type": b"Ref", b"index": idx}
-            self.seen.append(obj)
-            self.serialized.append({})
-            result = f(self, obj)
-            assert not self.serialized[idx]
-            self.serialized[idx] = result
-            return ref
-
-        return inner
 
     @_refwrap
     def serialize(self, obj: Object) -> Dict[bytes, object]:

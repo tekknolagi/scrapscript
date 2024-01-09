@@ -1254,6 +1254,55 @@ def bencode(obj: object) -> bytes:
     raise NotImplementedError(f"bencode not implemented for {type(obj)}")
 
 
+class JSCompiler:
+    def __init__(self):
+        self.code: typing.List(str) = []
+
+    def compile(self, env: Env, exp: Object) -> str:
+        if isinstance(exp, Int):
+            return str(exp.value)
+        if isinstance(exp, Binop):
+            left = self.compile(env, exp.left)
+            right = self.compile(env, exp.right)
+            return f"({left})" + BinopKind.to_str(exp.op) + f"({right})"
+        if isinstance(exp, Var):
+            # assert exp.name in env
+            return exp.name
+        if isinstance(exp, Where):
+            binding = self.compile(env, exp.binding)
+            self.code.append(binding)
+            return self.compile(env, exp.body)
+        if isinstance(exp, Assign):
+            value = self.compile(env, exp.value)
+            self.code.append(f"const {exp.name.name} = {value};")
+            return ""
+        if isinstance(exp, Apply):
+            func = self.compile(env, exp.func)
+            arg = self.compile(env, exp.arg)
+            return f"({func})({arg})"
+        if isinstance(exp, Function):
+            arg = self.compile(env, exp.arg)
+            body = self.compile(env, exp.body)
+            return f"({arg}) => ({body})"
+        if isinstance(exp, List):
+            items = [self.compile(env, item) for item in exp.items]
+            return "[" + ", ".join(items) + "]"
+        if isinstance(exp, MatchFunction):
+            for case in exp.cases:
+                self.code.append(self.compile_match(exp.arg, case.pattern))
+            return ""
+        raise NotImplementedError(exp)
+
+    def compile_match(self, arg: Object, case: MatchCase) -> str:
+        pass
+
+
+def compile_exp_js(env: Env, exp: Object) -> str:
+    compiler = JSCompiler()
+    result = compiler.compile(env, exp)
+    return "\n".join(compiler.code) + result
+
+
 class Bdecoder:
     def __init__(self, msg: str) -> None:
         self.msg: str = msg
@@ -4156,6 +4205,52 @@ class PrettyPrintTests(unittest.TestCase):
     def test_pretty_print_symbol(self) -> None:
         obj = Symbol("x")
         self.assertEqual(str(obj), "#x")
+
+
+class JSCompilerTests(unittest.TestCase):
+    def test_compile_int(self) -> None:
+        exp = Int(123)
+        self.assertEqual(compile_exp_js({}, exp), "123")
+
+    def test_compile_binop_add(self) -> None:
+        exp = Binop(BinopKind.ADD, Int(3), Int(4))
+        self.assertEqual(compile_exp_js({}, exp), "(3)+(4)")
+
+    def test_compile_binop_rec(self) -> None:
+        exp = Binop(BinopKind.MUL, Binop(BinopKind.ADD, Int(3), Int(4)), Int(5))
+        self.assertEqual(compile_exp_js({}, exp), "((3)+(4))*(5)")
+
+    def test_compile_where(self) -> None:
+        exp = Where(Var("x"), Assign(Var("x"), Int(1)))
+        self.assertEqual(compile_exp_js({}, exp), "const x = 1;\nx")
+
+    def test_compile_nested_where(self) -> None:
+        exp = parse(tokenize("x + y . x = 1 . y = 2"))
+        self.assertEqual(compile_exp_js({}, exp), "const y = 2;\n\nconst x = 1;\n(x)+(y)")
+
+    def test_compile_apply(self) -> None:
+        exp = Apply(Var("f"), Var("x"))
+        self.assertEqual(compile_exp_js({}, exp), "(f)(x)")
+
+    def test_compile_apply_nested(self) -> None:
+        exp = Apply(Apply(Var("f"), Var("x")), Var("y"))
+        self.assertEqual(compile_exp_js({}, exp), "((f)(x))(y)")
+
+    def test_compile_function(self) -> None:
+        exp = Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(1)))
+        self.assertEqual(compile_exp_js({}, exp), "(x) => ((x)+(1))")
+
+    def test_compile_function_nested(self) -> None:
+        exp = parse(tokenize("x -> y -> x + y"))
+        self.assertEqual(compile_exp_js({}, exp), "(x) => ((y) => ((x)+(y)))")
+
+    def test_compile_list(self) -> None:
+        exp = List([Binop(BinopKind.ADD, Int(1), Int(2)), Binop(BinopKind.MUL, Int(3), Int(4))])
+        self.assertEqual(compile_exp_js({}, exp), "[(1)+(2), (3)*(4)]")
+
+    def test_compile_match_function(self) -> None:
+        exp = parse(tokenize("| 1 -> 2 | 2 -> 3 | _ -> 100"))
+        self.assertEqual(compile_exp_js({}, exp), None)
 
 
 def fetch(url: Object) -> Object:

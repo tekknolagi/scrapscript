@@ -1723,7 +1723,7 @@ class TokenizerTests(unittest.TestCase):
         l.read_char()
         self.assertEqual(l.line, "")
 
-    def read_one_sets_lineno(self) -> None:
+    def test_read_one_sets_lineno(self) -> None:
         l = Lexer("a b \n c d")
         a = l.read_one()
         b = l.read_one()

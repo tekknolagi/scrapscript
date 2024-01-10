@@ -1179,7 +1179,6 @@ def improve_closure(closure: Closure) -> Closure:
     return Closure(env, closure.func)
 
 
-# pylint: disable=redefined-builtin
 def eval_exp(env: Env, exp: Object) -> Object:
     logger.debug(exp)
     if isinstance(exp, (Int, Float, String, Bytes, Hole, Closure, NativeFunction, Symbol)):

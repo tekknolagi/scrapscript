@@ -4454,6 +4454,25 @@ class ScrapRepl(code.InteractiveConsole):
         return False
 
 
+class JSRepl(ScrapRepl):
+    def runsource(self, source: str, filename: str = "<input>", symbol: str = "single") -> bool:
+        try:
+            tokens = tokenize(source)
+            logger.debug("Tokens: %s", tokens)
+            ast = parse(tokens)
+            logger.debug("AST: %s", ast)
+            result = compile_exp_js(self.env, ast)
+            print(result)
+        except UnexpectedEOFError:
+            # Need to read more text
+            return True
+        except ParseError as e:
+            print(f"Parse error: {e}", file=sys.stderr)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+        return False
+
+
 def eval_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
@@ -4483,7 +4502,7 @@ def repl_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
-    repl = ScrapRepl()
+    repl = JSRepl() if args.js else ScrapRepl()
     if readline:
         repl.enable_readline()
     repl.interact(banner="")
@@ -4521,6 +4540,7 @@ def main() -> None:
     repl = subparsers.add_parser("repl")
     repl.set_defaults(func=repl_command)
     repl.add_argument("--debug", action="store_true")
+    repl.add_argument("--js", action="store_true")
 
     test = subparsers.add_parser("test")
     test.set_defaults(func=test_command)

@@ -1297,10 +1297,11 @@ class JSCompiler:
         if isinstance(exp, String):
             return repr(exp.value)
         if isinstance(exp, Access):
+            obj = self.compile(env, exp.obj)
             if isinstance(exp.at, Int):
-                return f"{exp.obj}[{exp.at}]"
+                return f"{obj}[{exp.at}]"
             assert isinstance(exp.at, Var)
-            return f"{exp.obj}.{exp.at}"
+            return f"{obj}.{exp.at}"
         if isinstance(exp, Record):
             result = "{"
             for key, rec_value in exp.data.items():
@@ -4314,6 +4315,10 @@ class JSCompilerTests(unittest.TestCase):
     def test_compile_access_field(self) -> None:
         exp = Access(Var("x"), Var("y"))
         self.assertEqual(compile_exp_js({}, exp), "x.y")
+
+    def test_compile_nested_access(self) -> None:
+        exp = Access(Access(Var("x"), Var("y")), Var("z"))
+        self.assertEqual(compile_exp_js({}, exp), "x.y.z")
 
     def test_compile_empty_record(self) -> None:
         exp = Record({})

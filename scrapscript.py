@@ -1301,6 +1301,11 @@ class JSCompiler:
                 return f"{exp.obj}[{exp.at}]"
             assert isinstance(exp.at, Var)
             return f"{exp.obj}.{exp.at}"
+        if isinstance(exp, Record):
+            result = "{"
+            for key, rec_value in exp.data.items():
+                result += repr(key) + ":" + self.compile(env, rec_value) + ","
+            return result + "}"
         raise NotImplementedError(type(exp), exp)
 
     def compile_match_case(self, env: Env, arg: str, case: MatchCase) -> Tuple[str, str]:
@@ -4309,6 +4314,14 @@ class JSCompilerTests(unittest.TestCase):
     def test_compile_access_field(self) -> None:
         exp = Access(Var("x"), Var("y"))
         self.assertEqual(compile_exp_js({}, exp), "x.y")
+
+    def test_compile_empty_record(self) -> None:
+        exp = Record({})
+        self.assertEqual(compile_exp_js({}, exp), "{}")
+
+    def test_compile_record(self) -> None:
+        exp = Record({"a": Int(1), "b": Int(2)})
+        self.assertEqual(compile_exp_js({}, exp), "{'a':1,'b':2,}")
 
 
 def fetch(url: Object) -> Object:

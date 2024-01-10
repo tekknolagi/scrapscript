@@ -1295,6 +1295,10 @@ class JSCompiler:
                 cond, body = self.compile_match_case(env, arg, case)
                 result += f"if ({cond}) {{ {body} }}\n"
             return result + "}"
+        if isinstance(exp, Symbol):
+            if exp.value in ("true", "false"):
+                return exp.value
+            return repr(exp.value)
         raise NotImplementedError(exp)
 
     def compile_match_case(self, env: Env, arg: str, case: MatchCase) -> Tuple[str, str]:
@@ -4271,6 +4275,18 @@ class JSCompilerTests(unittest.TestCase):
             compile_exp_js({}, exp),
             "(__x) => {\nif (__x === 1) { return 2; }\nif (true) { const x = __x; return x; }\n}",
         )
+
+    def test_compile_symbol_bool_true(self) -> None:
+        exp = Symbol("true")
+        self.assertEqual(compile_exp_js({}, exp), "true")
+
+    def test_compile_symbol_bool_false(self) -> None:
+        exp = Symbol("false")
+        self.assertEqual(compile_exp_js({}, exp), "false")
+
+    def test_compile_symbol(self) -> None:
+        exp = Symbol("hello")
+        self.assertEqual(compile_exp_js({}, exp), "'hello'")
 
 
 def fetch(url: Object) -> Object:

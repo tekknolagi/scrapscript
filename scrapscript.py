@@ -1266,8 +1266,11 @@ class JSCompiler:
             # assert exp.name in env
             return exp.name
         if isinstance(exp, Where):
-            binding = self.compile(env, exp.binding)
-            return binding + self.compile(env, exp.body)
+            binding = exp.binding
+            assert isinstance(binding, Assign)
+            body = self.compile(env, exp.body)
+            name, value = binding.name, self.compile(env, binding.value)
+            return f"(({name}) => ({body}))({value})"
         if isinstance(exp, Assign):
             value = self.compile(env, exp.value)
             return f"const {exp.name.name} = {value};\n"
@@ -4245,11 +4248,11 @@ class JSCompilerTests(unittest.TestCase):
 
     def test_compile_where(self) -> None:
         exp = Where(Var("x"), Assign(Var("x"), Int(1)))
-        self.assertEqual(compile_exp_js({}, exp), "const x = 1;\nx")
+        self.assertEqual(compile_exp_js({}, exp), "((x) => (x))(1)")
 
     def test_compile_nested_where(self) -> None:
         exp = parse(tokenize("x + y . x = 1 . y = 2"))
-        self.assertEqual(compile_exp_js({}, exp), "const y = 2;\nconst x = 1;\n(x)+(y)")
+        self.assertEqual(compile_exp_js({}, exp), "((y) => (((x) => ((x)+(y)))(1)))(2)")
 
     def test_compile_apply(self) -> None:
         exp = Apply(Var("f"), Var("x"))

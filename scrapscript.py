@@ -1294,7 +1294,9 @@ class JSCompiler:
             if exp.value in ("true", "false"):
                 return exp.value
             return repr(exp.value)
-        raise NotImplementedError(exp)
+        if isinstance(exp, String):
+            return repr(exp.value)
+        raise NotImplementedError(type(exp), exp)
 
     def compile_match_case(self, env: Env, arg: str, case: MatchCase) -> Tuple[str, str]:
         pattern = case.pattern
@@ -4282,6 +4284,18 @@ class JSCompilerTests(unittest.TestCase):
     def test_compile_symbol(self) -> None:
         exp = Symbol("hello")
         self.assertEqual(compile_exp_js({}, exp), "'hello'")
+
+    def test_compile_string(self) -> None:
+        exp = String("hello")
+        self.assertEqual(compile_exp_js({}, exp), "'hello'")
+
+    def test_compile_string_single_quotes(self) -> None:
+        exp = String("'hello'")
+        self.assertEqual(compile_exp_js({}, exp), "\"'hello'\"")
+
+    def test_compile_string_double_quotes(self) -> None:
+        exp = String('"hello"')
+        self.assertEqual(compile_exp_js({}, exp), "'\"hello\"'")
 
 
 def fetch(url: Object) -> Object:

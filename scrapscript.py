@@ -4,6 +4,7 @@ import base64
 import code
 import dataclasses
 import enum
+import functools
 import http.server
 import json
 import logging
@@ -1284,13 +1285,21 @@ class JSCompiler:
             items = [self.compile(env, item) for item in exp.items]
             return "[" + ", ".join(items) + "]"
         if isinstance(exp, MatchFunction):
+            err = "(() => {throw 'oh no'})()"
+            if not exp.cases:
+                return err
             # TODO(max): Gensym arg name or something
             arg = "__x"
-            result = f"({arg}) => {{\n"
-            for case in exp.cases:
+
+            def per_case(acc: str, case: MatchCase) -> str:
                 cond, body = self.compile_match_case(env, arg, case)
-                result += f"if ({cond}) {{ {body} }}\n"
-            return result + "}"
+                return f"({cond}) ? ({body}) : ({acc})"
+
+            return f"({arg}) => " + functools.reduce(
+                per_case,
+                reversed(exp.cases),
+                err,
+            )
         if isinstance(exp, Symbol):
             if exp.value in ("true", "false"):
                 return exp.value
@@ -1318,11 +1327,10 @@ class JSCompiler:
     def compile_match_case(self, env: Env, arg: str, case: MatchCase) -> Tuple[str, str]:
         pattern = case.pattern
         body = case.body
-        ret: Callable[[str], str] = lambda body: f"return {body};"
         if isinstance(pattern, Int):
-            return f"{arg} === {pattern.value}", ret(self.compile(env, body))
+            return f"{arg} === {pattern.value}", self.compile(env, body)
         if isinstance(pattern, Var):
-            return "true", ret(self.compile_let(env, pattern.name, Var(arg), body))
+            return "true", self.compile_let(env, pattern.name, Var(arg), body)
         raise NotImplementedError(type(pattern))
 
 
@@ -4280,14 +4288,14 @@ class JSCompilerTests(unittest.TestCase):
     def test_compile_match_function(self) -> None:
         exp = parse(tokenize("| 1 -> 2 | 2 -> 3"))
         self.assertEqual(
-            compile_exp_js({}, exp), "(__x) => {\nif (__x === 1) { return 2; }\nif (__x === 2) { return 3; }\n}"
+            compile_exp_js({}, exp), "(__x) => (__x === 1) ? (2) : ((__x === 2) ? (3) : ((() => {throw 'oh no'})()))"
         )
 
     def test_compile_match_function_var(self) -> None:
         exp = parse(tokenize("| 1 -> 2 | x -> x"))
         self.assertEqual(
             compile_exp_js({}, exp),
-            "(__x) => {\nif (__x === 1) { return 2; }\nif (true) { return ((x) => (x))(__x); }\n}",
+            "(__x) => (__x === 1) ? (2) : ((true) ? (((x) => (x))(__x)) : ((() => {throw 'oh no'})()))",
         )
 
     def test_compile_symbol_bool_true(self) -> None:

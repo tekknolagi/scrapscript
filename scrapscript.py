@@ -1322,7 +1322,7 @@ class JSCompiler:
         if isinstance(pattern, Int):
             return f"{arg} === {pattern.value}", ret(self.compile(env, body))
         if isinstance(pattern, Var):
-            return "true", self.compile_let(env, pattern.name, Var(arg), body)
+            return "true", ret(self.compile_let(env, pattern.name, Var(arg), body))
         raise NotImplementedError(type(pattern))
 
 
@@ -4287,7 +4287,7 @@ class JSCompilerTests(unittest.TestCase):
         exp = parse(tokenize("| 1 -> 2 | x -> x"))
         self.assertEqual(
             compile_exp_js({}, exp),
-            "(__x) => {\nif (__x === 1) { return 2; }\nif (true) { ((x) => (x))(__x) }\n}",
+            "(__x) => {\nif (__x === 1) { return 2; }\nif (true) { return ((x) => (x))(__x); }\n}",
         )
 
     def test_compile_symbol_bool_true(self) -> None:

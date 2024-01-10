@@ -1255,9 +1255,6 @@ def bencode(obj: object) -> bytes:
 
 
 class JSCompiler:
-    def __init__(self) -> None:
-        self.code: typing.List[str] = []
-
     def compile(self, env: Env, exp: Object) -> str:
         if isinstance(exp, Int):
             return str(exp.value)
@@ -1270,12 +1267,10 @@ class JSCompiler:
             return exp.name
         if isinstance(exp, Where):
             binding = self.compile(env, exp.binding)
-            self.code.append(binding)
-            return self.compile(env, exp.body)
+            return binding + self.compile(env, exp.body)
         if isinstance(exp, Assign):
             value = self.compile(env, exp.value)
-            self.code.append(f"const {exp.name.name} = {value};")
-            return ""
+            return f"const {exp.name.name} = {value};\n"
         if isinstance(exp, Apply):
             func = self.compile(env, exp.func)
             arg = self.compile(env, exp.arg)
@@ -1315,7 +1310,7 @@ class JSCompiler:
 def compile_exp_js(env: Env, exp: Object) -> str:
     compiler = JSCompiler()
     result = compiler.compile(env, exp)
-    return "\n".join(compiler.code) + result
+    return result
 
 
 class Bdecoder:
@@ -4241,7 +4236,7 @@ class JSCompilerTests(unittest.TestCase):
 
     def test_compile_nested_where(self) -> None:
         exp = parse(tokenize("x + y . x = 1 . y = 2"))
-        self.assertEqual(compile_exp_js({}, exp), "const y = 2;\n\nconst x = 1;\n(x)+(y)")
+        self.assertEqual(compile_exp_js({}, exp), "const y = 2;\nconst x = 1;\n(x)+(y)")
 
     def test_compile_apply(self) -> None:
         exp = Apply(Var("f"), Var("x"))

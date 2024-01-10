@@ -1255,8 +1255,8 @@ def bencode(obj: object) -> bytes:
 
 
 class JSCompiler:
-    def __init__(self):
-        self.code: typing.List(str) = []
+    def __init__(self) -> None:
+        self.code: typing.List[str] = []
 
     def compile(self, env: Env, exp: Object) -> str:
         if isinstance(exp, Int):
@@ -1288,13 +1288,24 @@ class JSCompiler:
             items = [self.compile(env, item) for item in exp.items]
             return "[" + ", ".join(items) + "]"
         if isinstance(exp, MatchFunction):
+            # TODO(max): Gensym arg name or something
+            arg = "__x"
+            result = f"({arg}) => {{\n"
             for case in exp.cases:
-                self.code.append(self.compile_match(exp.arg, case.pattern))
-            return ""
+                cond, body = self.compile_match_case(env, arg, case)
+                result += f"if ({cond}) {{ {body} }}\n"
+            return result + "}"
         raise NotImplementedError(exp)
 
-    def compile_match(self, arg: Object, case: MatchCase) -> str:
-        pass
+    def compile_match_case(self, env: Env, arg: str, case: MatchCase) -> Tuple[str, str]:
+        pattern = case.pattern
+        body = case.body
+        ret: Callable[[str], str] = lambda body: f"return {body};"
+        if isinstance(pattern, Int):
+            return f"{arg} === {pattern.value}", ret(self.compile(env, body))
+        if isinstance(pattern, Var):
+            return "true", f"const {pattern.name} = {arg}; " + ret(self.compile(env, body))
+        raise NotImplementedError(type(pattern))
 
 
 def compile_exp_js(env: Env, exp: Object) -> str:
@@ -4249,8 +4260,17 @@ class JSCompilerTests(unittest.TestCase):
         self.assertEqual(compile_exp_js({}, exp), "[(1)+(2), (3)*(4)]")
 
     def test_compile_match_function(self) -> None:
-        exp = parse(tokenize("| 1 -> 2 | 2 -> 3 | _ -> 100"))
-        self.assertEqual(compile_exp_js({}, exp), None)
+        exp = parse(tokenize("| 1 -> 2 | 2 -> 3"))
+        self.assertEqual(
+            compile_exp_js({}, exp), "(__x) => {\nif (__x === 1) { return 2; }\nif (__x === 2) { return 3; }\n}"
+        )
+
+    def test_compile_match_function_var(self) -> None:
+        exp = parse(tokenize("| 1 -> 2 | x -> x"))
+        self.assertEqual(
+            compile_exp_js({}, exp),
+            "(__x) => {\nif (__x === 1) { return 2; }\nif (true) { const x = __x; return x; }\n}",
+        )
 
 
 def fetch(url: Object) -> Object:

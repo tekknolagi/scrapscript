@@ -1296,6 +1296,11 @@ class JSCompiler:
             return repr(exp.value)
         if isinstance(exp, String):
             return repr(exp.value)
+        if isinstance(exp, Access):
+            if isinstance(exp.at, Int):
+                return f"{exp.obj}[{exp.at}]"
+            assert isinstance(exp.at, Var)
+            return f"{exp.obj}.{exp.at}"
         raise NotImplementedError(type(exp), exp)
 
     def compile_match_case(self, env: Env, arg: str, case: MatchCase) -> Tuple[str, str]:
@@ -4296,6 +4301,14 @@ class JSCompilerTests(unittest.TestCase):
     def test_compile_string_double_quotes(self) -> None:
         exp = String('"hello"')
         self.assertEqual(compile_exp_js({}, exp), "'\"hello\"'")
+
+    def test_compile_access_int(self) -> None:
+        exp = Access(Var("x"), Int(1))
+        self.assertEqual(compile_exp_js({}, exp), "x[1]")
+
+    def test_compile_access_field(self) -> None:
+        exp = Access(Var("x"), Var("y"))
+        self.assertEqual(compile_exp_js({}, exp), "x.y")
 
 
 def fetch(url: Object) -> Object:

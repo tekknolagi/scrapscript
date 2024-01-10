@@ -1268,9 +1268,7 @@ class JSCompiler:
         if isinstance(exp, Where):
             binding = exp.binding
             assert isinstance(binding, Assign)
-            body = self.compile(env, exp.body)
-            name, value = binding.name, self.compile(env, binding.value)
-            return f"(({name}) => ({body}))({value})"
+            return self.compile_let(env, binding.name.name, binding.value, exp.body)
         if isinstance(exp, Assign):
             value = self.compile(env, exp.value)
             return f"const {exp.name.name} = {value};\n"
@@ -1312,6 +1310,11 @@ class JSCompiler:
             return result + "}"
         raise NotImplementedError(type(exp), exp)
 
+    def compile_let(self, env: Env, name: str, value: Object, body: Object) -> str:
+        body_str = self.compile(env, body)
+        value_str = self.compile(env, value)
+        return f"(({name}) => ({body_str}))({value_str})"
+
     def compile_match_case(self, env: Env, arg: str, case: MatchCase) -> Tuple[str, str]:
         pattern = case.pattern
         body = case.body
@@ -1319,7 +1322,7 @@ class JSCompiler:
         if isinstance(pattern, Int):
             return f"{arg} === {pattern.value}", ret(self.compile(env, body))
         if isinstance(pattern, Var):
-            return "true", f"const {pattern.name} = {arg}; " + ret(self.compile(env, body))
+            return "true", self.compile_let(env, pattern.name, Var(arg), body)
         raise NotImplementedError(type(pattern))
 
 
@@ -4284,7 +4287,7 @@ class JSCompilerTests(unittest.TestCase):
         exp = parse(tokenize("| 1 -> 2 | x -> x"))
         self.assertEqual(
             compile_exp_js({}, exp),
-            "(__x) => {\nif (__x === 1) { return 2; }\nif (true) { const x = __x; return x; }\n}",
+            "(__x) => {\nif (__x === 1) { return 2; }\nif (true) { ((x) => (x))(__x) }\n}",
         )
 
     def test_compile_symbol_bool_true(self) -> None:

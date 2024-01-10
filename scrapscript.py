@@ -1164,7 +1164,7 @@ def free_in(exp: Object) -> Set[str]:
         return free_in(exp.func) | free_in(exp.arg)
     if isinstance(exp, Where):
         assert isinstance(exp.binding, Assign)
-        return free_in(exp.body) | free_in(exp.binding)  # | {exp.binding.name.name}
+        return (free_in(exp.body) - {exp.binding.name.name}) | free_in(exp.binding)
     if isinstance(exp, Assign):
         return free_in(exp.value)
     if isinstance(exp, Closure):
@@ -3482,96 +3482,83 @@ class EndToEndTests(EndToEndTestsBase):
 
 
 class ClosureOptimizeTests(unittest.TestCase):
-    def _run(self, exp: Object, start_env_keys: Set[str], expected_keys: Set[str]) -> None:
-        start_env = {key: Int(1) for key in start_env_keys}
-        # TODO(max): Perhaps just test free_in separately
-        if isinstance(exp, (Function, MatchFunction)):
-            closure = Closure(start_env, exp)
-        else:
-            closure = Closure(start_env, Function(Var("_"), exp))
-        improved = improve_closure(closure)
-        self.assertEqual(closure.env, start_env)
-        self.assertIsInstance(improved, Closure)
-        if isinstance(exp, (Function, MatchFunction)):
-            self.assertIs(improved.func, exp)
-        else:
-            self.assertIs(improved.func.body, exp)
-        self.assertEqual(set(improved.env.keys()), expected_keys)
-
     def test_int(self) -> None:
-        self._run(Int(1), {"x"}, set())
+        self.assertEqual(free_in(Int(1)), set())
 
     def test_float(self) -> None:
-        self._run(Float(1.0), {"x"}, set())
+        self.assertEqual(free_in(Float(1.0)), set())
 
     def test_string(self) -> None:
-        self._run(String("x"), {"x"}, set())
+        self.assertEqual(free_in(String("x")), set())
 
     def test_bytes(self) -> None:
-        self._run(Bytes(b"x"), {"x"}, set())
+        self.assertEqual(free_in(Bytes(b"x")), set())
 
     def test_hole(self) -> None:
-        self._run(Hole(), {"x"}, set())
+        self.assertEqual(free_in(Hole()), set())
 
     def test_nativefunction(self) -> None:
-        self._run(NativeFunction("id", lambda x: x), {"id"}, set())
+        self.assertEqual(free_in(NativeFunction("id", lambda x: x)), set())
 
     def test_symbol(self) -> None:
-        self._run(Symbol("x"), {"x"}, set())
+        self.assertEqual(free_in(Symbol("x")), set())
 
     def test_var(self) -> None:
-        self._run(Var("x"), {"x", "y"}, {"x"})
+        self.assertEqual(free_in(Var("x")), {"x"})
 
     def test_binop(self) -> None:
-        self._run(Binop(BinopKind.ADD, Var("x"), Var("y")), {"x", "y", "z"}, {"x", "y"})
+        self.assertEqual(free_in(Binop(BinopKind.ADD, Var("x"), Var("y"))), {"x", "y"})
 
     def test_empty_list(self) -> None:
-        self._run(List([]), {"x", "y", "z"}, set())
+        self.assertEqual(free_in(List([])), set())
 
     def test_list(self) -> None:
-        self._run(List([Var("x"), Var("y")]), {"x", "y", "z"}, {"x", "y"})
+        self.assertEqual(free_in(List([Var("x"), Var("y")])), {"x", "y"})
 
     def test_function(self) -> None:
         exp = parse(tokenize("x -> x + y"))
-        self._run(exp, {"x", "y"}, {"y"})
+        self.assertEqual(free_in(exp), {"y"})
 
     def test_nested_function(self) -> None:
         exp = parse(tokenize("x -> y -> x + y + z"))
-        self._run(exp, {"x", "y", "z"}, {"z"})
+        self.assertEqual(free_in(exp), {"z"})
 
     def test_match_function(self) -> None:
         exp = parse(tokenize("| 1 -> x | 2 -> y | x -> 3 | z -> 4"))
-        self._run(exp, {"x", "y", "z"}, {"x", "y"})
+        self.assertEqual(free_in(exp), {"x", "y"})
 
     def test_match_case_int(self) -> None:
         exp = MatchCase(Int(1), Var("x"))
-        self._run(exp, {"x", "y"}, {"x"})
+        self.assertEqual(free_in(exp), {"x"})
 
     def test_match_case_var(self) -> None:
         exp = MatchCase(Var("x"), Binop(BinopKind.ADD, Var("x"), Var("y")))
-        self._run(exp, {"x", "y"}, {"y"})
+        self.assertEqual(free_in(exp), {"y"})
 
     def test_apply(self) -> None:
-        self._run(Apply(Var("x"), Var("y")), {"x", "y", "z"}, {"x", "y"})
+        self.assertEqual(free_in(Apply(Var("x"), Var("y"))), {"x", "y"})
 
-    @unittest.skip("TODO: figure out why it's failing")
     def test_where(self) -> None:
         exp = parse(tokenize("x . x = 1"))
-        self._run(exp, {"x", "y"}, set())
+        self.assertEqual(free_in(exp), set())
+
+    def test_where_same_name(self) -> None:
+        exp = parse(tokenize("x . x = x+y"))
+        self.assertEqual(free_in(exp), {"x", "y"})
 
     def test_assign(self) -> None:
         exp = Assign(Var("x"), Int(1))
-        self._run(exp, {"x", "y"}, set())
+        self.assertEqual(free_in(exp), set())
 
     def test_assign_same_name(self) -> None:
         exp = Assign(Var("x"), Var("x"))
-        self._run(exp, {"x", "y"}, {"x"})
+        self.assertEqual(free_in(exp), {"x"})
 
     def test_closure(self) -> None:
         # TODO(max): Should x be considered free in the closure if it's in the
         # env?
         exp = Closure({"x": Int(1)}, Function(Var("_"), List([Var("x"), Var("y")])))
-        self._run(exp, {"x", "y", "z"}, {"x", "y"})
+        self.assertEqual(free_in(exp), {"x", "y"})
 
 
 class StdLibTests(EndToEndTestsBase):

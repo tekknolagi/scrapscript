@@ -4,19 +4,22 @@ import base64
 import code
 import dataclasses
 import enum
+import http.server
 import json
 import logging
 import os
 import re
+import socketserver
 import sys
 import tempfile
 import typing
 import unittest
 import urllib.request
+import urllib.parse
 from dataclasses import dataclass
 from enum import auto
-from types import ModuleType, FunctionType
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Union
+from types import FunctionType, ModuleType
+from typing import Any, Callable, Dict, Mapping, Optional, Set, Tuple, Union
 
 readline: Optional[ModuleType]
 try:
@@ -38,8 +41,13 @@ class Token:
 
 
 @dataclass(eq=True)
-class NumLit(Token):
+class IntLit(Token):
     value: int
+
+
+@dataclass(eq=True)
+class FloatLit(Token):
+    value: float
 
 
 @dataclass(eq=True)
@@ -106,6 +114,11 @@ class Juxt(Token):
 
 
 @dataclass(eq=True)
+class SymbolToken(Token):
+    value: str
+
+
+@dataclass(eq=True)
 class EOF(Token):
     pass
 
@@ -157,6 +170,13 @@ class Lexer:
                 self.read_comment()
                 return self.read_one()
             return self.read_op(c)
+        if c == "#":
+            value = self.read_one()
+            if isinstance(value, EOF):
+                raise UnexpectedEOFError("while reading symbol")
+            if not isinstance(value, Name):
+                raise ParseError(f"expected name after #, got {value!r}")
+            return self.make_token(SymbolToken, value.value)
         if c == "~":
             if self.has_input() and self.peek_char() == "~":
                 self.read_char()
@@ -195,11 +215,23 @@ class Lexer:
             pass
 
     def read_number(self, first_digit: str) -> Token:
+        # TODO: Support floating point numbers with no integer part
         buf = first_digit
-        while self.has_input() and (c := self.peek_char()).isdigit():
+        has_decimal = False
+        while self.has_input():
+            c = self.peek_char()
+            if c == ".":
+                if has_decimal:
+                    raise ParseError(f"unexpected token {c!r}")
+                has_decimal = True
+            elif not c.isdigit():
+                break
             self.read_char()
             buf += c
-        return self.make_token(NumLit, int(buf))
+
+        if has_decimal:
+            return self.make_token(FloatLit, float(buf))
+        return self.make_token(IntLit, int(buf))
 
     def _starts_operator(self, buf: str) -> bool:
         # TODO(max): Rewrite using trie
@@ -326,6 +358,8 @@ class UnexpectedEOFError(ParseError):
 
 def parse_assign(tokens: typing.List[Token], p: float = 0) -> "Assign":
     assign = parse(tokens, p)
+    if isinstance(assign, Spread):
+        return Assign(Var("..."), assign)
     if not isinstance(assign, Assign):
         raise ParseError("failed to parse variable assignment in record constructor")
     return assign
@@ -336,8 +370,10 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         raise UnexpectedEOFError("unexpected end of input")
     token = tokens.pop(0)
     l: Object
-    if isinstance(token, NumLit):
+    if isinstance(token, IntLit):
         l = Int(token.value)
+    elif isinstance(token, FloatLit):
+        l = Float(token.value)
     elif isinstance(token, Name):
         sha_prefix = "$sha1'"
         if token.value.startswith(sha_prefix):
@@ -346,6 +382,8 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         else:
             # TODO: Handle kebab case vars
             l = Var(token.value)
+    elif isinstance(token, SymbolToken):
+        l = Symbol(token.value)
     elif isinstance(token, BytesLit):
         base = token.base
         if base == 85:
@@ -360,6 +398,13 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
             raise ParseError(f"unexpected base {base!r} in {token!r}")
     elif isinstance(token, StringLit):
         l = String(token.value)
+    elif token == Operator("..."):
+        if tokens and isinstance(tokens[0], Name):
+            name = tokens[0].value
+            tokens.pop(0)
+            l = Spread(name)
+        else:
+            l = Spread()
     elif token == Operator("|"):
         expr = parse(tokens, PS["|"].pr)  # TODO: make this work for larger arities
         if not isinstance(expr, Function):
@@ -386,7 +431,9 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         else:
             l.items.append(parse(tokens, 2))
             while not isinstance(tokens.pop(0), RightBracket):
-                # TODO: Implement .. and ... operators
+                if isinstance(l.items[-1], Spread):
+                    raise ParseError("spread must come at end of list match")
+                # TODO: Implement .. operator
                 l.items.append(parse(tokens, 2))
     elif isinstance(token, LeftBrace):
         l = Record({})
@@ -397,7 +444,9 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
             assign = parse_assign(tokens, 2)
             l.data[assign.name.name] = assign.value
             while not isinstance(tokens.pop(0), RightBrace):
-                # TODO: Implement .. and ... operators
+                if isinstance(assign.value, Spread):
+                    raise ParseError("spread must come at end of record match")
+                # TODO: Implement .. operator
                 assign = parse_assign(tokens, 2)
                 l.data[assign.name.name] = assign.value
     elif token == Operator("-"):
@@ -511,6 +560,9 @@ class Object:
         assert isinstance(result, Object)
         return result
 
+    def __str__(self) -> str:
+        raise NotImplementedError("__str__ not implemented for superclass Object")
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Int(Object):
@@ -524,6 +576,24 @@ class Int(Object):
         assert msg["type"] == "Int"
         assert isinstance(msg["value"], int)
         return Int(msg["value"])
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Float(Object):
+    value: float
+
+    def serialize(self) -> Dict[bytes, object]:
+        raise NotImplementedError("serialization for Float is not supported")
+
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Float":
+        raise NotImplementedError("serialization for Float is not supported")
+
+    def __str__(self) -> str:
+        return str(self.value)
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -539,6 +609,10 @@ class String(Object):
         assert isinstance(msg["value"], str)
         return String(msg["value"])
 
+    def __str__(self) -> str:
+        # TODO: handle nested quotes
+        return f'"{self.value}"'
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Bytes(Object):
@@ -552,6 +626,9 @@ class Bytes(Object):
         assert msg["type"] == "Bytes"
         assert isinstance(msg["value"], bytes)
         return Bytes(msg["value"])
+
+    def __str__(self) -> str:
+        return f"~~{base64.b64encode(self.value).decode()}"
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -567,7 +644,6 @@ class Var(Object):
         assert isinstance(msg["name"], str)
         return Var(msg["name"])
 
-
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class HashVar(Object):
     name: str
@@ -580,6 +656,10 @@ class HashVar(Object):
         assert msg["type"] == "HashVar"
         assert isinstance(msg["name"], str)
         return HashVar(msg["name"])
+
+    def __str__(self) -> str:
+        return self.name
+
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -595,10 +675,18 @@ class Bool(Object):
         assert isinstance(msg["value"], int)
         return Bool(bool(msg["value"]))
 
-
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Hole(Object):
-    pass
+    def __str__(self) -> str:
+        return "()"
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Spread(Object):
+    name: Optional[str] = None
+
+    def __str__(self) -> str:
+        return "..." if self.name is None else f"...{self.name}"
 
 
 Env = Mapping[str, Object]
@@ -609,6 +697,7 @@ class BinopKind(enum.Enum):
     SUB = auto()
     MUL = auto()
     DIV = auto()
+    FLOOR_DIV = auto()
     EXP = auto()
     MOD = auto()
     EQUAL = auto()
@@ -634,6 +723,7 @@ class BinopKind(enum.Enum):
             "-": cls.SUB,
             "*": cls.MUL,
             "/": cls.DIV,
+            "//": cls.FLOOR_DIV,
             "^": cls.EXP,
             "%": cls.MOD,
             "==": cls.EQUAL,
@@ -652,6 +742,32 @@ class BinopKind(enum.Enum):
             "|>": cls.PIPE,
             "<|": cls.REVERSE_PIPE,
         }[x]
+
+    @classmethod
+    def to_str(cls, binop_kind: "BinopKind") -> str:
+        return {
+            cls.ADD: "+",
+            cls.SUB: "-",
+            cls.MUL: "*",
+            cls.DIV: "/",
+            cls.EXP: "^",
+            cls.MOD: "%",
+            cls.EQUAL: "==",
+            cls.NOT_EQUAL: "/=",
+            cls.LESS: "<",
+            cls.GREATER: ">",
+            cls.LESS_EQUAL: "<=",
+            cls.GREATER_EQUAL: ">=",
+            cls.BOOL_AND: "&&",
+            cls.BOOL_OR: "||",
+            cls.STRING_CONCAT: "++",
+            cls.LIST_CONS: ">+",
+            cls.LIST_APPEND: "+<",
+            cls.RIGHT_EVAL: "!",
+            cls.HASTYPE: ":",
+            cls.PIPE: "|>",
+            cls.REVERSE_PIPE: "<|",
+        }[binop_kind]
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -683,6 +799,9 @@ class Binop(Object):
         right = Object.deserialize(right_obj)
         return Binop(op, left, right)
 
+    def __str__(self) -> str:
+        return f"{self.left} {BinopKind.to_str(self.op)} {self.right}"
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class List(Object):
@@ -691,11 +810,18 @@ class List(Object):
     def serialize(self) -> Dict[bytes, object]:
         return {b"type": b"List", b"items": [item.serialize() for item in self.items]}
 
+    def __str__(self) -> str:
+        inner = ", ".join(str(item) for item in self.items)
+        return f"[{inner}]"
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Assign(Object):
     name: Var
     value: Object
+
+    def __str__(self) -> str:
+        return f"{self.name} = {self.value}"
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -703,11 +829,19 @@ class Function(Object):
     arg: Object
     body: Object
 
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Function
+        return self.__repr__()
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Apply(Object):
     func: Object
     arg: Object
+
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Apply
+        return self.__repr__()
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -715,17 +849,29 @@ class Compose(Object):
     inner: Object
     outer: Object
 
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Compose
+        return self.__repr__()
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Where(Object):
     body: Object
     binding: Object
 
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Where
+        return self.__repr__()
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Assert(Object):
     value: Object
     cond: Object
+
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Assert
+        return self.__repr__()
 
 
 def serialize_env(env: Env) -> Dict[bytes, object]:
@@ -751,11 +897,18 @@ class EnvObject(Object):
         env = deserialize_env(env_obj)
         return EnvObject(env)
 
+    def __str__(self) -> str:
+        return f"EnvObject(keys={self.env.keys()})"
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class MatchCase(Object):
     pattern: Object
     body: Object
+
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for MatchCase
+        return self.__repr__()
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -765,6 +918,10 @@ class MatchFunction(Object):
     def serialize(self) -> Dict[bytes, object]:
         return self._serialize(cases=[case.serialize() for case in self.cases])
 
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for MatchFunction
+        return self.__repr__()
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Relocation(Object):
@@ -772,6 +929,10 @@ class Relocation(Object):
 
     def serialize(self) -> Dict[bytes, object]:
         return self._serialize(name=self.name.encode("utf-8"))
+
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Relocation
+        return self.__repr__()
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -788,6 +949,10 @@ class NativeFunctionRelocation(Relocation):
         assert isinstance(result, NativeFunction)
         return result
 
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for NativeFunctionRelocation
+        return self.__repr__()
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class NativeFunction(Object):
@@ -796,6 +961,10 @@ class NativeFunction(Object):
 
     def serialize(self) -> Dict[bytes, object]:
         return NativeFunctionRelocation(self.name).serialize()
+
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for NativeFunction
+        return f"NativeFunction(name={self.name})"
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -818,6 +987,10 @@ class Closure(Object):
         assert isinstance(func, (Function, MatchFunction))
         return Closure(env, func)
 
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Closure
+        return self.__repr__()
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Record(Object):
@@ -834,22 +1007,48 @@ class Record(Object):
         data = {key: Object.deserialize(value) for key, value in data_obj.items()}
         return Record(data)
 
+    def __str__(self) -> str:
+        inner = ", ".join(f"{k} = {self.data[k]}" for k in self.data)
+        return f"{{{inner}}}"
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Access(Object):
     obj: Object
     at: Object
 
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Access
+        return self.__repr__()
 
-def unpack_int(obj: Object) -> int:
-    if not isinstance(obj, Int):
-        raise TypeError(f"expected Int, got {type(obj).__name__}")
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Symbol(Object):
+    value: str
+
+    def serialize(self) -> Dict[bytes, object]:
+        return self._serialize(value=self.value.encode("utf-8"))
+
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Symbol":
+        assert msg["type"] == "Symbol"
+        value_obj = msg["value"]
+        assert isinstance(value_obj, str)
+        return Symbol(value_obj)
+
+    def __str__(self) -> str:
+        return f"#{self.value}"
+
+
+def unpack_number(obj: Object) -> Union[int, float]:
+    if not isinstance(obj, (Int, Float)):
+        raise TypeError(f"expected Int or Float, got {type(obj).__name__}")
     return obj.value
 
 
-def eval_int(env: Env, exp: Object) -> int:
+def eval_number(env: Env, exp: Object) -> Union[int, float]:
     result = eval_exp(env, exp)
-    return unpack_int(result)
+    return unpack_number(result)
 
 
 def eval_str(env: Env, exp: Object) -> str:
@@ -861,9 +1060,9 @@ def eval_str(env: Env, exp: Object) -> str:
 
 def eval_bool(env: Env, exp: Object) -> bool:
     result = eval_exp(env, exp)
-    if not isinstance(result, Bool):
-        raise TypeError(f"expected Bool, got {type(result).__name__}")
-    return result.value
+    if isinstance(result, Symbol) and result.value in ("true", "false"):
+        return result.value == "true"
+    raise TypeError(f"expected #true or #false, got {type(result).__name__}")
 
 
 def eval_list(env: Env, exp: Object) -> typing.List[Object]:
@@ -873,21 +1072,36 @@ def eval_list(env: Env, exp: Object) -> typing.List[Object]:
     return result.items
 
 
+def make_bool(x: bool) -> Object:
+    return Symbol("true" if x else "false")
+
+
+def wrap_inferred_number_type(x: Union[int, float]) -> Object:
+    # TODO: Since this is intended to be a reference implementation
+    # we should avoid relying heavily on Python's implementation of
+    # arithmetic operations, type inference, and multiple dispatch.
+    # Update this to make the interpreter more language agnostic.
+    if isinstance(x, int):
+        return Int(x)
+    return Float(x)
+
+
 BINOP_HANDLERS: Dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
-    BinopKind.ADD: lambda env, x, y: Int(eval_int(env, x) + eval_int(env, y)),
-    BinopKind.SUB: lambda env, x, y: Int(eval_int(env, x) - eval_int(env, y)),
-    BinopKind.MUL: lambda env, x, y: Int(eval_int(env, x) * eval_int(env, y)),
-    BinopKind.DIV: lambda env, x, y: Int(eval_int(env, x) // eval_int(env, y)),
-    BinopKind.EXP: lambda env, x, y: Int(eval_int(env, x) ** eval_int(env, y)),
-    BinopKind.MOD: lambda env, x, y: Int(eval_int(env, x) % eval_int(env, y)),
-    BinopKind.EQUAL: lambda env, x, y: Bool(eval_exp(env, x) == eval_exp(env, y)),
-    BinopKind.NOT_EQUAL: lambda env, x, y: Bool(eval_exp(env, x) != eval_exp(env, y)),
-    BinopKind.LESS: lambda env, x, y: Bool(eval_int(env, x) < eval_int(env, y)),
-    BinopKind.GREATER: lambda env, x, y: Bool(eval_int(env, x) > eval_int(env, y)),
-    BinopKind.LESS_EQUAL: lambda env, x, y: Bool(eval_int(env, x) <= eval_int(env, y)),
-    BinopKind.GREATER_EQUAL: lambda env, x, y: Bool(eval_int(env, x) >= eval_int(env, y)),
-    BinopKind.BOOL_AND: lambda env, x, y: Bool(eval_bool(env, x) and eval_bool(env, y)),
-    BinopKind.BOOL_OR: lambda env, x, y: Bool(eval_bool(env, x) or eval_bool(env, y)),
+    BinopKind.ADD: lambda env, x, y: wrap_inferred_number_type(eval_number(env, x) + eval_number(env, y)),
+    BinopKind.SUB: lambda env, x, y: wrap_inferred_number_type(eval_number(env, x) - eval_number(env, y)),
+    BinopKind.MUL: lambda env, x, y: wrap_inferred_number_type(eval_number(env, x) * eval_number(env, y)),
+    BinopKind.DIV: lambda env, x, y: wrap_inferred_number_type(eval_number(env, x) / eval_number(env, y)),
+    BinopKind.FLOOR_DIV: lambda env, x, y: wrap_inferred_number_type(eval_number(env, x) // eval_number(env, y)),
+    BinopKind.EXP: lambda env, x, y: wrap_inferred_number_type(eval_number(env, x) ** eval_number(env, y)),
+    BinopKind.MOD: lambda env, x, y: wrap_inferred_number_type(eval_number(env, x) % eval_number(env, y)),
+    BinopKind.EQUAL: lambda env, x, y: make_bool(eval_exp(env, x) == eval_exp(env, y)),
+    BinopKind.NOT_EQUAL: lambda env, x, y: make_bool(eval_exp(env, x) != eval_exp(env, y)),
+    BinopKind.LESS: lambda env, x, y: make_bool(eval_number(env, x) < eval_number(env, y)),
+    BinopKind.GREATER: lambda env, x, y: make_bool(eval_number(env, x) > eval_number(env, y)),
+    BinopKind.LESS_EQUAL: lambda env, x, y: make_bool(eval_number(env, x) <= eval_number(env, y)),
+    BinopKind.GREATER_EQUAL: lambda env, x, y: make_bool(eval_number(env, x) >= eval_number(env, y)),
+    BinopKind.BOOL_AND: lambda env, x, y: make_bool(eval_bool(env, x) and eval_bool(env, y)),
+    BinopKind.BOOL_OR: lambda env, x, y: make_bool(eval_bool(env, x) or eval_bool(env, y)),
     BinopKind.STRING_CONCAT: lambda env, x, y: String(eval_str(env, x) + eval_str(env, y)),
     BinopKind.LIST_CONS: lambda env, x, y: List([eval_exp(env, x)] + eval_list(env, y)),
     BinopKind.LIST_APPEND: lambda env, x, y: List(eval_list(env, x) + [eval_exp(env, y)]),
@@ -902,49 +1116,105 @@ class MatchError(Exception):
 def match(obj: Object, pattern: Object) -> Optional[Env]:
     if isinstance(pattern, Int):
         return {} if isinstance(obj, Int) and obj.value == pattern.value else None
+    if isinstance(pattern, Float):
+        raise MatchError("pattern matching is not supported for Floats")
     if isinstance(pattern, String):
         return {} if isinstance(obj, String) and obj.value == pattern.value else None
     if isinstance(pattern, Var):
         return {pattern.name: obj}
+    if isinstance(pattern, Symbol):
+        return {} if isinstance(obj, Symbol) and obj.value == pattern.value else None
     if isinstance(pattern, Record):
         if not isinstance(obj, Record):
             return None
         result: Env = {}
-        if len(pattern.data) != len(obj.data):
-            # TODO: Remove this check when implementing ... operator
-            return None
-        for key, value in pattern.data.items():
-            obj_value = obj.data.get(key)
-            if obj_value is None:
+        use_spread = False
+        for key, pattern_item in pattern.data.items():
+            if isinstance(pattern_item, Spread):
+                use_spread = True
+                break
+            obj_item = obj.data.get(key)
+            if obj_item is None:
                 return None
-            part = match(obj_value, value)
+            part = match(obj_item, pattern_item)
             if part is None:
                 return None
             assert isinstance(result, dict)  # for .update()
             result.update(part)
+        if not use_spread and len(pattern.data) != len(obj.data):
+            return None
         return result
     if isinstance(pattern, List):
         if not isinstance(obj, List):
             return None
-        if len(pattern.items) != len(obj.items):
-            # TODO: Remove this check when implementing ... operator
-            return None
         result: Env = {}  # type: ignore
+        use_spread = False
         for i, pattern_item in enumerate(pattern.items):
+            if isinstance(pattern_item, Spread):
+                use_spread = True
+                if pattern_item.name is not None:
+                    assert isinstance(result, dict)  # for .update()
+                    result.update({pattern_item.name: List(obj.items[i:])})
+                break
+            if i >= len(obj.items):
+                return None
             obj_item = obj.items[i]
             part = match(obj_item, pattern_item)
             if part is None:
                 return None
             assert isinstance(result, dict)  # for .update()
             result.update(part)
+        if not use_spread and len(pattern.items) != len(obj.items):
+            return None
         return result
     raise NotImplementedError(f"match not implemented for {type(pattern).__name__}")
 
 
-# pylint: disable=redefined-builtin
+def free_in(exp: Object) -> Set[str]:
+    if isinstance(exp, (Int, Float, String, Bytes, Hole, NativeFunction, Symbol)):
+        return set()
+    if isinstance(exp, Var):
+        return {exp.name}
+    if isinstance(exp, Binop):
+        return free_in(exp.left) | free_in(exp.right)
+    if isinstance(exp, List):
+        if not exp.items:
+            return set()
+        return set.union(*(free_in(item) for item in exp.items))
+    if isinstance(exp, Function):
+        assert isinstance(exp.arg, Var)
+        return free_in(exp.body) - {exp.arg.name}
+    if isinstance(exp, MatchFunction):
+        if not exp.cases:
+            return set()
+        return set.union(*(free_in(case) for case in exp.cases))
+    if isinstance(exp, MatchCase):
+        if isinstance(exp.pattern, Var):
+            return free_in(exp.body) - {exp.pattern.name}
+        # TODO(max): List/record destructuring
+        return free_in(exp.body)
+    if isinstance(exp, Apply):
+        return free_in(exp.func) | free_in(exp.arg)
+    if isinstance(exp, Where):
+        assert isinstance(exp.binding, Assign)
+        return (free_in(exp.body) - {exp.binding.name.name}) | free_in(exp.binding)
+    if isinstance(exp, Assign):
+        return free_in(exp.value)
+    if isinstance(exp, Closure):
+        # TODO(max): Should this remove the set of keys in the closure env?
+        return free_in(exp.func)
+    raise NotImplementedError(("free_in", type(exp)))
+
+
+def improve_closure(closure: Closure) -> Closure:
+    freevars = free_in(closure.func)
+    env = {boundvar: value for boundvar, value in closure.env.items() if boundvar in freevars}
+    return Closure(env, closure.func)
+
+
 def eval_exp(env: Env, exp: Object) -> Object:
     logger.debug(exp)
-    if isinstance(exp, (Int, Bool, String, Bytes, Hole, Closure, NativeFunction)):
+    if isinstance(exp, (Int, Float, String, Bytes, Hole, Closure, NativeFunction, Symbol)):
         return exp
     if isinstance(exp, Var):
         value = env.get(exp.name)
@@ -972,22 +1242,28 @@ def eval_exp(env: Env, exp: Object) -> Object:
             # captured environment with a binding to themselves.
             assert isinstance(value.env, dict)
             value.env[exp.name.name] = value
+            value = improve_closure(value)
         return EnvObject({**env, exp.name.name: value})
     if isinstance(exp, Where):
+        assert isinstance(exp.binding, Assign)
         res_env = eval_exp(env, exp.binding)
         assert isinstance(res_env, EnvObject)
         new_env = {**env, **res_env.env}
         return eval_exp(new_env, exp.body)
     if isinstance(exp, Assert):
         cond = eval_exp(env, exp.cond)
-        if cond != Bool(True):
+        if cond != Symbol("true"):
             raise AssertionError(f"condition {exp.cond} failed")
         return eval_exp(env, exp.value)
     if isinstance(exp, Function):
         if not isinstance(exp.arg, Var):
             raise RuntimeError(f"expected variable in function definition {exp.arg}")
+        # TODO(max): Add "closure improve", which filters bindings to those
+        # used by the underlying function.
         return Closure(env, exp)
     if isinstance(exp, MatchFunction):
+        # TODO(max): Add "closure improve", which filters bindings to those
+        # used by the underlying function.
         return Closure(env, exp)
     if isinstance(exp, Apply):
         if isinstance(exp.func, Var) and exp.func.name == "$$quote":
@@ -1033,6 +1309,8 @@ def eval_exp(env: Env, exp: Object) -> Object:
         clo_inner = eval_exp(env, exp.inner)
         clo_outer = eval_exp(env, exp.outer)
         return Closure({}, Function(Var("x"), Apply(clo_outer, Apply(clo_inner, Var("x")))))
+    elif isinstance(exp, Spread):
+        raise RuntimeError("cannot evaluate a spread")
     if isinstance(exp, HashVar):
         yard_location = env["$$scrapyard"]
         assert isinstance(yard_location, String)
@@ -1051,6 +1329,7 @@ def eval_exp(env: Env, exp: Object) -> Object:
 
 
 def bencode(obj: object) -> bytes:
+    assert not isinstance(obj, bool)
     if isinstance(obj, int):
         return b"i" + str(int(obj)).encode("ascii") + b"e"
     if isinstance(obj, bytes):
@@ -1138,27 +1417,134 @@ def deserialize(msg: str) -> Object:
     return Object.deserialize(decoded)
 
 
+class ScrapMonad:
+    def __init__(self, env: Env) -> None:
+        assert isinstance(env, dict)  # for .copy()
+        self.env: Env = env.copy()
+
+    def bind(self, exp: Object) -> Tuple[Object, "ScrapMonad"]:
+        env = self.env
+        result = eval_exp(env, exp)
+        if isinstance(result, EnvObject):
+            return result, ScrapMonad({**env, **result.env})
+        return result, ScrapMonad({**env, "_": result})
+
+
+ASSET_DIR = os.path.dirname(__file__)
+
+
+class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self) -> None:
+        logger.debug("GET %s", self.path)
+        parsed_path = urllib.parse.urlsplit(self.path)
+        query = urllib.parse.parse_qs(parsed_path.query)
+        logging.debug("PATH %s", parsed_path)
+        logging.debug("QUERY %s", query)
+        if parsed_path.path == "/repl":
+            return self.do_repl()
+        if parsed_path.path == "/eval":
+            try:
+                return self.do_eval(query)
+            except Exception as e:
+                self.send_response(400)
+                self.send_header("Content-type", "text/plain")
+                self.end_headers()
+                self.wfile.write(str(e).encode("utf-8"))
+                return
+        if parsed_path.path == "/style.css":
+            self.send_response(200)
+            self.send_header("Content-type", "text/css")
+            self.end_headers()
+            with open(os.path.join(ASSET_DIR, "style.css"), "rb") as f:
+                self.wfile.write(f.read())
+            return
+        return self.do_404()
+
+    def do_repl(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        with open(os.path.join(ASSET_DIR, "repl.html"), "rb") as f:
+            self.wfile.write(f.read())
+        return
+
+    def do_404(self) -> None:
+        self.send_response(404)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(b"""try hitting <a href="/repl">/repl</a>""")
+        return
+
+    def do_eval(self, query: Dict[str, Any]) -> None:
+        exp = query.get("exp")
+        if exp is None:
+            raise TypeError("Need expression to evaluate")
+        if len(exp) != 1:
+            raise TypeError("Need exactly one expression to evaluate")
+        exp = exp[0]
+        tokens = tokenize(exp)
+        ast = parse(tokens)
+        env = query.get("env")
+        if env is None:
+            env = STDLIB
+        else:
+            if len(env) != 1:
+                raise TypeError("Need exactly one env")
+            env_object = deserialize(env[0])
+            assert isinstance(env_object, EnvObject)
+            env = env_object.env
+        logging.debug("env is %s", env)
+        monad = ScrapMonad(env)
+        result, next_monad = monad.bind(ast)
+        serialized = EnvObject(next_monad.env).serialize()
+        encoded = bencode(serialized)
+        response = {"env": encoded.decode("utf-8"), "result": str(result)}
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.send_header("Cache-Control", "max-age=3600")
+        self.end_headers()
+        self.wfile.write(json.dumps(response).encode("utf-8"))
+        return
+
+
 class TokenizerTests(unittest.TestCase):
     def test_tokenize_digit(self) -> None:
-        self.assertEqual(tokenize("1"), [NumLit(1)])
+        self.assertEqual(tokenize("1"), [IntLit(1)])
 
     def test_tokenize_multiple_digits(self) -> None:
-        self.assertEqual(tokenize("123"), [NumLit(123)])
+        self.assertEqual(tokenize("123"), [IntLit(123)])
 
     def test_tokenize_negative_int(self) -> None:
-        self.assertEqual(tokenize("-123"), [Operator("-"), NumLit(123)])
+        self.assertEqual(tokenize("-123"), [Operator("-"), IntLit(123)])
+
+    def test_tokenize_float(self) -> None:
+        self.assertEqual(tokenize("3.14"), [FloatLit(3.14)])
+
+    def test_tokenize_negative_float(self) -> None:
+        self.assertEqual(tokenize("-3.14"), [Operator("-"), FloatLit(3.14)])
+
+    @unittest.skip("TODO: support floats with no integer part")
+    def test_tokenize_float_with_no_integer_part(self) -> None:
+        self.assertEqual(tokenize(".14"), [FloatLit(0.14)])
+
+    def test_tokenize_float_with_no_decimal_part(self) -> None:
+        self.assertEqual(tokenize("10."), [FloatLit(10.0)])
+
+    def test_tokenize_float_with_multiple_decimal_points_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token '.'")):
+            tokenize("1.0.1")
 
     def test_tokenize_binop(self) -> None:
-        self.assertEqual(tokenize("1 + 2"), [NumLit(1), Operator("+"), NumLit(2)])
+        self.assertEqual(tokenize("1 + 2"), [IntLit(1), Operator("+"), IntLit(2)])
 
     def test_tokenize_binop_no_spaces(self) -> None:
-        self.assertEqual(tokenize("1+2"), [NumLit(1), Operator("+"), NumLit(2)])
+        self.assertEqual(tokenize("1+2"), [IntLit(1), Operator("+"), IntLit(2)])
 
     def test_tokenize_two_oper_chars_returns_two_ops(self) -> None:
         self.assertEqual(tokenize(",:"), [Operator(","), Operator(":")])
 
     def test_tokenize_binary_sub_no_spaces(self) -> None:
-        self.assertEqual(tokenize("1-2"), [NumLit(1), Operator("-"), NumLit(2)])
+        self.assertEqual(tokenize("1-2"), [IntLit(1), Operator("-"), IntLit(2)])
 
     def test_tokenize_binop_var(self) -> None:
         ops = ["+", "-", "*", "/", "^", "%", "==", "/=", "<", ">", "<=", ">=", "&&", "||", "++", ">+", "+<"]
@@ -1188,10 +1574,10 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(tokenize("..."), [Operator("...")])
 
     def test_ignore_whitespace(self) -> None:
-        self.assertEqual(tokenize("1\n+\t2"), [NumLit(1), Operator("+"), NumLit(2)])
+        self.assertEqual(tokenize("1\n+\t2"), [IntLit(1), Operator("+"), IntLit(2)])
 
     def test_ignore_line_comment(self) -> None:
-        self.assertEqual(tokenize("-- 1\n2"), [NumLit(2)])
+        self.assertEqual(tokenize("-- 1\n2"), [IntLit(2)])
 
     def test_tokenize_string(self) -> None:
         self.assertEqual(tokenize('"hello"'), [StringLit("hello")])
@@ -1207,7 +1593,7 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(tokenize("- "), [Operator("-")])
         self.assertEqual(tokenize("-- "), [])
         self.assertEqual(tokenize("+ "), [Operator("+")])
-        self.assertEqual(tokenize("123 "), [NumLit(123)])
+        self.assertEqual(tokenize("123 "), [IntLit(123)])
         self.assertEqual(tokenize("abc "), [Name("abc")])
         self.assertEqual(tokenize("[ "), [LeftBracket()])
         self.assertEqual(tokenize("] "), [RightBracket()])
@@ -1219,10 +1605,10 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(tokenize("[ ]"), [LeftBracket(), RightBracket()])
 
     def test_tokenize_list_with_items(self) -> None:
-        self.assertEqual(tokenize("[ 1 , 2 ]"), [LeftBracket(), NumLit(1), Operator(","), NumLit(2), RightBracket()])
+        self.assertEqual(tokenize("[ 1 , 2 ]"), [LeftBracket(), IntLit(1), Operator(","), IntLit(2), RightBracket()])
 
     def test_tokenize_list_with_no_spaces(self) -> None:
-        self.assertEqual(tokenize("[1,2]"), [LeftBracket(), NumLit(1), Operator(","), NumLit(2), RightBracket()])
+        self.assertEqual(tokenize("[1,2]"), [LeftBracket(), IntLit(1), Operator(","), IntLit(2), RightBracket()])
 
     def test_tokenize_function(self) -> None:
         self.assertEqual(
@@ -1281,13 +1667,13 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(tokenize("( )"), [LeftParen(), RightParen()])
 
     def test_tokenize_parenthetical_expression(self) -> None:
-        self.assertEqual(tokenize("(1+2)"), [LeftParen(), NumLit(1), Operator("+"), NumLit(2), RightParen()])
+        self.assertEqual(tokenize("(1+2)"), [LeftParen(), IntLit(1), Operator("+"), IntLit(2), RightParen()])
 
     def test_tokenize_pipe(self) -> None:
         self.assertEqual(
             tokenize("1 |> f . f = a -> a + 1"),
             [
-                NumLit(1),
+                IntLit(1),
                 Operator("|>"),
                 Name("f"),
                 Operator("."),
@@ -1297,7 +1683,7 @@ class TokenizerTests(unittest.TestCase):
                 Operator("->"),
                 Name("a"),
                 Operator("+"),
-                NumLit(1),
+                IntLit(1),
             ],
         )
 
@@ -1307,7 +1693,7 @@ class TokenizerTests(unittest.TestCase):
             [
                 Name("f"),
                 Operator("<|"),
-                NumLit(1),
+                IntLit(1),
                 Operator("."),
                 Name("f"),
                 Operator("="),
@@ -1315,7 +1701,7 @@ class TokenizerTests(unittest.TestCase):
                 Operator("->"),
                 Name("a"),
                 Operator("+"),
-                NumLit(1),
+                IntLit(1),
             ],
         )
 
@@ -1334,7 +1720,7 @@ class TokenizerTests(unittest.TestCase):
     def test_tokenize_record_one_field(self) -> None:
         self.assertEqual(
             tokenize("{ a = 4 }"),
-            [LeftBrace(), Name("a"), Operator("="), NumLit(4), RightBrace()],
+            [LeftBrace(), Name("a"), Operator("="), IntLit(4), RightBrace()],
         )
 
     def test_tokenize_record_multiple_fields(self) -> None:
@@ -1344,7 +1730,7 @@ class TokenizerTests(unittest.TestCase):
                 LeftBrace(),
                 Name("a"),
                 Operator("="),
-                NumLit(4),
+                IntLit(4),
                 Operator(","),
                 Name("b"),
                 Operator("="),
@@ -1369,13 +1755,13 @@ class TokenizerTests(unittest.TestCase):
                 Name("g"),
                 Operator("="),
                 Operator("|"),
-                NumLit(1),
+                IntLit(1),
                 Operator("->"),
-                NumLit(2),
+                IntLit(2),
                 Operator("|"),
-                NumLit(2),
+                IntLit(2),
                 Operator("->"),
-                NumLit(3),
+                IntLit(3),
             ],
         )
 
@@ -1425,7 +1811,7 @@ class TokenizerTests(unittest.TestCase):
         l.read_char()
         self.assertEqual(l.line, "")
 
-    def read_one_sets_lineno(self) -> None:
+    def test_read_one_sets_lineno(self) -> None:
         l = Lexer("a b \n c d")
         a = l.read_one()
         b = l.read_one()
@@ -1436,6 +1822,98 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(c.lineno, 2)
         self.assertEqual(d.lineno, 2)
 
+    def test_tokenize_list_with_only_spread(self) -> None:
+        self.assertEqual(tokenize("[ ... ]"), [LeftBracket(), Operator("..."), RightBracket()])
+
+    def test_tokenize_list_with_spread(self) -> None:
+        self.assertEqual(
+            tokenize("[ 1 , ... ]"),
+            [
+                LeftBracket(),
+                IntLit(1),
+                Operator(","),
+                Operator("..."),
+                RightBracket(),
+            ],
+        )
+
+    def test_tokenize_list_with_spread_no_spaces(self) -> None:
+        self.assertEqual(
+            tokenize("[ 1,... ]"),
+            [
+                LeftBracket(),
+                IntLit(1),
+                Operator(","),
+                Operator("..."),
+                RightBracket(),
+            ],
+        )
+
+    def test_tokenize_list_with_named_spread(self) -> None:
+        self.assertEqual(
+            tokenize("[1,...rest]"),
+            [
+                LeftBracket(),
+                IntLit(1),
+                Operator(","),
+                Operator("..."),
+                Name("rest"),
+                RightBracket(),
+            ],
+        )
+
+    def test_tokenize_record_with_only_spread(self) -> None:
+        self.assertEqual(
+            tokenize("{ ... }"),
+            [
+                LeftBrace(),
+                Operator("..."),
+                RightBrace(),
+            ],
+        )
+
+    def test_tokenize_record_with_spread(self) -> None:
+        self.assertEqual(
+            tokenize("{ x = 1, ...}"),
+            [
+                LeftBrace(),
+                Name("x"),
+                Operator("="),
+                IntLit(1),
+                Operator(","),
+                Operator("..."),
+                RightBrace(),
+            ],
+        )
+
+    def test_tokenize_record_with_spread_no_spaces(self) -> None:
+        self.assertEqual(
+            tokenize("{x=1,...}"),
+            [
+                LeftBrace(),
+                Name("x"),
+                Operator("="),
+                IntLit(1),
+                Operator(","),
+                Operator("..."),
+                RightBrace(),
+            ],
+        )
+
+    def test_tokenize_symbol_with_space(self) -> None:
+        self.assertEqual(tokenize("# abc"), [SymbolToken("abc")])
+
+    def test_tokenize_symbol_with_no_space(self) -> None:
+        self.assertEqual(tokenize("#abc"), [SymbolToken("abc")])
+
+    def test_tokenize_symbol_non_name_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, "expected name"):
+            tokenize("#1")
+
+    def test_tokenize_symbol_eof_raises_unexpected_eof_error(self) -> None:
+        with self.assertRaisesRegex(UnexpectedEOFError, "while reading symbol"):
+            tokenize("#")
+
 
 class ParserTests(unittest.TestCase):
     def test_parse_with_empty_tokens_raises_parse_error(self) -> None:
@@ -1444,13 +1922,13 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(ctx.exception.args[0], "unexpected end of input")
 
     def test_parse_digit_returns_int(self) -> None:
-        self.assertEqual(parse([NumLit(1)]), Int(1))
+        self.assertEqual(parse([IntLit(1)]), Int(1))
 
     def test_parse_digits_returns_int(self) -> None:
-        self.assertEqual(parse([NumLit(123)]), Int(123))
+        self.assertEqual(parse([IntLit(123)]), Int(123))
 
     def test_parse_negative_int_returns_binary_sub_int(self) -> None:
-        self.assertEqual(parse([Operator("-"), NumLit(123)]), Binop(BinopKind.SUB, Int(0), Int(123)))
+        self.assertEqual(parse([Operator("-"), IntLit(123)]), Binop(BinopKind.SUB, Int(0), Int(123)))
 
     def test_parse_negative_var_returns_binary_sub_int(self) -> None:
         self.assertEqual(parse([Operator("-"), Name("x")]), Binop(BinopKind.SUB, Int(0), Var("x")))
@@ -1479,6 +1957,12 @@ class ParserTests(unittest.TestCase):
             Apply(Binop(BinopKind.SUB, Int(0), Var("l")), Var("r")),
         )
 
+    def test_parse_decimal_returns_float(self) -> None:
+        self.assertEqual(parse([FloatLit(3.14)]), Float(3.14))
+
+    def test_parse_negative_float_returns_binary_sub_float(self) -> None:
+        self.assertEqual(parse([Operator("-"), FloatLit(3.14)]), Binop(BinopKind.SUB, Int(0), Float(3.14)))
+
     def test_parse_var_returns_var(self) -> None:
         self.assertEqual(parse([Name("abc_123")]), Var("abc_123"))
 
@@ -1506,38 +1990,38 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse([BytesLit("QUJD", 64)]), Bytes(b"ABC"))
 
     def test_parse_binary_add_returns_binop(self) -> None:
-        self.assertEqual(parse([NumLit(1), Operator("+"), NumLit(2)]), Binop(BinopKind.ADD, Int(1), Int(2)))
+        self.assertEqual(parse([IntLit(1), Operator("+"), IntLit(2)]), Binop(BinopKind.ADD, Int(1), Int(2)))
 
     def test_parse_binary_sub_returns_binop(self) -> None:
-        self.assertEqual(parse([NumLit(1), Operator("-"), NumLit(2)]), Binop(BinopKind.SUB, Int(1), Int(2)))
+        self.assertEqual(parse([IntLit(1), Operator("-"), IntLit(2)]), Binop(BinopKind.SUB, Int(1), Int(2)))
 
     def test_parse_binary_add_right_returns_binop(self) -> None:
         self.assertEqual(
-            parse([NumLit(1), Operator("+"), NumLit(2), Operator("+"), NumLit(3)]),
+            parse([IntLit(1), Operator("+"), IntLit(2), Operator("+"), IntLit(3)]),
             Binop(BinopKind.ADD, Int(1), Binop(BinopKind.ADD, Int(2), Int(3))),
         )
 
     def test_mul_binds_tighter_than_add_right(self) -> None:
         self.assertEqual(
-            parse([NumLit(1), Operator("+"), NumLit(2), Operator("*"), NumLit(3)]),
+            parse([IntLit(1), Operator("+"), IntLit(2), Operator("*"), IntLit(3)]),
             Binop(BinopKind.ADD, Int(1), Binop(BinopKind.MUL, Int(2), Int(3))),
         )
 
     def test_mul_binds_tighter_than_add_left(self) -> None:
         self.assertEqual(
-            parse([NumLit(1), Operator("*"), NumLit(2), Operator("+"), NumLit(3)]),
+            parse([IntLit(1), Operator("*"), IntLit(2), Operator("+"), IntLit(3)]),
             Binop(BinopKind.ADD, Binop(BinopKind.MUL, Int(1), Int(2)), Int(3)),
         )
 
     def test_exp_binds_tighter_than_mul_right(self) -> None:
         self.assertEqual(
-            parse([NumLit(5), Operator("*"), NumLit(2), Operator("^"), NumLit(3)]),
+            parse([IntLit(5), Operator("*"), IntLit(2), Operator("^"), IntLit(3)]),
             Binop(BinopKind.MUL, Int(5), Binop(BinopKind.EXP, Int(2), Int(3))),
         )
 
     def test_list_access_binds_tighter_than_append(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator("+<"), Name("ls"), Operator("@"), NumLit(0)]),
+            parse([Name("a"), Operator("+<"), Name("ls"), Operator("@"), IntLit(0)]),
             Binop(BinopKind.LIST_APPEND, Var("a"), Access(Var("ls"), Int(0))),
         )
 
@@ -1574,19 +2058,31 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_list_of_ints_returns_list(self) -> None:
         self.assertEqual(
-            parse([LeftBracket(), NumLit(1), Operator(","), NumLit(2), RightBracket()]),
+            parse([LeftBracket(), IntLit(1), Operator(","), IntLit(2), RightBracket()]),
             List([Int(1), Int(2)]),
         )
 
+    def test_parse_list_with_only_comma_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token Operator(lineno=-1, value=',')")):
+            parse([LeftBracket(), Operator(","), RightBracket()])
+
+    def test_parse_list_with_two_commas_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token Operator(lineno=-1, value=',')")):
+            parse([LeftBracket(), Operator(","), Operator(","), RightBracket()])
+
+    def test_parse_list_with_trailing_comma_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token RightBracket(lineno=-1)")):
+            parse([LeftBracket(), IntLit(1), Operator(","), RightBracket()])
+
     def test_parse_assign(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator("="), NumLit(1)]),
+            parse([Name("a"), Operator("="), IntLit(1)]),
             Assign(Var("a"), Int(1)),
         )
 
     def test_parse_function_one_arg_returns_function(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator("->"), Name("a"), Operator("+"), NumLit(1)]),
+            parse([Name("a"), Operator("->"), Name("a"), Operator("+"), IntLit(1)]),
             Function(Var("a"), Binop(BinopKind.ADD, Var("a"), Int(1))),
         )
 
@@ -1640,37 +2136,37 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_parenthesized_expression(self) -> None:
         self.assertEqual(
-            parse([LeftParen(), NumLit(1), Operator("+"), NumLit(2), RightParen()]),
+            parse([LeftParen(), IntLit(1), Operator("+"), IntLit(2), RightParen()]),
             Binop(BinopKind.ADD, Int(1), Int(2)),
         )
 
     def test_parse_parenthesized_add_mul(self) -> None:
         self.assertEqual(
-            parse([LeftParen(), NumLit(1), Operator("+"), NumLit(2), RightParen(), Operator("*"), NumLit(3)]),
+            parse([LeftParen(), IntLit(1), Operator("+"), IntLit(2), RightParen(), Operator("*"), IntLit(3)]),
             Binop(BinopKind.MUL, Binop(BinopKind.ADD, Int(1), Int(2)), Int(3)),
         )
 
     def test_parse_pipe(self) -> None:
         self.assertEqual(
-            parse([NumLit(1), Operator("|>"), Name("f")]),
+            parse([IntLit(1), Operator("|>"), Name("f")]),
             Apply(Var("f"), Int(1)),
         )
 
     def test_parse_nested_pipe(self) -> None:
         self.assertEqual(
-            parse([NumLit(1), Operator("|>"), Name("f"), Operator("|>"), Name("g")]),
+            parse([IntLit(1), Operator("|>"), Name("f"), Operator("|>"), Name("g")]),
             Apply(Var("g"), Apply(Var("f"), Int(1))),
         )
 
     def test_parse_reverse_pipe(self) -> None:
         self.assertEqual(
-            parse([Name("f"), Operator("<|"), NumLit(1)]),
+            parse([Name("f"), Operator("<|"), IntLit(1)]),
             Apply(Var("f"), Int(1)),
         )
 
     def test_parse_nested_reverse_pipe(self) -> None:
         self.assertEqual(
-            parse([Name("g"), Operator("<|"), Name("f"), Operator("<|"), NumLit(1)]),
+            parse([Name("g"), Operator("<|"), Name("f"), Operator("<|"), IntLit(1)]),
             Apply(Var("g"), Apply(Var("f"), Int(1))),
         )
 
@@ -1678,11 +2174,11 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse([LeftBrace(), RightBrace()]), Record({}))
 
     def test_parse_record_single_field(self) -> None:
-        self.assertEqual(parse([LeftBrace(), Name("a"), Operator("="), NumLit(4), RightBrace()]), Record({"a": Int(4)}))
+        self.assertEqual(parse([LeftBrace(), Name("a"), Operator("="), IntLit(4), RightBrace()]), Record({"a": Int(4)}))
 
     def test_parse_record_with_expression(self) -> None:
         self.assertEqual(
-            parse([LeftBrace(), Name("a"), Operator("="), NumLit(1), Operator("+"), NumLit(2), RightBrace()]),
+            parse([LeftBrace(), Name("a"), Operator("="), IntLit(1), Operator("+"), IntLit(2), RightBrace()]),
             Record({"a": Binop(BinopKind.ADD, Int(1), Int(2))}),
         )
 
@@ -1693,7 +2189,7 @@ class ParserTests(unittest.TestCase):
                     LeftBrace(),
                     Name("a"),
                     Operator("="),
-                    NumLit(4),
+                    IntLit(4),
                     Operator(","),
                     Name("b"),
                     Operator("="),
@@ -1706,12 +2202,12 @@ class ParserTests(unittest.TestCase):
 
     def test_non_variable_in_assignment_raises_parse_error(self) -> None:
         with self.assertRaises(ParseError) as ctx:
-            parse([NumLit(3), Operator("="), NumLit(4)])
+            parse([IntLit(3), Operator("="), IntLit(4)])
         self.assertEqual(ctx.exception.args[0], "expected variable in assignment Int(value=3)")
 
     def test_non_assign_in_record_constructor_raises_parse_error(self) -> None:
         with self.assertRaises(ParseError) as ctx:
-            parse([LeftBrace(), NumLit(1), Operator(","), NumLit(2), RightBrace()])
+            parse([LeftBrace(), IntLit(1), Operator(","), IntLit(2), RightBrace()])
         self.assertEqual(ctx.exception.args[0], "failed to parse variable assignment in record constructor")
 
     def test_parse_right_eval_returns_binop(self) -> None:
@@ -1730,7 +2226,7 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_match_one_case(self) -> None:
         self.assertEqual(
-            parse([Operator("|"), NumLit(1), Operator("->"), NumLit(2)]),
+            parse([Operator("|"), IntLit(1), Operator("->"), IntLit(2)]),
             MatchFunction([MatchCase(Int(1), Int(2))]),
         )
 
@@ -1739,13 +2235,13 @@ class ParserTests(unittest.TestCase):
             parse(
                 [
                     Operator("|"),
-                    NumLit(1),
+                    IntLit(1),
                     Operator("->"),
-                    NumLit(2),
+                    IntLit(2),
                     Operator("|"),
-                    NumLit(2),
+                    IntLit(2),
                     Operator("->"),
-                    NumLit(3),
+                    IntLit(3),
                 ]
             ),
             MatchFunction(
@@ -1770,9 +2266,105 @@ class ParserTests(unittest.TestCase):
 
     def test_boolean_and_binds_tighter_than_or(self) -> None:
         self.assertEqual(
-            parse([Name("true"), Operator("||"), Name("true"), Operator("&&"), Name("false")]),
-            Binop(BinopKind.BOOL_OR, Var("true"), Binop(BinopKind.BOOL_AND, Var("true"), Var("false"))),
+            parse([Name("x"), Operator("||"), Name("y"), Operator("&&"), Name("z")]),
+            Binop(BinopKind.BOOL_OR, Var("x"), Binop(BinopKind.BOOL_AND, Var("y"), Var("z"))),
         )
+
+    def test_parse_list_spread(self) -> None:
+        self.assertEqual(
+            parse([LeftBracket(), IntLit(1), Operator(","), Operator("..."), RightBracket()]),
+            List([Int(1), Spread()]),
+        )
+
+    @unittest.skip("TODO(max): Raise if ...x is used with non-name")
+    def test_parse_list_with_non_name_expr_after_spread_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token IntLit(lineno=-1, value=1)")):
+            parse([LeftBracket(), IntLit(1), Operator(","), Operator("..."), IntLit(2), RightBracket()])
+
+    def test_parse_list_with_named_spread(self) -> None:
+        self.assertEqual(
+            parse(
+                [
+                    LeftBracket(),
+                    IntLit(1),
+                    Operator(","),
+                    Operator("..."),
+                    Name("rest"),
+                    RightBracket(),
+                ]
+            ),
+            List([Int(1), Spread("rest")]),
+        )
+
+    def test_parse_list_spread_beginning_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of list match")):
+            parse([LeftBracket(), Operator("..."), Operator(","), IntLit(1), RightBracket()])
+
+    def test_parse_list_named_spread_beginning_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of list match")):
+            parse([LeftBracket(), Operator("..."), Name("rest"), Operator(","), IntLit(1), RightBracket()])
+
+    def test_parse_list_spread_middle_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of list match")):
+            parse([LeftBracket(), IntLit(1), Operator(","), Operator("..."), Operator(","), IntLit(1), RightBracket()])
+
+    def test_parse_list_named_spread_middle_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of list match")):
+            parse(
+                [
+                    LeftBracket(),
+                    IntLit(1),
+                    Operator(","),
+                    Operator("..."),
+                    Name("rest"),
+                    Operator(","),
+                    IntLit(1),
+                    RightBracket(),
+                ]
+            )
+
+    def test_parse_record_spread(self) -> None:
+        self.assertEqual(
+            parse([LeftBrace(), Name("x"), Operator("="), IntLit(1), Operator(","), Operator("..."), RightBrace()]),
+            Record({"x": Int(1), "...": Spread()}),
+        )
+
+    def test_parse_record_spread_beginning_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of record match")):
+            parse([LeftBrace(), Operator("..."), Operator(","), Name("x"), Operator("="), IntLit(1), RightBrace()])
+
+    def test_parse_record_spread_middle_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of record match")):
+            parse(
+                [
+                    LeftBrace(),
+                    Name("x"),
+                    Operator("="),
+                    IntLit(1),
+                    Operator(","),
+                    Operator("..."),
+                    Operator(","),
+                    Name("y"),
+                    Operator("="),
+                    IntLit(2),
+                    RightBrace(),
+                ]
+            )
+
+    def test_parse_record_with_only_comma_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token Operator(lineno=-1, value=',')")):
+            parse([LeftBrace(), Operator(","), RightBrace()])
+
+    def test_parse_record_with_two_commas_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token Operator(lineno=-1, value=',')")):
+            parse([LeftBrace(), Operator(","), Operator(","), RightBrace()])
+
+    def test_parse_record_with_trailing_comma_raises_parse_error(self) -> None:
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token RightBrace(lineno=-1)")):
+            parse([LeftBrace(), Name("x"), Operator("="), IntLit(1), Operator(","), RightBrace()])
+
+    def test_parse_symbol_returns_symbol(self) -> None:
+        self.assertEqual(parse([SymbolToken("abc")]), Symbol("abc"))
 
 
 class MatchTests(unittest.TestCase):
@@ -1784,6 +2376,18 @@ class MatchTests(unittest.TestCase):
 
     def test_match_int_with_non_int_returns_none(self) -> None:
         self.assertEqual(match(String("abc"), pattern=Int(1)), None)
+
+    def test_match_with_equal_floats_raises_match_error(self) -> None:
+        with self.assertRaisesRegex(MatchError, re.escape("pattern matching is not supported for Floats")):
+            match(Float(1), pattern=Float(1))
+
+    def test_match_with_inequal_floats_raises_match_error(self) -> None:
+        with self.assertRaisesRegex(MatchError, re.escape("pattern matching is not supported for Floats")):
+            match(Float(2), pattern=Float(1))
+
+    def test_match_float_with_non_float_raises_match_error(self) -> None:
+        with self.assertRaisesRegex(MatchError, re.escape("pattern matching is not supported for Floats")):
+            match(String("abc"), pattern=Float(1))
 
     def test_match_with_equal_strings_returns_empty_dict(self) -> None:
         self.assertEqual(match(String("a"), pattern=String("a")), {})
@@ -1815,8 +2419,8 @@ class MatchTests(unittest.TestCase):
             None,
         )
 
-    def test_match_record_with_fewer_fields_in_pattern_none(self) -> None:
-        self.assertIs(
+    def test_match_record_with_fewer_fields_in_pattern_returns_none(self) -> None:
+        self.assertEqual(
             match(
                 Record({"x": Int(1), "y": Int(2)}),
                 pattern=Record({"x": Var("x")}),
@@ -1964,6 +2568,78 @@ class MatchTests(unittest.TestCase):
             ),
         )
 
+    def test_match_list_with_spread_returns_empty_dict(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2), Int(3), Int(4), Int(5)]),
+                pattern=List([Int(1), Spread()]),
+            ),
+            {},
+        )
+
+    def test_match_list_with_named_spread_returns_name_bound_to_rest(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2), Int(3), Int(4)]),
+                pattern=List([Var("a"), Int(2), Spread("rest")]),
+            ),
+            {"a": Int(1), "rest": List([Int(3), Int(4)])},
+        )
+
+    def test_match_list_with_named_spread_returns_name_bound_to_empty_rest(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2)]),
+                pattern=List([Var("a"), Int(2), Spread("rest")]),
+            ),
+            {"a": Int(1), "rest": List([])},
+        )
+
+    def test_match_list_with_mismatched_spread_returns_none(self) -> None:
+        self.assertEqual(
+            match(
+                List([Int(1), Int(2), Int(3), Int(4), Int(5)]),
+                pattern=List([Int(1), Int(6), Spread()]),
+            ),
+            None,
+        )
+
+    def test_match_record_with_constant_and_spread_returns_empty_dict(self) -> None:
+        self.assertEqual(
+            match(
+                Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
+                pattern=Record({"a": Int(1), "...": Spread()}),
+            ),
+            {},
+        )
+
+    def test_match_record_with_var_and_spread_returns_match(self) -> None:
+        self.assertEqual(
+            match(
+                Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
+                pattern=Record({"a": Var("x"), "...": Spread()}),
+            ),
+            {"x": Int(1)},
+        )
+
+    def test_match_record_with_mismatched_spread_returns_none(self) -> None:
+        self.assertEqual(
+            match(
+                Record({"a": Int(1), "b": Int(2), "c": Int(3)}),
+                pattern=Record({"d": Var("x"), "...": Spread()}),
+            ),
+            None,
+        )
+
+    def test_match_symbol_with_equal_symbol_returns_empty_dict(self) -> None:
+        self.assertEqual(match(Symbol("abc"), pattern=Symbol("abc")), {})
+
+    def test_match_symbol_with_inequal_symbol_returns_none(self) -> None:
+        self.assertEqual(match(Symbol("def"), pattern=Symbol("abc")), None)
+
+    def test_match_symbol_with_different_type_returns_none(self) -> None:
+        self.assertEqual(match(Int(123), pattern=Symbol("abc")), None)
+
 
 def _dont_have_pygit2() -> bool:
     try:
@@ -1979,6 +2655,10 @@ class EvalTests(unittest.TestCase):
         exp = Int(5)
         self.assertEqual(eval_exp({}, exp), Int(5))
 
+    def test_eval_float_returns_float(self) -> None:
+        exp = Float(3.14)
+        self.assertEqual(eval_exp({}, exp), Float(3.14))
+
     def test_eval_str_returns_str(self) -> None:
         exp = String("xyz")
         self.assertEqual(eval_exp({}, exp), String("xyz"))
@@ -1986,12 +2666,6 @@ class EvalTests(unittest.TestCase):
     def test_eval_bytes_returns_bytes(self) -> None:
         exp = Bytes(b"xyz")
         self.assertEqual(eval_exp({}, exp), Bytes(b"xyz"))
-
-    def test_eval_true_returns_true(self) -> None:
-        self.assertEqual(eval_exp({}, Bool(True)), Bool(True))
-
-    def test_eval_false_returns_false(self) -> None:
-        self.assertEqual(eval_exp({}, Bool(False)), Bool(False))
 
     def test_eval_with_non_existent_var_raises_name_error(self) -> None:
         exp = Var("no")
@@ -2016,7 +2690,7 @@ class EvalTests(unittest.TestCase):
         exp = Binop(BinopKind.ADD, Int(1), String("hello"))
         with self.assertRaises(TypeError) as ctx:
             eval_exp({}, exp)
-        self.assertEqual(ctx.exception.args[0], "expected Int, got String")
+        self.assertEqual(ctx.exception.args[0], "expected Int or Float, got String")
 
     def test_eval_with_binop_sub(self) -> None:
         exp = Binop(BinopKind.SUB, Int(1), Int(2))
@@ -2027,7 +2701,11 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(eval_exp({}, exp), Int(6))
 
     def test_eval_with_binop_div(self) -> None:
-        exp = Binop(BinopKind.DIV, Int(2), Int(3))
+        exp = Binop(BinopKind.DIV, Int(3), Int(10))
+        self.assertEqual(eval_exp({}, exp), Float(0.3))
+
+    def test_eval_with_binop_floor_div(self) -> None:
+        exp = Binop(BinopKind.FLOOR_DIV, Int(2), Int(3))
         self.assertEqual(eval_exp({}, exp), Int(0))
 
     def test_eval_with_binop_exp(self) -> None:
@@ -2040,19 +2718,19 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_with_binop_equal_with_equal_returns_true(self) -> None:
         exp = Binop(BinopKind.EQUAL, Int(1), Int(1))
-        self.assertEqual(eval_exp({}, exp), Bool(True))
+        self.assertEqual(eval_exp({}, exp), Symbol("true"))
 
     def test_eval_with_binop_equal_with_inequal_returns_false(self) -> None:
         exp = Binop(BinopKind.EQUAL, Int(1), Int(2))
-        self.assertEqual(eval_exp({}, exp), Bool(False))
+        self.assertEqual(eval_exp({}, exp), Symbol("false"))
 
     def test_eval_with_binop_not_equal_with_equal_returns_false(self) -> None:
         exp = Binop(BinopKind.NOT_EQUAL, Int(1), Int(1))
-        self.assertEqual(eval_exp({}, exp), Bool(False))
+        self.assertEqual(eval_exp({}, exp), Symbol("false"))
 
     def test_eval_with_binop_not_equal_with_inequal_returns_true(self) -> None:
         exp = Binop(BinopKind.NOT_EQUAL, Int(1), Int(2))
-        self.assertEqual(eval_exp({}, exp), Bool(True))
+        self.assertEqual(eval_exp({}, exp), Symbol("true"))
 
     def test_eval_with_binop_concat_with_strings_returns_string(self) -> None:
         exp = Binop(BinopKind.STRING_CONCAT, String("hello"), String(" world"))
@@ -2107,13 +2785,21 @@ class EvalTests(unittest.TestCase):
         result = eval_exp(env, exp)
         self.assertEqual(result, EnvObject({"a": Int(1)}))
 
-    def test_eval_assign_function_returns_closure_with_function_in_env(self) -> None:
+    def test_eval_assign_function_returns_closure_without_function_in_env(self) -> None:
         exp = Assign(Var("a"), Function(Var("x"), Var("x")))
         result = eval_exp({}, exp)
         assert isinstance(result, EnvObject)
         closure = result.env["a"]
         self.assertIsInstance(closure, Closure)
-        self.assertEqual(closure, Closure({"a": closure}, Function(Var("x"), Var("x"))))
+        self.assertEqual(closure, Closure({}, Function(Var("x"), Var("x"))))
+
+    def test_eval_assign_function_returns_closure_with_function_in_env(self) -> None:
+        exp = Assign(Var("a"), Function(Var("x"), Var("a")))
+        result = eval_exp({}, exp)
+        assert isinstance(result, EnvObject)
+        closure = result.env["a"]
+        self.assertIsInstance(closure, Closure)
+        self.assertEqual(closure, Closure({"a": closure}, Function(Var("x"), Var("a"))))
 
     def test_eval_assign_does_not_modify_env(self) -> None:
         exp = Assign(Var("a"), Int(1))
@@ -2140,16 +2826,16 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(env, {})
 
     def test_eval_assert_with_truthy_cond_returns_value(self) -> None:
-        exp = Assert(Int(123), Bool(True))
+        exp = Assert(Int(123), Symbol("true"))
         self.assertEqual(eval_exp({}, exp), Int(123))
 
     def test_eval_assert_with_falsey_cond_raises_assertion_error(self) -> None:
-        exp = Assert(Int(123), Bool(False))
-        with self.assertRaisesRegex(AssertionError, re.escape("condition Bool(value=False) failed")):
+        exp = Assert(Int(123), Symbol("false"))
+        with self.assertRaisesRegex(AssertionError, re.escape("condition #false failed")):
             eval_exp({}, exp)
 
     def test_eval_nested_assert(self) -> None:
-        exp = Assert(Assert(Int(123), Bool(True)), Bool(True))
+        exp = Assert(Assert(Int(123), Symbol("true")), Symbol("true"))
         self.assertEqual(eval_exp({}, exp), Int(123))
 
     def test_eval_hole(self) -> None:
@@ -2187,6 +2873,10 @@ class EvalTests(unittest.TestCase):
         exp = Access(Int(4), String("x"))
         with self.assertRaisesRegex(TypeError, re.escape("attempted to access from type Int")):
             eval_exp({}, exp)
+
+    def test_eval_record_evaluates_value_expressions(self) -> None:
+        exp = Record({"a": Binop(BinopKind.ADD, Int(1), Int(2))})
+        self.assertEqual(eval_exp({}, exp), Record({"a": Int(3)}))
 
     def test_eval_record_access_with_invalid_accessor_raises_type_error(self) -> None:
         exp = Access(Record({"a": Int(4)}), Int(0))
@@ -2301,53 +2991,53 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_less_returns_bool(self) -> None:
         ast = Binop(BinopKind.LESS, Int(3), Int(4))
-        self.assertEqual(eval_exp({}, ast), Bool(True))
+        self.assertEqual(eval_exp({}, ast), Symbol("true"))
 
     def test_eval_less_on_non_bool_raises_type_error(self) -> None:
-        ast = Binop(BinopKind.LESS, Bool(True), Int(4))
-        with self.assertRaisesRegex(TypeError, re.escape("expected Int, got Bool")):
+        ast = Binop(BinopKind.LESS, String("xyz"), Int(4))
+        with self.assertRaisesRegex(TypeError, re.escape("expected Int or Float, got String")):
             eval_exp({}, ast)
 
     def test_eval_less_equal_returns_bool(self) -> None:
         ast = Binop(BinopKind.LESS_EQUAL, Int(3), Int(4))
-        self.assertEqual(eval_exp({}, ast), Bool(True))
+        self.assertEqual(eval_exp({}, ast), Symbol("true"))
 
     def test_eval_less_equal_on_non_bool_raises_type_error(self) -> None:
-        ast = Binop(BinopKind.LESS_EQUAL, Bool(True), Int(4))
-        with self.assertRaisesRegex(TypeError, re.escape("expected Int, got Bool")):
+        ast = Binop(BinopKind.LESS_EQUAL, String("xyz"), Int(4))
+        with self.assertRaisesRegex(TypeError, re.escape("expected Int or Float, got String")):
             eval_exp({}, ast)
 
     def test_eval_greater_returns_bool(self) -> None:
         ast = Binop(BinopKind.GREATER, Int(3), Int(4))
-        self.assertEqual(eval_exp({}, ast), Bool(False))
+        self.assertEqual(eval_exp({}, ast), Symbol("false"))
 
     def test_eval_greater_on_non_bool_raises_type_error(self) -> None:
-        ast = Binop(BinopKind.GREATER, Bool(True), Int(4))
-        with self.assertRaisesRegex(TypeError, re.escape("expected Int, got Bool")):
+        ast = Binop(BinopKind.GREATER, String("xyz"), Int(4))
+        with self.assertRaisesRegex(TypeError, re.escape("expected Int or Float, got String")):
             eval_exp({}, ast)
 
     def test_eval_greater_equal_returns_bool(self) -> None:
         ast = Binop(BinopKind.GREATER_EQUAL, Int(3), Int(4))
-        self.assertEqual(eval_exp({}, ast), Bool(False))
+        self.assertEqual(eval_exp({}, ast), Symbol("false"))
 
     def test_eval_greater_equal_on_non_bool_raises_type_error(self) -> None:
-        ast = Binop(BinopKind.GREATER_EQUAL, Bool(True), Int(4))
-        with self.assertRaisesRegex(TypeError, re.escape("expected Int, got Bool")):
+        ast = Binop(BinopKind.GREATER_EQUAL, String("xyz"), Int(4))
+        with self.assertRaisesRegex(TypeError, re.escape("expected Int or Float, got String")):
             eval_exp({}, ast)
 
     def test_boolean_and_evaluates_args(self) -> None:
-        ast = Binop(BinopKind.BOOL_AND, Bool(True), Var("a"))
-        self.assertEqual(eval_exp({"a": Bool(False)}, ast), Bool(False))
+        ast = Binop(BinopKind.BOOL_AND, Symbol("true"), Var("a"))
+        self.assertEqual(eval_exp({"a": Symbol("false")}, ast), Symbol("false"))
 
-        ast = Binop(BinopKind.BOOL_AND, Var("a"), Bool(False))
-        self.assertEqual(eval_exp({"a": Bool(True)}, ast), Bool(False))
+        ast = Binop(BinopKind.BOOL_AND, Var("a"), Symbol("false"))
+        self.assertEqual(eval_exp({"a": Symbol("true")}, ast), Symbol("false"))
 
     def test_boolean_or_evaluates_args(self) -> None:
-        ast = Binop(BinopKind.BOOL_OR, Bool(False), Var("a"))
-        self.assertEqual(eval_exp({"a": Bool(True)}, ast), Bool(True))
+        ast = Binop(BinopKind.BOOL_OR, Symbol("false"), Var("a"))
+        self.assertEqual(eval_exp({"a": Symbol("true")}, ast), Symbol("true"))
 
-        ast = Binop(BinopKind.BOOL_OR, Var("a"), Bool(True))
-        self.assertEqual(eval_exp({"a": Bool(False)}, ast), Bool(True))
+        ast = Binop(BinopKind.BOOL_OR, Var("a"), Symbol("true"))
+        self.assertEqual(eval_exp({"a": Symbol("false")}, ast), Symbol("true"))
 
     def test_boolean_and_short_circuit(self) -> None:
         def raise_func(message: Object) -> Object:
@@ -2357,8 +3047,8 @@ class EvalTests(unittest.TestCase):
 
         error = NativeFunction("error", raise_func)
         apply = Apply(Var("error"), String("expected failure"))
-        ast = Binop(BinopKind.BOOL_AND, Bool(False), apply)
-        self.assertEqual(eval_exp({"error": error}, ast), Bool(False))
+        ast = Binop(BinopKind.BOOL_AND, Symbol("false"), apply)
+        self.assertEqual(eval_exp({"error": error}, ast), Symbol("false"))
 
     def test_boolean_or_short_circuit(self) -> None:
         def raise_func(message: Object) -> Object:
@@ -2368,17 +3058,17 @@ class EvalTests(unittest.TestCase):
 
         error = NativeFunction("error", raise_func)
         apply = Apply(Var("error"), String("expected failure"))
-        ast = Binop(BinopKind.BOOL_OR, Bool(True), apply)
-        self.assertEqual(eval_exp({"error": error}, ast), Bool(True))
+        ast = Binop(BinopKind.BOOL_OR, Symbol("true"), apply)
+        self.assertEqual(eval_exp({"error": error}, ast), Symbol("true"))
 
     def test_boolean_and_on_int_raises_type_error(self) -> None:
         exp = Binop(BinopKind.BOOL_AND, Int(1), Int(2))
-        with self.assertRaisesRegex(TypeError, re.escape("expected Bool, got Int")):
+        with self.assertRaisesRegex(TypeError, re.escape("expected #true or #false, got Int")):
             eval_exp({}, exp)
 
     def test_boolean_or_on_int_raises_type_error(self) -> None:
         exp = Binop(BinopKind.BOOL_OR, Int(1), Int(2))
-        with self.assertRaisesRegex(TypeError, re.escape("expected Bool, got Int")):
+        with self.assertRaisesRegex(TypeError, re.escape("expected #true or #false, got Int")):
             eval_exp({}, exp)
 
     @unittest.skipIf(_dont_have_pygit2(), "Can't run test without pygit2")
@@ -2392,15 +3082,45 @@ class EvalTests(unittest.TestCase):
             result = eval_exp(env, HashVar("a8788e4ad848bac02d1c6ad76375aad65b7c5387"))
             self.assertEqual(result, Int(100))
 
+    def test_eval_record_with_spread_fails(self) -> None:
+        exp = Record({"x": Spread()})
+        with self.assertRaisesRegex(RuntimeError, "cannot evaluate a spread"):
+            eval_exp({}, exp)
 
-class EndToEndTests(unittest.TestCase):
+    def test_eval_symbol_returns_symbol(self) -> None:
+        self.assertEqual(eval_exp({}, Symbol("abc")), Symbol("abc"))
+
+    def test_eval_float_and_float_addition_returns_float(self) -> None:
+        self.assertEqual(eval_exp({}, Binop(BinopKind.ADD, Float(1.0), Float(2.0))), Float(3.0))
+
+    def test_eval_int_and_float_addition_returns_float(self) -> None:
+        self.assertEqual(eval_exp({}, Binop(BinopKind.ADD, Int(1), Float(2.0))), Float(3.0))
+
+    def test_eval_int_and_float_division_returns_float(self) -> None:
+        self.assertEqual(eval_exp({}, Binop(BinopKind.DIV, Int(1), Float(2.0))), Float(0.5))
+
+    def test_eval_float_and_int_division_returns_float(self) -> None:
+        self.assertEqual(eval_exp({}, Binop(BinopKind.DIV, Float(1.0), Int(2))), Float(0.5))
+
+    def test_eval_int_and_int_division_returns_float(self) -> None:
+        self.assertEqual(eval_exp({}, Binop(BinopKind.DIV, Int(1), Int(2))), Float(0.5))
+
+
+class EndToEndTestsBase(unittest.TestCase):
     def _run(self, text: str, env: Optional[Env] = None) -> Object:
         tokens = tokenize(text)
         ast = parse(tokens)
-        return eval_exp(env or {}, ast)
+        if env is None:
+            env = boot_env()
+        return eval_exp(env, ast)
 
+
+class EndToEndTests(EndToEndTestsBase):
     def test_int_returns_int(self) -> None:
         self.assertEqual(self._run("1"), Int(1))
+
+    def test_float_returns_float(self) -> None:
+        self.assertEqual(self._run("3.14"), Float(3.14))
 
     def test_bytes_returns_bytes(self) -> None:
         self.assertEqual(self._run("~~QUJD"), Bytes(b"ABC"))
@@ -2460,7 +3180,7 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(self._run("a + 1 ? a == 1 . a = 1"), Int(2))
 
     def test_assert_with_falsey_cond_raises_assertion_error(self) -> None:
-        with self.assertRaisesRegex(AssertionError, "condition Binop"):
+        with self.assertRaisesRegex(AssertionError, "condition a == 2 failed"):
             self._run("a + 1 ? a == 2 . a = 1")
 
     def test_nested_assert(self) -> None:
@@ -2501,7 +3221,7 @@ class EndToEndTests(unittest.TestCase):
     def test_non_var_function_arg_raises_parse_error(self) -> None:
         with self.assertRaises(RuntimeError) as ctx:
             self._run("1 -> a")
-        self.assertEqual(ctx.exception.args[0], "expected variable in function definition Int(value=1)")
+        self.assertEqual(ctx.exception.args[0], "expected variable in function definition 1")
 
     def test_compose(self) -> None:
         self.assertEqual(self._run("((a -> a + 1) >> (b -> b * 2)) 3"), Int(8))
@@ -2721,7 +3441,8 @@ class EndToEndTests(unittest.TestCase):
             """
     f 1
     . f = n -> f
-    """
+    """,
+            {},
         )
         self.assertEqual(result, Closure({"f": result}, Function(Var("n"), Var("f"))))
 
@@ -2748,6 +3469,165 @@ class EndToEndTests(unittest.TestCase):
             Int(120),
         )
 
+    def test_list_access_binds_tighter_than_append(self) -> None:
+        self.assertEqual(self._run("[1, 2, 3] +< xs@0 . xs = [4]"), List([Int(1), Int(2), Int(3), Int(4)]))
+
+    def test_exponentiation(self) -> None:
+        self.assertEqual(self._run("6 ^ 2"), Int(36))
+
+    def test_modulus(self) -> None:
+        self.assertEqual(self._run("11 % 3"), Int(2))
+
+    def test_exp_binds_tighter_than_mul(self) -> None:
+        self.assertEqual(self._run("5 * 2 ^ 3"), Int(40))
+
+    def test_symbol_true_returns_true(self) -> None:
+        self.assertEqual(self._run("# true", {}), Symbol("true"))
+
+    def test_symbol_false_returns_false(self) -> None:
+        self.assertEqual(self._run("#false", {}), Symbol("false"))
+
+    def test_boolean_and_binds_tighter_than_or(self) -> None:
+        self.assertEqual(self._run("#true || #true && boom", {}), Symbol("true"))
+
+    def test_compare_binds_tighter_than_boolean_and(self) -> None:
+        self.assertEqual(self._run("1 < 2 && 2 < 1"), Symbol("false"))
+
+    def test_match_list_spread(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        f [2, 4, 6]
+        . f =
+          | [] -> 0
+          | [x, ...] -> x
+          | c -> 1
+        """
+            ),
+            Int(2),
+        )
+
+    def test_match_list_named_spread(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        tail [1,2,3]
+        . tail =
+          | [first, ...rest] -> rest
+        """
+            ),
+            List([Int(2), Int(3)]),
+        )
+
+    def test_match_record_spread(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        f {x = 4, y = 5} 
+        . f =
+          | {} -> 0
+          | {x = a, ...} -> a
+          | c -> 1
+        """
+            ),
+            Int(4),
+        )
+
+    def test_match_expr_as_boolean_symbols(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        say (1 < 2)
+        . say =
+          | #false -> "oh no"
+          | #true -> "omg"
+        """
+            ),
+            String("omg"),
+        )
+
+
+class ClosureOptimizeTests(unittest.TestCase):
+    def test_int(self) -> None:
+        self.assertEqual(free_in(Int(1)), set())
+
+    def test_float(self) -> None:
+        self.assertEqual(free_in(Float(1.0)), set())
+
+    def test_string(self) -> None:
+        self.assertEqual(free_in(String("x")), set())
+
+    def test_bytes(self) -> None:
+        self.assertEqual(free_in(Bytes(b"x")), set())
+
+    def test_hole(self) -> None:
+        self.assertEqual(free_in(Hole()), set())
+
+    def test_nativefunction(self) -> None:
+        self.assertEqual(free_in(NativeFunction("id", lambda x: x)), set())
+
+    def test_symbol(self) -> None:
+        self.assertEqual(free_in(Symbol("x")), set())
+
+    def test_var(self) -> None:
+        self.assertEqual(free_in(Var("x")), {"x"})
+
+    def test_binop(self) -> None:
+        self.assertEqual(free_in(Binop(BinopKind.ADD, Var("x"), Var("y"))), {"x", "y"})
+
+    def test_empty_list(self) -> None:
+        self.assertEqual(free_in(List([])), set())
+
+    def test_list(self) -> None:
+        self.assertEqual(free_in(List([Var("x"), Var("y")])), {"x", "y"})
+
+    def test_function(self) -> None:
+        exp = parse(tokenize("x -> x + y"))
+        self.assertEqual(free_in(exp), {"y"})
+
+    def test_nested_function(self) -> None:
+        exp = parse(tokenize("x -> y -> x + y + z"))
+        self.assertEqual(free_in(exp), {"z"})
+
+    def test_match_function(self) -> None:
+        exp = parse(tokenize("| 1 -> x | 2 -> y | x -> 3 | z -> 4"))
+        self.assertEqual(free_in(exp), {"x", "y"})
+
+    def test_match_case_int(self) -> None:
+        exp = MatchCase(Int(1), Var("x"))
+        self.assertEqual(free_in(exp), {"x"})
+
+    def test_match_case_var(self) -> None:
+        exp = MatchCase(Var("x"), Binop(BinopKind.ADD, Var("x"), Var("y")))
+        self.assertEqual(free_in(exp), {"y"})
+
+    def test_apply(self) -> None:
+        self.assertEqual(free_in(Apply(Var("x"), Var("y"))), {"x", "y"})
+
+    def test_where(self) -> None:
+        exp = parse(tokenize("x . x = 1"))
+        self.assertEqual(free_in(exp), set())
+
+    def test_where_same_name(self) -> None:
+        exp = parse(tokenize("x . x = x+y"))
+        self.assertEqual(free_in(exp), {"x", "y"})
+
+    def test_assign(self) -> None:
+        exp = Assign(Var("x"), Int(1))
+        self.assertEqual(free_in(exp), set())
+
+    def test_assign_same_name(self) -> None:
+        exp = Assign(Var("x"), Var("x"))
+        self.assertEqual(free_in(exp), {"x"})
+
+    def test_closure(self) -> None:
+        # TODO(max): Should x be considered free in the closure if it's in the
+        # env?
+        exp = Closure({"x": Int(1)}, Function(Var("_"), List([Var("x"), Var("y")])))
+        self.assertEqual(free_in(exp), {"x", "y"})
+
+
+class StdLibTests(EndToEndTestsBase):
     def test_stdlib_add(self) -> None:
         self.assertEqual(self._run("$$add 3 4", STDLIB), Int(7))
 
@@ -2780,31 +3660,284 @@ class EndToEndTests(unittest.TestCase):
             self._run("$$listlength 1", STDLIB)
         self.assertEqual(ctx.exception.args[0], "listlength expected List, but got Int")
 
-    def test_list_access_binds_tighter_than_append(self) -> None:
-        self.assertEqual(self._run("[1, 2, 3] +< xs@0 . xs = [4]"), List([Int(1), Int(2), Int(3), Int(4)]))
 
-    def test_exponentiation(self) -> None:
-        self.assertEqual(self._run("6 ^ 2"), Int(36))
+class PreludeTests(EndToEndTestsBase):
+    def test_id_returns_input(self) -> None:
+        self.assertEqual(self._run("id 123"), Int(123))
 
-    def test_modulus(self) -> None:
-        self.assertEqual(self._run("11 % 3"), Int(2))
+    def test_filter_returns_matching(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        filter (x -> x < 4) [2, 6, 3, 7, 1, 8]
+        """
+            ),
+            List([Int(2), Int(3), Int(1)]),
+        )
 
-    def test_exp_binds_tighter_than_mul(self) -> None:
-        self.assertEqual(self._run("5 * 2 ^ 3"), Int(40))
+    def test_filter_with_function_returning_non_bool_raises_match_error(self) -> None:
+        with self.assertRaises(MatchError):
+            self._run(
+                """
+        filter (x -> #no) [1]
+        """
+            )
 
-    def test_stdlib_true_returns_true(self) -> None:
-        # TODO: replace true/false stdlib def with alternate
-        self.assertEqual(self._run("true", STDLIB), Bool(True))
+    def test_quicksort(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        quicksort [2, 6, 3, 7, 1, 8]
+        """
+            ),
+            List([Int(1), Int(2), Int(3), Int(6), Int(7), Int(8)]),
+        )
 
-    def test_stdlib_false_returns_false(self) -> None:
-        # TODO: replace true/false stdlib def with alternate
-        self.assertEqual(self._run("false", STDLIB), Bool(False))
+    def test_quicksort_with_empty_list(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        quicksort []
+        """
+            ),
+            List([]),
+        )
 
-    def test_boolean_and_binds_tighter_than_or(self) -> None:
-        self.assertEqual(self._run("true || true && false", STDLIB), Bool(True))
+    def test_quicksort_with_non_int_raises_type_error(self) -> None:
+        with self.assertRaises(TypeError):
+            self._run(
+                """
+        quicksort ["a", "c", "b"]
+        """
+            )
 
-    def test_compare_binds_tighter_than_boolean_and(self) -> None:
-        self.assertEqual(self._run("1 < 2 && 2 < 1"), Bool(False))
+    def test_concat(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        concat [1, 2, 3] [4, 5, 6]
+        """
+            ),
+            List([Int(1), Int(2), Int(3), Int(4), Int(5), Int(6)]),
+        )
+
+    def test_concat_with_first_list_empty(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        concat [] [4, 5, 6]
+        """
+            ),
+            List([Int(4), Int(5), Int(6)]),
+        )
+
+    def test_concat_with_second_list_empty(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        concat [1, 2, 3] []
+        """
+            ),
+            List([Int(1), Int(2), Int(3)]),
+        )
+
+    def test_concat_with_both_lists_empty(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        concat [] []
+        """
+            ),
+            List([]),
+        )
+
+    def test_map(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        map (x -> x * 2) [3, 1, 2]
+        """
+            ),
+            List([Int(6), Int(2), Int(4)]),
+        )
+
+    def test_map_with_non_function_raises_type_error(self) -> None:
+        with self.assertRaises(TypeError):
+            self._run(
+                """
+        map 4 [3, 1, 2]
+        """
+            )
+
+    def test_map_with_non_list_raises_match_error(self) -> None:
+        with self.assertRaises(MatchError):
+            self._run(
+                """
+        map (x -> x * 2) 3
+        """
+            )
+
+    def test_range(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        range 3
+        """
+            ),
+            List([Int(0), Int(1), Int(2)]),
+        )
+
+    def test_range_with_non_int_raises_type_error(self) -> None:
+        with self.assertRaises(TypeError):
+            self._run(
+                """
+        range "a"
+        """
+            )
+
+    def test_foldr(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        foldr (x -> a -> a + x) 0 [1, 2, 3]
+        """
+            ),
+            Int(6),
+        )
+
+    def test_foldr_on_empty_list_returns_empty_list(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        foldr (x -> a -> a + x) 0 []
+        """
+            ),
+            Int(0),
+        )
+
+    def test_take(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        take 3 [1, 2, 3, 4, 5]
+        """
+            ),
+            List([Int(1), Int(2), Int(3)]),
+        )
+
+    def test_take_n_more_than_list_length_returns_full_list(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        take 5 [1, 2, 3]
+        """
+            ),
+            List([Int(1), Int(2), Int(3)]),
+        )
+
+    def test_take_with_non_int_raises_type_error(self) -> None:
+        with self.assertRaises(TypeError):
+            self._run(
+                """
+        take "a" [1, 2, 3]
+        """
+            )
+
+    def test_all_returns_true(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        all (x -> x < 5) [1, 2, 3, 4]
+        """
+            ),
+            Symbol("true"),
+        )
+
+    def test_all_returns_false(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        all (x -> x < 5) [2, 4, 6]
+        """
+            ),
+            Symbol("false"),
+        )
+
+    def test_all_with_empty_list_returns_true(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        all (x -> x == 5) []
+        """
+            ),
+            Symbol("true"),
+        )
+
+    def test_all_with_non_bool_raises_type_error(self) -> None:
+        with self.assertRaises(TypeError):
+            self._run(
+                """
+        all (x -> x) [1, 2, 3]
+        """
+            )
+
+    def test_all_short_circuits(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        all (x -> x > 1) [1, "a", "b"]
+        """
+            ),
+            Symbol("false"),
+        )
+
+    def test_any_returns_true(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        any (x -> x < 4) [1, 3, 5]
+        """
+            ),
+            Symbol("true"),
+        )
+
+    def test_any_returns_false(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        any (x -> x < 3) [4, 5, 6]
+        """
+            ),
+            Symbol("false"),
+        )
+
+    def test_any_with_empty_list_returns_false(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        any (x -> x == 5) []
+        """
+            ),
+            Symbol("false"),
+        )
+
+    def test_any_with_non_bool_raises_type_error(self) -> None:
+        with self.assertRaises(TypeError):
+            self._run(
+                """
+        any (x -> x) [1, 2, 3]
+        """
+            )
+
+    def test_any_short_circuits(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        any (x -> x > 1) [2, "a", "b"]
+        """
+            ),
+            Symbol("true"),
+        )
 
     def test_hash_var_looks_up_in_scrapyard(self) -> None:
         func = self._run("fac = | 0 -> 1 | n -> n * fac (n-1)")
@@ -2823,10 +3956,6 @@ class EndToEndTests(unittest.TestCase):
 class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:
         self.assertEqual(bencode(123), b"i123e")
-
-    def test_bencode_bool(self) -> None:
-        # TODO(max): Should we discriminate between bool and int?
-        self.assertEqual(bencode(True), b"i1e")
 
     def test_bencode_negative_int(self) -> None:
         self.assertEqual(bencode(-123), b"i-123e")
@@ -2857,10 +3986,6 @@ class BdecodeTests(unittest.TestCase):
     def test_bdecode_int(self) -> None:
         self.assertEqual(bdecode("i123e"), 123)
 
-    def test_bdecode_bool(self) -> None:
-        # TODO(max): Should we discriminate between bool and int?
-        self.assertEqual(bdecode("i1e"), 1)
-
     def test_bdecode_negative_int(self) -> None:
         self.assertEqual(bdecode("i-123e"), -123)
 
@@ -2889,6 +4014,11 @@ class ObjectSerializeTests(unittest.TestCase):
         obj = Int(-123)
         self.assertEqual(obj.serialize(), {b"type": b"Int", b"value": -123})
 
+    def test_serialize_float_raises_not_implemented_error(self) -> None:
+        obj = Float(3.14)
+        with self.assertRaisesRegex(NotImplementedError, re.escape("serialization for Float is not supported")):
+            obj.serialize()
+
     def test_serialize_str(self) -> None:
         obj = String("abc")
         self.assertEqual(obj.serialize(), {b"type": b"String", b"value": b"abc"})
@@ -2901,9 +4031,9 @@ class ObjectSerializeTests(unittest.TestCase):
         obj = Var("abc")
         self.assertEqual(obj.serialize(), {b"type": b"Var", b"name": b"abc"})
 
-    def test_serialize_bool(self) -> None:
-        obj = Bool(True)
-        self.assertEqual(obj.serialize(), {b"type": b"Bool", b"value": True})
+    def test_serialize_symbol(self) -> None:
+        obj = Symbol("true")
+        self.assertEqual(obj.serialize(), {b"type": b"Symbol", b"value": b"true"})
 
     def test_serialize_binary_add(self) -> None:
         obj = Binop(BinopKind.ADD, Int(123), Int(456))
@@ -3001,21 +4131,9 @@ class ObjectDeserializeTests(unittest.TestCase):
         msg = {"type": "Var", "name": "abc"}
         self.assertEqual(Object.deserialize(msg), Var("abc"))
 
-    def test_deserialize_bool_true(self) -> None:
-        msg = {"type": "Bool", "value": True}
-        self.assertEqual(Object.deserialize(msg), Bool(True))
-
-    def test_deserialize_bool_false(self) -> None:
-        msg = {"type": "Bool", "value": False}
-        self.assertEqual(Object.deserialize(msg), Bool(False))
-
-    def test_deserialize_bool_int_one(self) -> None:
-        msg = {"type": "Bool", "value": 1}
-        self.assertEqual(Object.deserialize(msg), Bool(True))
-
-    def test_deserialize_bool_int_zero(self) -> None:
-        msg = {"type": "Bool", "value": 0}
-        self.assertEqual(Object.deserialize(msg), Bool(False))
+    def test_deserialize_symbol(self) -> None:
+        msg = {"type": "Symbol", "value": "abc"}
+        self.assertEqual(Object.deserialize(msg), Symbol("abc"))
 
     def test_deserialize_binary_add(self) -> None:
         msg = {
@@ -3096,9 +4214,9 @@ class SerializeTests(unittest.TestCase):
         obj = Var("abc")
         self.assertEqual(serialize(obj), b"d4:name3:abc4:type3:Vare")
 
-    def test_serialize_bool(self) -> None:
-        obj = Bool(True)
-        self.assertEqual(serialize(obj), b"d4:type4:Bool5:valuei1ee")
+    def test_serialize_symbol(self) -> None:
+        obj = Symbol("abcd")
+        self.assertEqual(serialize(obj), b"d4:type6:Symbol5:value4:abcde")
 
     def test_serialize_function(self) -> None:
         obj = Function(Var("x"), Binop(BinopKind.ADD, Int(1), Var("x")))
@@ -3106,6 +4224,147 @@ class SerializeTests(unittest.TestCase):
             serialize(obj),
             b"d3:argd4:name1:x4:type3:Vare4:bodyd4:leftd4:type3:Int5:valuei1ee2:op3:ADD5:rightd4:name1:x4:type3:Vare4:type5:Binope4:type8:Functione",
         )
+
+
+class ScrapMonadTests(unittest.TestCase):
+    def test_create_copies_env(self) -> None:
+        env = {"a": Int(123)}
+        result = ScrapMonad(env)
+        self.assertEqual(result.env, env)
+        self.assertIsNot(result.env, env)
+
+    def test_bind_returns_new_monad(self) -> None:
+        env = {"a": Int(123)}
+        orig = ScrapMonad(env)
+        result, next_monad = orig.bind(Assign(Var("b"), Int(456)))
+        self.assertEqual(orig.env, {"a": Int(123)})
+        self.assertEqual(next_monad.env, {"a": Int(123), "b": Int(456)})
+
+
+class PrettyPrintTests(unittest.TestCase):
+    def test_pretty_print_int(self) -> None:
+        obj = Int(1)
+        self.assertEqual(str(obj), "1")
+
+    def test_pretty_print_float(self) -> None:
+        obj = Float(3.14)
+        self.assertEqual(str(obj), "3.14")
+
+    def test_pretty_print_string(self) -> None:
+        obj = String("hello")
+        self.assertEqual(str(obj), '"hello"')
+
+    def test_pretty_print_bytes(self) -> None:
+        obj = Bytes(b"abc")
+        self.assertEqual(str(obj), "~~YWJj")
+
+    def test_pretty_print_var(self) -> None:
+        obj = Var("ref")
+        self.assertEqual(str(obj), "ref")
+
+    def test_pretty_print_hole(self) -> None:
+        obj = Hole()
+        self.assertEqual(str(obj), "()")
+
+    def test_pretty_print_spread(self) -> None:
+        obj = Spread()
+        self.assertEqual(str(obj), "...")
+
+    def test_pretty_print_named_spread(self) -> None:
+        obj = Spread("rest")
+        self.assertEqual(str(obj), "...rest")
+
+    def test_pretty_print_binop(self) -> None:
+        obj = Binop(BinopKind.ADD, Int(1), Int(2))
+        self.assertEqual(str(obj), "1 + 2")
+
+    def test_pretty_print_int_list(self) -> None:
+        obj = List([Int(1), Int(2), Int(3)])
+        self.assertEqual(str(obj), "[1, 2, 3]")
+
+    def test_pretty_print_str_list(self) -> None:
+        obj = List([String("1"), String("2"), String("3")])
+        self.assertEqual(str(obj), '["1", "2", "3"]')
+
+    def test_pretty_print_assign(self) -> None:
+        obj = Assign(Var("x"), Int(3))
+        self.assertEqual(str(obj), "x = 3")
+
+    def test_pretty_print_function(self) -> None:
+        obj = Function(Var("x"), Binop(BinopKind.ADD, Int(1), Var("x")))
+        self.assertEqual(
+            str(obj),
+            "Function(arg=Var(name='x'), body=Binop(op=<BinopKind.ADD: 1>, left=Int(value=1), right=Var(name='x')))",
+        )
+
+    def test_pretty_print_apply(self) -> None:
+        obj = Apply(Var("x"), Var("y"))
+        self.assertEqual(str(obj), "Apply(func=Var(name='x'), arg=Var(name='y'))")
+
+    def test_pretty_print_compose(self) -> None:
+        obj = Compose(
+            Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3))),
+            Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2))),
+        )
+        self.assertEqual(
+            str(obj),
+            "Compose(inner=Function(arg=Var(name='x'), body=Binop(op=<BinopKind.ADD: 1>, "
+            "left=Var(name='x'), right=Int(value=3))), outer=Function(arg=Var(name='x'), "
+            "body=Binop(op=<BinopKind.MUL: 3>, left=Var(name='x'), right=Int(value=2))))",
+        )
+
+    def test_pretty_print_where(self) -> None:
+        obj = Where(
+            Binop(BinopKind.ADD, Var("a"), Var("b")),
+            Assign(Var("a"), Int(1)),
+        )
+        self.assertEqual(
+            str(obj),
+            "Where(body=Binop(op=<BinopKind.ADD: 1>, left=Var(name='a'), "
+            "right=Var(name='b')), binding=Assign(name=Var(name='a'), value=Int(value=1)))",
+        )
+
+    def test_pretty_print_assert(self) -> None:
+        obj = Assert(Int(123), Symbol("true"))
+        self.assertEqual(str(obj), "Assert(value=Int(value=123), cond=Symbol(value='true'))")
+
+    def test_pretty_print_envobject(self) -> None:
+        obj = EnvObject({"x": Int(1)})
+        self.assertEqual(str(obj), "EnvObject(keys=dict_keys(['x']))")
+
+    def test_pretty_print_matchcase(self) -> None:
+        obj = MatchCase(pattern=Int(1), body=Int(2))
+        self.assertEqual(str(obj), "MatchCase(pattern=Int(value=1), body=Int(value=2))")
+
+    def test_pretty_print_matchfunction(self) -> None:
+        obj = MatchFunction([MatchCase(Var("y"), Var("x"))])
+        self.assertEqual(str(obj), "MatchFunction(cases=[MatchCase(pattern=Var(name='y'), body=Var(name='x'))])")
+
+    def test_pretty_print_relocation(self) -> None:
+        obj = Relocation("relocate")
+        self.assertEqual(str(obj), "Relocation(name='relocate')")
+
+    def test_pretty_print_nativefunction(self) -> None:
+        obj = NativeFunction("times2", lambda x: Int(x.value * 2))  # type: ignore [attr-defined]
+        self.assertEqual(str(obj), "NativeFunction(name=times2)")
+
+    def test_pretty_print_closure(self) -> None:
+        obj = Closure({"a": Int(123)}, Function(Var("x"), Var("x")))
+        self.assertEqual(
+            str(obj), "Closure(env={'a': Int(value=123)}, func=Function(arg=Var(name='x'), body=Var(name='x')))"
+        )
+
+    def test_pretty_print_record(self) -> None:
+        obj = Record({"a": Int(1), "b": Int(2)})
+        self.assertEqual(str(obj), "{a = 1, b = 2}")
+
+    def test_pretty_print_access(self) -> None:
+        obj = Access(Record({"a": Int(4)}), Var("a"))
+        self.assertEqual(str(obj), "Access(obj=Record(data={'a': Int(value=4)}), at=Var(name='a'))")
+
+    def test_pretty_print_symbol(self) -> None:
+        obj = Symbol("x")
+        self.assertEqual(str(obj), "#x")
 
 
 def fetch(url: Object) -> Object:
@@ -3117,8 +4376,6 @@ def fetch(url: Object) -> Object:
 
 def make_object(pyobj: object) -> Object:
     assert not isinstance(pyobj, Object)
-    if isinstance(pyobj, bool):
-        return Bool(pyobj)
     if isinstance(pyobj, int):
         return Int(pyobj)
     if isinstance(pyobj, str):
@@ -3152,9 +4409,59 @@ STDLIB = {
     "$$jsondecode": NativeFunction("$$jsondecode", jsondecode),
     "$$serialize": NativeFunction("$$serialize", lambda obj: Bytes(serialize(obj))),
     "$$listlength": NativeFunction("$$listlength", listlength),
-    "true": Bool(True),
-    "false": Bool(False),
 }
+
+
+PRELUDE = """
+id = x -> x
+
+. quicksort =
+  | [] -> []
+  | [p, ...xs] -> (concat ((quicksort (ltp xs p)) +< p) (quicksort (gtp xs p))
+    . gtp = xs -> p -> filter (x -> x >= p) xs
+    . ltp = xs -> p -> filter (x -> x < p) xs)
+
+. filter = f ->
+  | [] -> []
+  | [x, ...xs] -> f x |> | #true -> x >+ filter f xs
+                         | #false -> filter f xs
+
+. concat = xs ->
+  | [] -> xs
+  | [y, ...ys] -> concat (xs +< y) ys
+
+. map = f ->
+  | [] -> []
+  | [x, ...xs] -> f x >+ map f xs
+
+. range =
+  | 1 -> [0]
+  | i -> range (i - 1) +< (i - 1)
+
+. foldr = f -> a ->
+  | [] -> a
+  | [x, ...xs] -> f x (foldr f a xs)
+
+. take =
+  | 0 -> xs -> []
+  | n ->
+    | [] -> []
+    | [x, ...xs] -> x >+ take (n - 1) xs
+    
+. all = f ->
+  | [] -> #true
+  | [x, ...xs] -> f x && all f xs
+
+. any = f ->
+  | [] -> #false
+  | [x, ...xs] -> f x || any f xs
+"""
+
+
+def boot_env() -> Env:
+    env_object = eval_exp(STDLIB, parse(tokenize(PRELUDE)))
+    assert isinstance(env_object, EnvObject)
+    return env_object.env
 
 
 class Completer:
@@ -3182,7 +4489,7 @@ REPL_HISTFILE = os.path.expanduser(".scrap-history")
 class ScrapRepl(code.InteractiveConsole):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.env: Env = STDLIB.copy()
+        self.env: Env = boot_env()
 
     def enable_readline(self) -> None:
         assert readline, "Can't enable readline without readline module"
@@ -3234,7 +4541,7 @@ def eval_command(args: argparse.Namespace) -> None:
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
-    result = eval_exp(STDLIB, ast)
+    result = eval_exp(boot_env(), ast)
     print(result)
 
 
@@ -3246,7 +4553,7 @@ def apply_command(args: argparse.Namespace) -> None:
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
-    result = eval_exp(STDLIB, ast)
+    result = eval_exp(boot_env(), ast)
     print(result)
 
 
@@ -3342,6 +4649,19 @@ def yard_commit_command(args: argparse.Namespace) -> None:
     scrap_name, obj_id = yard_commit(args.yard, args.scrap_name, obj)
     print(args.scrap_name, obj_id)
 
+def serve_command(args: argparse.Namespace) -> None:
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+    server: Union[type[socketserver.TCPServer], type[socketserver.ForkingTCPServer]]
+    if args.fork:
+        server = socketserver.ForkingTCPServer
+    else:
+        server = socketserver.TCPServer
+    server.allow_reuse_address = True
+    with server(("", args.port), ScrapReplServer) as httpd:
+        host, port = httpd.server_address
+        print(f"serving at http://{host!s}:{port}")
+        httpd.serve_forever()
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="scrapscript")
@@ -3375,6 +4695,12 @@ def main() -> None:
     yard_commit.add_argument("yard")
     yard_commit.add_argument("scrap_name")
     yard_commit.add_argument("program_file", type=argparse.FileType("r"))
+
+    serve = subparsers.add_parser("serve")
+    serve.set_defaults(func=serve_command)
+    serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument("--debug", action="store_true")
+    serve.add_argument("--fork", action="store_true")
 
     args = parser.parse_args()
     if not args.command:

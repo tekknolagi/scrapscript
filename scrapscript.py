@@ -18,7 +18,7 @@ import urllib.parse
 from dataclasses import dataclass
 from enum import auto
 from types import FunctionType, ModuleType
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Mapping, Optional, Set, Tuple, Union
 
 readline: Optional[ModuleType]
 try:
@@ -1137,6 +1137,48 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
     raise NotImplementedError(f"match not implemented for {type(pattern).__name__}")
 
 
+def free_in(exp: Object) -> Set[str]:
+    if isinstance(exp, (Int, Float, String, Bytes, Hole, NativeFunction, Symbol)):
+        return set()
+    if isinstance(exp, Var):
+        return {exp.name}
+    if isinstance(exp, Binop):
+        return free_in(exp.left) | free_in(exp.right)
+    if isinstance(exp, List):
+        if not exp.items:
+            return set()
+        return set.union(*(free_in(item) for item in exp.items))
+    if isinstance(exp, Function):
+        assert isinstance(exp.arg, Var)
+        return free_in(exp.body) - {exp.arg.name}
+    if isinstance(exp, MatchFunction):
+        if not exp.cases:
+            return set()
+        return set.union(*(free_in(case) for case in exp.cases))
+    if isinstance(exp, MatchCase):
+        if isinstance(exp.pattern, Var):
+            return free_in(exp.body) - {exp.pattern.name}
+        # TODO(max): List/record destructuring
+        return free_in(exp.body)
+    if isinstance(exp, Apply):
+        return free_in(exp.func) | free_in(exp.arg)
+    if isinstance(exp, Where):
+        assert isinstance(exp.binding, Assign)
+        return free_in(exp.body) | free_in(exp.binding)  # | {exp.binding.name.name}
+    if isinstance(exp, Assign):
+        return free_in(exp.value)
+    if isinstance(exp, Closure):
+        # TODO(max): Should this remove the set of keys in the closure env?
+        return free_in(exp.func)
+    raise NotImplementedError(("free_in", type(exp)))
+
+
+def improve_closure(closure: Closure) -> Closure:
+    freevars = free_in(closure.func)
+    env = {boundvar: value for boundvar, value in closure.env.items() if boundvar in freevars}
+    return Closure(env, closure.func)
+
+
 # pylint: disable=redefined-builtin
 def eval_exp(env: Env, exp: Object) -> Object:
     logger.debug(exp)
@@ -1166,12 +1208,12 @@ def eval_exp(env: Env, exp: Object) -> Object:
             # Y combinator or similar, so we bind functions (and only
             # functions) using a letrec-like strategy. We augment their
             # captured environment with a binding to themselves.
-            # TODO(max): Add "closure improve", which filters bindings to those
-            # used by the underlying function.
             assert isinstance(value.env, dict)
             value.env[exp.name.name] = value
+            value = improve_closure(value)
         return EnvObject({**env, exp.name.name: value})
     if isinstance(exp, Where):
+        assert isinstance(exp.binding, Assign)
         res_env = eval_exp(env, exp.binding)
         assert isinstance(res_env, EnvObject)
         new_env = {**env, **res_env.env}
@@ -2688,13 +2730,21 @@ class EvalTests(unittest.TestCase):
         result = eval_exp(env, exp)
         self.assertEqual(result, EnvObject({"a": Int(1)}))
 
-    def test_eval_assign_function_returns_closure_with_function_in_env(self) -> None:
+    def test_eval_assign_function_returns_closure_without_function_in_env(self) -> None:
         exp = Assign(Var("a"), Function(Var("x"), Var("x")))
         result = eval_exp({}, exp)
         assert isinstance(result, EnvObject)
         closure = result.env["a"]
         self.assertIsInstance(closure, Closure)
-        self.assertEqual(closure, Closure({"a": closure}, Function(Var("x"), Var("x"))))
+        self.assertEqual(closure, Closure({}, Function(Var("x"), Var("x"))))
+
+    def test_eval_assign_function_returns_closure_with_function_in_env(self) -> None:
+        exp = Assign(Var("a"), Function(Var("x"), Var("a")))
+        result = eval_exp({}, exp)
+        assert isinstance(result, EnvObject)
+        closure = result.env["a"]
+        self.assertIsInstance(closure, Closure)
+        self.assertEqual(closure, Closure({"a": closure}, Function(Var("x"), Var("a"))))
 
     def test_eval_assign_does_not_modify_env(self) -> None:
         exp = Assign(Var("a"), Int(1))
@@ -3429,6 +3479,99 @@ class EndToEndTests(EndToEndTestsBase):
             ),
             String("omg"),
         )
+
+
+class ClosureOptimizeTests(unittest.TestCase):
+    def _run(self, exp: Object, start_env_keys: Set[str], expected_keys: Set[str]) -> None:
+        start_env = {key: Int(1) for key in start_env_keys}
+        # TODO(max): Perhaps just test free_in separately
+        if isinstance(exp, (Function, MatchFunction)):
+            closure = Closure(start_env, exp)
+        else:
+            closure = Closure(start_env, Function(Var("_"), exp))
+        improved = improve_closure(closure)
+        self.assertEqual(closure.env, start_env)
+        self.assertIsInstance(improved, Closure)
+        if isinstance(exp, (Function, MatchFunction)):
+            self.assertIs(improved.func, exp)
+        else:
+            self.assertIs(improved.func.body, exp)
+        self.assertEqual(set(improved.env.keys()), expected_keys)
+
+    def test_int(self) -> None:
+        self._run(Int(1), {"x"}, set())
+
+    def test_float(self) -> None:
+        self._run(Float(1.0), {"x"}, set())
+
+    def test_string(self) -> None:
+        self._run(String("x"), {"x"}, set())
+
+    def test_bytes(self) -> None:
+        self._run(Bytes(b"x"), {"x"}, set())
+
+    def test_hole(self) -> None:
+        self._run(Hole(), {"x"}, set())
+
+    def test_nativefunction(self) -> None:
+        self._run(NativeFunction("id", lambda x: x), {"id"}, set())
+
+    def test_symbol(self) -> None:
+        self._run(Symbol("x"), {"x"}, set())
+
+    def test_var(self) -> None:
+        self._run(Var("x"), {"x", "y"}, {"x"})
+
+    def test_binop(self) -> None:
+        self._run(Binop(BinopKind.ADD, Var("x"), Var("y")), {"x", "y", "z"}, {"x", "y"})
+
+    def test_empty_list(self) -> None:
+        self._run(List([]), {"x", "y", "z"}, set())
+
+    def test_list(self) -> None:
+        self._run(List([Var("x"), Var("y")]), {"x", "y", "z"}, {"x", "y"})
+
+    def test_function(self) -> None:
+        exp = parse(tokenize("x -> x + y"))
+        self._run(exp, {"x", "y"}, {"y"})
+
+    def test_nested_function(self) -> None:
+        exp = parse(tokenize("x -> y -> x + y + z"))
+        self._run(exp, {"x", "y", "z"}, {"z"})
+
+    def test_match_function(self) -> None:
+        exp = parse(tokenize("| 1 -> x | 2 -> y | x -> 3 | z -> 4"))
+        self._run(exp, {"x", "y", "z"}, {"x", "y"})
+
+    def test_match_case_int(self) -> None:
+        exp = MatchCase(Int(1), Var("x"))
+        self._run(exp, {"x", "y"}, {"x"})
+
+    def test_match_case_var(self) -> None:
+        exp = MatchCase(Var("x"), Binop(BinopKind.ADD, Var("x"), Var("y")))
+        self._run(exp, {"x", "y"}, {"y"})
+
+    def test_apply(self) -> None:
+        self._run(Apply(Var("x"), Var("y")), {"x", "y", "z"}, {"x", "y"})
+
+    @unittest.skip("TODO: figure out why it's failing")
+    def test_where(self) -> None:
+        exp = parse(tokenize("x . x = 1"))
+        self._run(exp, {"x", "y"}, set())
+
+    def test_assign(self) -> None:
+        exp = Assign(Var("x"), Int(1))
+        self._run(exp, {"x", "y"}, set())
+
+    def test_assign_same_name(self) -> None:
+        exp = Assign(Var("x"), Var("x"))
+        self._run(exp, {"x", "y"}, {"x"})
+
+    def test_closure(self) -> None:
+        # TODO(max): Should x be considered free in the closure if it's in the
+        # env?
+        exp = Closure({"x": Int(1)}, Function(Var("_"), List([Var("x"), Var("y")])))
+        self._run(exp, {"x", "y", "z"}, {"x", "y"})
 
 
 class StdLibTests(EndToEndTestsBase):

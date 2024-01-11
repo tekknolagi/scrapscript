@@ -1376,15 +1376,57 @@ class Serializer:
         return {key.encode("utf-8"): self.serialize(value) for key, value in env.items()}
 
 
+# def _derefwrap(
+#     f: Callable[["Deserializer", int], Object],
+# ) -> Callable[["Deserializer", int], Object]:
+#     def inner(self: "Deserializer", idx: int) -> Object:
+#         idx = self.seen.get(id(obj))
+#         if idx is not None:
+#             return {b"type": b"Ref", b"index": idx}
+#         self.seen[id(obj)] = idx = len(self.serialized)
+#         self.serialized.append({})
+#         assert not self.serialized[idx]
+#         self.serialized[idx] = f(self, obj)
+#         return {b"type": b"Ref", b"index": idx}
+#
+#     return inner
+
+
+@dataclass(frozen=True)
+class Link(Object):
+    idx: int
+    obj: typing.List[Object] = dataclasses.field(
+        default_factory=lambda: []
+    )  # Used as a cell without modifying the attribute
+
+    def link(self, obj: Object) -> None:
+        assert len(self.obj) == 0
+        self.obj.append(obj)
+
+
 class Deserializer:
     def __init__(self, refs: typing.List[Dict[str, Any]]) -> None:
         self.refs = refs
+        self.objs: typing.List[Object] = [Hole()] * len(refs)
+        self.links: typing.List[Link] = [Link(idx) for idx in range(len(refs))]
 
-    def deserialize(self) -> Object:
-        objs: typing.List[Object] = [Int(0)] * len(self.refs)
-        for idx, ref in reversed(list(enumerate(self.refs))):
-            objs[idx] = self._deserialize(ref)
-        return objs[0]
+    def deserialize_all(self) -> Object:
+        for idx in reversed(range(len(self.refs))):
+            self.objs[idx] = self._deserialize(self.refs[idx])
+            self.links[idx].link(self.objs[idx])
+            self.link(idx)
+        return self.objs[0]
+
+    def link(self, idx: int) -> None:
+        obj = self.objs[idx]
+        if isinstance(obj, (Int, String)):
+            return
+        if isinstance(obj, List):
+            for items_idx, link in enumerate(obj.items):
+                if isinstance(link, Link):
+                    obj.items[items_idx] = self.objs[link.idx]
+            return
+        raise NotImplementedError(type(obj))
 
     def _deserialize(self, ref: Dict[str, Any]) -> Object:
         if ref["type"] == "Int":
@@ -1396,6 +1438,9 @@ class Deserializer:
         if ref["type"] == "List":
             return List([self._deserialize(item) for item in ref["items"]])
         if ref["type"] == "Ref":
+            result = self.links[ref["index"]]
+            assert isinstance(result, Object)
+            return result
             assert isinstance(ref["index"], int)
             return self._deserialize(self.refs[ref["index"]])
         raise NotImplementedError(f"deserialization for {ref['type']} is not supported")
@@ -1403,7 +1448,7 @@ class Deserializer:
 
 def new_deserialize(refs: typing.List[Dict[str, Any]]) -> Object:
     deserializer = Deserializer(refs)
-    return deserializer.deserialize()
+    return deserializer.deserialize_all()
 
 
 def deserialize(msg: str) -> Object:
@@ -4273,6 +4318,29 @@ class DeserializeTests(unittest.TestCase):
             {"type": "Int", "value": 456},
         ]
         self.assertEqual(new_deserialize(msg), List([Int(123), Int(456)]))
+
+    def test_deserialize_recursive_list(self) -> None:
+        msg: typing.List[Dict[str, Any]] = [
+            {
+                "type": "List",
+                "items": [
+                    {"type": "Ref", "index": 0},
+                ],
+            },
+        ]
+        result = new_deserialize(msg)
+        self.assertIsInstance(result, List)
+        assert isinstance(result, List)  # for mypy
+        self.assertIs(result.items[0], result)
+
+
+# TODO(max): Resolve str/bytes disparity
+# class RoundTripSerializationTests(unittest.TestCase):
+#     def _run(self, obj: Object) -> None:
+#         self.assertEqual(new_deserialize(serialize(obj)), obj)
+#
+#     def test_int(self) -> None:
+#         self._run(Int(123))
 
 
 class ObjectDeserializeTests(unittest.TestCase):

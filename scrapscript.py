@@ -1376,6 +1376,28 @@ class Serializer:
         return {key.encode("utf-8"): self.serialize(value) for key, value in env.items()}
 
 
+class Deserializer:
+    def deserialize(self, refs: typing.List[Dict[str, Any]]) -> Object:
+        objs: typing.List[Object] = [Int(0)] * len(refs)
+        for idx, ref in reversed(list(enumerate(refs))):
+            objs[idx] = self._deserialize(refs, ref)
+        return objs[0]
+
+    def _deserialize(self, refs: typing.List[Dict[str, Any]], ref: Dict[str, Any]) -> Object:
+        if ref["type"] == "Int":
+            assert isinstance(ref["value"], int)
+            return Int(ref["value"])
+        if ref["type"] == "String":
+            assert isinstance(ref["value"], str)
+            return String(ref["value"])
+        raise NotImplementedError(f"deserialization for {ref['type']} is not supported")
+
+
+def new_deserialize(refs: typing.List[Dict[str, Any]]) -> Object:
+    deserializer = Deserializer()
+    return deserializer.deserialize(refs)
+
+
 def deserialize(msg: str) -> Object:
     logging.debug("deserialize %s", msg)
     decoded = bdecode(msg)
@@ -4215,6 +4237,16 @@ class SerializeTests(unittest.TestCase):
                 {b"type": b"Int", b"value": 1},
             ],
         )
+
+
+class DeserializeTests(unittest.TestCase):
+    def test_deserialize_int(self) -> None:
+        msg = [{"type": "Int", "value": 123}]
+        self.assertEqual(new_deserialize(msg), Int(123))
+
+    def test_deserialize_str(self) -> None:
+        msg = [{"type": "String", "value": "abc"}]
+        self.assertEqual(new_deserialize(msg), String("abc"))
 
 
 class ObjectDeserializeTests(unittest.TestCase):

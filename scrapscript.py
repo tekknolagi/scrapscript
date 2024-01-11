@@ -1363,6 +1363,10 @@ class Serializer:
             return self._serialize(obj, name=self.serialize(obj.name), value=self.serialize(obj.value))
         if isinstance(obj, Function):
             return self._serialize(obj, arg=self.serialize(obj.arg), body=self.serialize(obj.body))
+        if isinstance(obj, MatchFunction):
+            return self._serialize(obj, cases=[self.serialize(case) for case in obj.cases])
+        if isinstance(obj, MatchCase):
+            return self._serialize(obj, pattern=self.serialize(obj.pattern), body=self.serialize(obj.body))
         if isinstance(obj, Apply):
             return self._serialize(obj, func=self.serialize(obj.func), arg=self.serialize(obj.arg))
         raise NotImplementedError(f"serialization for {type(obj).__name__} is not supported")
@@ -4082,6 +4086,133 @@ class SerializeTests(unittest.TestCase):
                 },
                 {b"type": b"Int", b"value": 3},
                 {b"type": b"Int", b"value": 4},
+            ],
+        )
+
+    def test_serialize_match_case(self) -> None:
+        obj = MatchCase(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(1)))
+        self.assertEqual(
+            serialize(obj),
+            [
+                {
+                    b"type": b"MatchCase",
+                    b"pattern": {b"type": b"Ref", b"index": 1},
+                    b"body": {b"type": b"Ref", b"index": 2},
+                },
+                {b"type": b"Var", b"name": b"x"},
+                {
+                    b"type": b"Binop",
+                    b"op": b"ADD",
+                    b"left": {b"type": b"Ref", b"index": 3},
+                    b"right": {b"type": b"Ref", b"index": 4},
+                },
+                {b"type": b"Var", b"name": b"x"},
+                {b"type": b"Int", b"value": 1},
+            ],
+        )
+
+    def test_serialize_empty_match_function(self) -> None:
+        obj = MatchFunction([])
+        self.assertEqual(serialize(obj), [{b"type": b"MatchFunction", b"cases": []}])
+
+    def test_serialize_match_function(self) -> None:
+        obj = MatchFunction(
+            [
+                MatchCase(Int(0), Int(1)),
+                MatchCase(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(1))),
+            ]
+        )
+        self.assertEqual(
+            serialize(obj),
+            [
+                {
+                    b"type": b"MatchFunction",
+                    b"cases": [
+                        {b"type": b"Ref", b"index": 1},
+                        {b"type": b"Ref", b"index": 4},
+                    ],
+                },
+                {
+                    b"type": b"MatchCase",
+                    b"pattern": {b"type": b"Ref", b"index": 2},
+                    b"body": {b"type": b"Ref", b"index": 3},
+                },
+                {b"type": b"Int", b"value": 0},
+                {b"type": b"Int", b"value": 1},
+                {
+                    b"type": b"MatchCase",
+                    b"pattern": {b"type": b"Ref", b"index": 5},
+                    b"body": {b"type": b"Ref", b"index": 6},
+                },
+                {b"type": b"Var", b"name": b"x"},
+                {
+                    b"type": b"Binop",
+                    b"op": b"ADD",
+                    b"left": {b"type": b"Ref", b"index": 7},
+                    b"right": {b"type": b"Ref", b"index": 8},
+                },
+                {b"type": b"Var", b"name": b"x"},
+                {b"type": b"Int", b"value": 1},
+            ],
+        )
+
+    def test_serialize_recursive_closure(self) -> None:
+        obj = eval_exp({}, parse(tokenize("fact . fact = | 0 -> 1 | n -> n * fact (n-1)")))
+        self.assertIsInstance(obj, Closure)
+        self.assertEqual(
+            serialize(obj),
+            [
+                {
+                    b"type": b"Closure",
+                    b"env": {b"fact": {b"type": b"Ref", b"index": 1}},
+                    b"func": {b"type": b"Ref", b"index": 2},
+                },
+                {
+                    b"type": b"Closure",
+                    b"env": {b"fact": {b"type": b"Ref", b"index": 1}},
+                    b"func": {b"type": b"Ref", b"index": 2},
+                },
+                {
+                    b"type": b"MatchFunction",
+                    b"cases": [
+                        {b"type": b"Ref", b"index": 3},
+                        {b"type": b"Ref", b"index": 6},
+                    ],
+                },
+                {
+                    b"type": b"MatchCase",
+                    b"pattern": {b"type": b"Ref", b"index": 4},
+                    b"body": {b"type": b"Ref", b"index": 5},
+                },
+                {b"type": b"Int", b"value": 0},
+                {b"type": b"Int", b"value": 1},
+                {
+                    b"type": b"MatchCase",
+                    b"pattern": {b"type": b"Ref", b"index": 7},
+                    b"body": {b"type": b"Ref", b"index": 8},
+                },
+                {b"type": b"Var", b"name": b"n"},
+                {
+                    b"type": b"Binop",
+                    b"op": b"MUL",
+                    b"left": {b"type": b"Ref", b"index": 9},
+                    b"right": {b"type": b"Ref", b"index": 10},
+                },
+                {b"type": b"Var", b"name": b"n"},
+                {
+                    b"type": b"Apply",
+                    b"func": {b"type": b"Ref", b"index": 11},
+                    b"arg": {b"type": b"Ref", b"index": 12},
+                },
+                {b"type": b"Var", b"name": b"fact"},
+                {
+                    b"type": b"Binop",
+                    b"op": b"SUB",
+                    b"left": {b"type": b"Ref", b"index": 13},
+                    b"right": {b"type": b"Ref", b"index": 14},
+                },
+                {b"type": b"Var", b"name": b"n"},
+                {b"type": b"Int", b"value": 1},
             ],
         )
 

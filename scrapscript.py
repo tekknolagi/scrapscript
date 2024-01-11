@@ -4705,6 +4705,9 @@ def yard_commit(path: str, scrap_name: str, obj: Object) -> Tuple[str, str]:
 
 def yard_commit_command(args: argparse.Namespace) -> None:
     obj = eval_exp(STDLIB, parse(tokenize(args.program_file.read())))
+    # TODO(tay): example -> fs implementation
+    # TODO(tay): example/.git -> git implementation
+    # TODO(tay): example.com -> network implementation
     scrap_name, obj_id = yard_commit(args.yard, args.scrap_name, obj)
     print(args.scrap_name, obj_id)
 

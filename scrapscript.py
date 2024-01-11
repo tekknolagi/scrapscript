@@ -1403,6 +1403,8 @@ class Deserializer:
             self.link(idx)
         return self.objs[0]
 
+    # TODO(max): Figure out a way to link without having two entire functions
+    # that have knowledge about each object type
     def link(self, idx: int) -> None:
         obj = self.objs[idx]
         if isinstance(obj, (Int, String)):

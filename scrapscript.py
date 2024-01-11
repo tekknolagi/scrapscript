@@ -1376,22 +1376,6 @@ class Serializer:
         return {key.encode("utf-8"): self.serialize(value) for key, value in env.items()}
 
 
-# def _derefwrap(
-#     f: Callable[["Deserializer", int], Object],
-# ) -> Callable[["Deserializer", int], Object]:
-#     def inner(self: "Deserializer", idx: int) -> Object:
-#         idx = self.seen.get(id(obj))
-#         if idx is not None:
-#             return {b"type": b"Ref", b"index": idx}
-#         self.seen[id(obj)] = idx = len(self.serialized)
-#         self.serialized.append({})
-#         assert not self.serialized[idx]
-#         self.serialized[idx] = f(self, obj)
-#         return {b"type": b"Ref", b"index": idx}
-#
-#     return inner
-
-
 @dataclass(frozen=True)
 class Link(Object):
     idx: int
@@ -1407,13 +1391,15 @@ class Link(Object):
 class Deserializer:
     def __init__(self, refs: typing.List[Dict[str, Any]]) -> None:
         self.refs = refs
-        self.objs: typing.List[Object] = [Hole()] * len(refs)
-        self.links: typing.List[Link] = [Link(idx) for idx in range(len(refs))]
+        self.objs: typing.List[Object] = [Link(idx) for idx in range(len(refs))]
 
     def deserialize_all(self) -> Object:
         for idx in reversed(range(len(self.refs))):
-            self.objs[idx] = self._deserialize(self.refs[idx])
-            self.links[idx].link(self.objs[idx])
+            obj = self._deserialize(self.refs[idx])
+            link = self.objs[idx]
+            assert isinstance(link, Link)
+            link.link(obj)
+            self.objs[idx] = obj
             self.link(idx)
         return self.objs[0]
 
@@ -1438,11 +1424,9 @@ class Deserializer:
         if ref["type"] == "List":
             return List([self._deserialize(item) for item in ref["items"]])
         if ref["type"] == "Ref":
-            result = self.links[ref["index"]]
+            result = self.objs[ref["index"]]
             assert isinstance(result, Object)
             return result
-            assert isinstance(ref["index"], int)
-            return self._deserialize(self.refs[ref["index"]])
         raise NotImplementedError(f"deserialization for {ref['type']} is not supported")
 
 

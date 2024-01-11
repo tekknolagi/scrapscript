@@ -455,7 +455,9 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         # b is (-a) op b and not -(a op b).
         # Precedence was chosen to be higher than function application so that
         # -a b is (-a) b and not -(a b).
-        r = parse(tokens, HIGHEST_PREC + 1)
+        # Precedence was chosen to be equal to HIGHEST_PREC so that
+        # -a @ 0 is -(a @ 0) and not (-a) @ 0
+        r = parse(tokens, HIGHEST_PREC)
         l = Binop(BinopKind.SUB, Int(0), r)
     else:
         raise ParseError(f"unexpected token {token!r}")
@@ -498,6 +500,8 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
             l = Assert(l, parse(tokens, pr))
         elif op == Operator("::"):
             l = Access(l, parse(tokens, pr))
+        elif op == Operator("@"):
+            l = Pin(l, parse(tokens, pr))
         else:
             assert not isinstance(op, Juxt)
             assert isinstance(op, Operator)
@@ -1023,6 +1027,14 @@ class Access(Object):
         # TODO: Better pretty printing for Access
         return self.__repr__()
 
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Pin(Object):
+    obj: Object
+    version: Object
+
+    def __str__(self) -> str:
+        # TODO: Better pretty printing for Pin
+        return self.__repr__()
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Symbol(Object):
@@ -1307,6 +1319,9 @@ def eval_exp(env: Env, exp: Object) -> Object:
                 raise ValueError(f"index {access_at.value} out of bounds for list")
             return obj.items[access_at.value]
         raise TypeError(f"attempted to access from type {type(obj).__name__}")
+    if isinstance(exp, Pin):
+        # TODO
+        return exp.obj
     if isinstance(exp, Compose):
         clo_inner = eval_exp(env, exp.inner)
         clo_outer = eval_exp(env, exp.outer)
@@ -1747,6 +1762,12 @@ class TokenizerTests(unittest.TestCase):
             [Name("r"), Operator("::"), Name("a")],
         )
 
+    def test_tokenize_pin(self) -> None:
+        self.assertEqual(
+            tokenize("s@123"),
+            [Name("s"), Operator("@"), IntLit(123)],
+        )
+
     def test_tokenize_right_eval(self) -> None:
         self.assertEqual(tokenize("a!b"), [Name("a"), Operator("!"), Name("b")])
 
@@ -1957,6 +1978,18 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(
             parse([Operator("-"), Name("l"), Name("r")]),
             Apply(Binop(BinopKind.SUB, Int(0), Var("l")), Var("r")),
+        )
+
+    def test_parse_pin_binds_tighter_than_negative_var(self) -> None:
+        self.assertEqual(
+            parse([Operator("-"), Name("s"), Operator("@"), IntLit(123)]),
+            Binop(BinopKind.SUB, Int(0), Pin(Var("s"), Int(123))),
+        )
+
+    def test_parse_pin_binds_tighter_than_access(self) -> None:
+        self.assertEqual(
+            parse([Name("r"), Operator("@"), IntLit(123), Operator("::"), Name("a")]),
+            Access(Pin(Var("r"), Int(123)), Var("a")),
         )
 
     def test_parse_decimal_returns_float(self) -> None:

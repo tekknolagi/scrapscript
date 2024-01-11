@@ -644,6 +644,10 @@ class Var(Object):
         assert isinstance(msg["name"], str)
         return Var(msg["name"])
 
+    def __str__(self) -> str:
+        return self.name
+
+
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class HashVar(Object):
     name: str
@@ -659,7 +663,6 @@ class HashVar(Object):
 
     def __str__(self) -> str:
         return self.name
-
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -3071,17 +3074,6 @@ class EvalTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, re.escape("expected #true or #false, got Int")):
             eval_exp({}, exp)
 
-    @unittest.skipIf(_dont_have_pygit2(), "Can't run test without pygit2")
-    def test_hash_var_looks_up_in_scrapyard(self) -> None:
-        # TODO(max): Do this in-memory instead of on-disk
-        with tempfile.TemporaryDirectory() as tempdir:
-            yard_init(tempdir)
-            # TODO(max): Use object id
-            yard_commit(tempdir, "a_test_object", Int(100))
-            env = {"$$scrapyard": String(tempdir)}
-            result = eval_exp(env, HashVar("a8788e4ad848bac02d1c6ad76375aad65b7c5387"))
-            self.assertEqual(result, Int(100))
-
     def test_eval_record_with_spread_fails(self) -> None:
         exp = Record({"x": Spread()})
         with self.assertRaisesRegex(RuntimeError, "cannot evaluate a spread"):
@@ -3939,19 +3931,31 @@ class PreludeTests(EndToEndTestsBase):
             Symbol("true"),
         )
 
+    @unittest.skipIf(_dont_have_pygit2(), "Can't run test without pygit2")
     def test_hash_var_looks_up_in_scrapyard(self) -> None:
-        func = self._run("fac = | 0 -> 1 | n -> n * fac (n-1)")
-        print(func)
+        # x = self._run("fac = | 0 -> 1 | n -> n * fac (n-1)")
+        x = self._run("f . f = n -> 120") # TODO
         # TODO(max): Do this in-memory instead of on-disk
         with tempfile.TemporaryDirectory() as tempdir:
             yard_init(tempdir)
-            # TODO(max): Use object id
-            _, obj_id = yard_commit(tempdir, "a_test_object", func)
-            result = eval_exp(env, HashVar(obj_id))
-            self.assertEqual(result, Int(100))
+            _, obj_id = yard_commit(tempdir, "a_test_object", x)
             env = {"$$scrapyard": String(tempdir)}
+            result = eval_exp(env, HashVar(obj_id))
+            self.assertEqual(result, x)
             self.assertEqual(self._run(f"$sha1'{obj_id} 5", env), Int(120))
 
+    @unittest.skipIf(_dont_have_pygit2(), "Can't run test without pygit2")
+    def test_hash_var_looks_up_in_scrapyard(self) -> None:
+        # x = self._run("fac = | 0 -> 1 | n -> n * fac (n-1)")
+        x = self._run("f . f = n -> 120") # TODO
+        # TODO(max): Do this in-memory instead of on-disk
+        with tempfile.TemporaryDirectory() as tempdir:
+            yard_init(tempdir)
+            _, obj_id = yard_commit(tempdir, "a_test_object", x)
+            env = {"$$scrapyard": String(tempdir)}
+            result = eval_exp(env, HashVar(obj_id))
+            self.assertEqual(result, x)
+            self.assertEqual(self._run(f"$sha1'{obj_id} 5", env), Int(120))
 
 class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:

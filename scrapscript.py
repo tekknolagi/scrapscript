@@ -301,8 +301,8 @@ def xp(n: float) -> Prec:
 
 
 PS = {
-    "::": lp(2000),
-    "@": rp(1001),
+    "@": lp(2000),
+    "::": rp(1001),
     "": rp(1000),
     ">>": lp(14),
     "<<": lp(14),
@@ -496,8 +496,7 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
             l = Where(l, parse(tokens, pr))
         elif op == Operator("?"):
             l = Assert(l, parse(tokens, pr))
-        elif op == Operator("@"):
-            # TODO: revisit whether to use @ or . for field access
+        elif op == Operator("::"):
             l = Access(l, parse(tokens, pr))
         else:
             assert not isinstance(op, Juxt)
@@ -1744,8 +1743,8 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_record_access(self) -> None:
         self.assertEqual(
-            tokenize("r@a"),
-            [Name("r"), Operator("@"), Name("a")],
+            tokenize("r::a"),
+            [Name("r"), Operator("::"), Name("a")],
         )
 
     def test_tokenize_right_eval(self) -> None:
@@ -1950,7 +1949,7 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_negative_int_binds_tighter_than_index(self) -> None:
         self.assertEqual(
-            parse([Operator("-"), Name("l"), Operator("@"), Name("r")]),
+            parse([Operator("-"), Name("l"), Operator("::"), Name("r")]),
             Access(Binop(BinopKind.SUB, Int(0), Var("l")), Var("r")),
         )
 
@@ -2024,7 +2023,7 @@ class ParserTests(unittest.TestCase):
 
     def test_list_access_binds_tighter_than_append(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator("+<"), Name("ls"), Operator("@"), IntLit(0)]),
+            parse([Name("a"), Operator("+<"), Name("ls"), Operator("::"), IntLit(0)]),
             Binop(BinopKind.LIST_APPEND, Var("a"), Access(Var("ls"), Int(0))),
         )
 
@@ -3196,16 +3195,16 @@ class EndToEndTests(EndToEndTestsBase):
         self.assertEqual(self._run("{a = 1 + 3}"), Record({"a": Int(4)}))
 
     def test_access_record(self) -> None:
-        self.assertEqual(self._run('rec@b . rec = { a = 1, b = "x" }'), String("x"))
+        self.assertEqual(self._run('rec::b . rec = { a = 1, b = "x" }'), String("x"))
 
     def test_access_list(self) -> None:
-        self.assertEqual(self._run("xs@1 . xs = [1, 2, 3]"), Int(2))
+        self.assertEqual(self._run("xs::1 . xs = [1, 2, 3]"), Int(2))
 
     def test_access_list_var(self) -> None:
-        self.assertEqual(self._run("xs@y . y = 2 . xs = [1, 2, 3]"), Int(3))
+        self.assertEqual(self._run("xs::y . y = 2 . xs = [1, 2, 3]"), Int(3))
 
     def test_access_list_expr(self) -> None:
-        self.assertEqual(self._run("xs@(1+1) . xs = [1, 2, 3]"), Int(3))
+        self.assertEqual(self._run("xs::(1+1) . xs = [1, 2, 3]"), Int(3))
 
     def test_functions_eval_arguments(self) -> None:
         self.assertEqual(self._run("(x -> x) c . c = 1"), Int(1))
@@ -3462,7 +3461,7 @@ class EndToEndTests(EndToEndTestsBase):
         )
 
     def test_list_access_binds_tighter_than_append(self) -> None:
-        self.assertEqual(self._run("[1, 2, 3] +< xs@0 . xs = [4]"), List([Int(1), Int(2), Int(3), Int(4)]))
+        self.assertEqual(self._run("[1, 2, 3] +< xs::0 . xs = [4]"), List([Int(1), Int(2), Int(3), Int(4)]))
 
     def test_exponentiation(self) -> None:
         self.assertEqual(self._run("6 ^ 2"), Int(36))
@@ -4461,7 +4460,7 @@ class Completer:
         self.matches: typing.List[str] = []
 
     def complete(self, text: str, state: int) -> Optional[str]:
-        assert "@" not in text, "TODO: handle attr/index access"
+        assert "::" not in text, "TODO: handle attr/index access"
         if state == 0:
             options = sorted(self.env.keys())
             if not text:

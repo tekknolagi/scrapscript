@@ -1226,13 +1226,32 @@ def improve_closure(closure: Closure) -> Closure:
     return Closure(env, closure.func)
 
 
-def eval_exp(env: Env, exp: Object) -> Object:
+def eval_exp(env: Env, exp: Object, pin: int|None = None) -> Object:
     logger.debug(exp)
     if isinstance(exp, (Int, Float, String, Bytes, Hole, Closure, NativeFunction, Symbol)):
         return exp
     if isinstance(exp, Var):
-        value = env.get(exp.name)
+        name = exp.name
+        value = env.get(name)
         if value is None:
+            # TODO(tay): this is not good
+            yard_location = env.get( "$$scrapyard" )
+            if yard_location:
+                assert isinstance(yard_location, String)
+                git = _ensure_pygit2()
+                repo_path = git.discover_repository(yard_location.value)
+                if repo_path is None:
+                    raise ScrapError(f"Please create a scrapyard; {yard_location.value!r} is not initialized")
+                repo = git.Repository(repo_path, git.GIT_REPOSITORY_OPEN_BARE)
+                if pin == None:
+                    commit = repo.head.peel(git.Commit)
+                    return deserialize((commit.tree / name).data.decode("utf-8"))
+                else:
+                    n = -1
+                    for commit in repo.walk(repo.head.target, git.GIT_SORT_REVERSE):
+                        if pin <= n:
+                            return deserialize((commit.tree / name).data.decode("utf-8"))
+                        n += 1
             raise NameError(f"name '{exp.name}' is not defined")
         return value
     if isinstance(exp, Binop):
@@ -1319,9 +1338,10 @@ def eval_exp(env: Env, exp: Object) -> Object:
                 raise ValueError(f"index {access_at.value} out of bounds for list")
             return obj.items[access_at.value]
         raise TypeError(f"attempted to access from type {type(obj).__name__}")
+    if isinstance(exp, Pin) and isinstance(exp.version, Int):
+        return eval_exp(env, exp.obj, pin = exp.version.value)
     if isinstance(exp, Pin):
-        # TODO
-        return exp.obj
+        raise NotImplementedError(f"pinned versions not implemented for {type(exp)}")
     if isinstance(exp, Compose):
         clo_inner = eval_exp(env, exp.inner)
         clo_outer = eval_exp(env, exp.outer)
@@ -3975,6 +3995,22 @@ class PreludeTests(EndToEndTestsBase):
             result = eval_exp(env, HashVar(obj_id))
             self.assertEqual(result, x)
             self.assertEqual(self._run(f"$sha1'{obj_id} 5", env), Int(120))
+
+    @unittest.skipIf(_dont_have_pygit2(), "Can't run test without pygit2")
+    def test_hash_var_looks_up_in_scrapyard_at_pin(self) -> None:
+        # TODO(max): Do this in-memory instead of on-disk
+        with tempfile.TemporaryDirectory() as tempdir:
+            yard_init(tempdir)
+            env = {"$$scrapyard": String(tempdir)}
+            for n in [0,1,2]:
+                x = self._run(str(n))
+                _, obj_id = yard_commit(tempdir, "test_obj", x)
+                result = eval_exp(env, HashVar(obj_id))
+                self.assertEqual(result, x)
+                self.assertEqual(self._run(f"$sha1'{obj_id}", env), Int(n))
+                self.assertEqual(self._run(f"test_obj", env), Int(n))
+            for n in [0,1,2]:
+                self.assertEqual(self._run(f"test_obj@{n}", env), Int(n))
 
 class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:

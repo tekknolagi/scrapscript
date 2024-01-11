@@ -1377,25 +1377,33 @@ class Serializer:
 
 
 class Deserializer:
-    def deserialize(self, refs: typing.List[Dict[str, Any]]) -> Object:
-        objs: typing.List[Object] = [Int(0)] * len(refs)
-        for idx, ref in reversed(list(enumerate(refs))):
-            objs[idx] = self._deserialize(refs, ref)
+    def __init__(self, refs: typing.List[Dict[str, Any]]) -> None:
+        self.refs = refs
+
+    def deserialize(self) -> Object:
+        objs: typing.List[Object] = [Int(0)] * len(self.refs)
+        for idx, ref in reversed(list(enumerate(self.refs))):
+            objs[idx] = self._deserialize(ref)
         return objs[0]
 
-    def _deserialize(self, refs: typing.List[Dict[str, Any]], ref: Dict[str, Any]) -> Object:
+    def _deserialize(self, ref: Dict[str, Any]) -> Object:
         if ref["type"] == "Int":
             assert isinstance(ref["value"], int)
             return Int(ref["value"])
         if ref["type"] == "String":
             assert isinstance(ref["value"], str)
             return String(ref["value"])
+        if ref["type"] == "List":
+            return List([self._deserialize(item) for item in ref["items"]])
+        if ref["type"] == "Ref":
+            assert isinstance(ref["index"], int)
+            return self._deserialize(self.refs[ref["index"]])
         raise NotImplementedError(f"deserialization for {ref['type']} is not supported")
 
 
 def new_deserialize(refs: typing.List[Dict[str, Any]]) -> Object:
-    deserializer = Deserializer()
-    return deserializer.deserialize(refs)
+    deserializer = Deserializer(refs)
+    return deserializer.deserialize()
 
 
 def deserialize(msg: str) -> Object:
@@ -4247,6 +4255,24 @@ class DeserializeTests(unittest.TestCase):
     def test_deserialize_str(self) -> None:
         msg = [{"type": "String", "value": "abc"}]
         self.assertEqual(new_deserialize(msg), String("abc"))
+
+    def test_deserialize_empty_list(self) -> None:
+        msg = [{"type": "List", "items": []}]
+        self.assertEqual(new_deserialize(msg), List([]))
+
+    def test_deserialize_list_of_ref(self) -> None:
+        msg: typing.List[Dict[str, Any]] = [
+            {
+                "type": "List",
+                "items": [
+                    {"type": "Ref", "index": 1},
+                    {"type": "Ref", "index": 2},
+                ],
+            },
+            {"type": "Int", "value": 123},
+            {"type": "Int", "value": 456},
+        ]
+        self.assertEqual(new_deserialize(msg), List([Int(123), Int(456)]))
 
 
 class ObjectDeserializeTests(unittest.TestCase):

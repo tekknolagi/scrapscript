@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from enum import auto
 from types import FunctionType, ModuleType
 from typing import Any, Callable, Dict, Mapping, Optional, Set, Tuple, Union
+from urllib.parse import urlparse
 
 readline: Optional[ModuleType]
 try:
@@ -1226,22 +1227,118 @@ def improve_closure(closure: Closure) -> Closure:
     return Closure(env, closure.func)
 
 
-def eval_exp(env: Env, exp: Object, pin: int|None = None) -> Object:
-    logger.debug(exp)
-    if isinstance(exp, (Int, Float, String, Bytes, Hole, Closure, NativeFunction, Symbol)):
-        return exp
-    if isinstance(exp, Var):
-        name = exp.name
-        value = env.get(name)
-        if value is None:
-            # TODO(tay): this is not good
-            yard_location = env.get( "$$scrapyard" )
-            if yard_location:
-                assert isinstance(yard_location, String)
+# TODO(tay): use baseclass/inheritance instead?
+class Yard:
+
+    def __init__(self, loc: str) -> None:
+        # TODO(tay): instead of storing loc and type, just store the yard and map in mem
+        if loc.endswith("/.git"):
+            self.type = "git"
+            self.loc = loc.replace("/.git","")
+        elif urlparse(loc).netloc:
+            self.type = "net"
+            self.loc = urlparse(loc)
+        else:
+            self.type = "fs"
+            self.loc = loc
+
+    def init(self) -> None:
+        match self.type:
+            case "git":
+                path = self.loc
                 git = _ensure_pygit2()
-                repo_path = git.discover_repository(yard_location.value)
+                branch_name = "trunk"
+                repo = git.init_repository(path, initial_head=branch_name, bare=True)
+                try:
+                    repo.head
+                except git.GitError:
+                    pass
+                else:
+                    raise ScrapError("Scrapyard already initialized; cannot init scrapyard again")
+                # Make an initial commit so that all other commands can do the normal
+                # commit flow
+                ref = "HEAD"
+                author = repo.default_signature
+                # Make an empty tree
+                tree_id = repo.TreeBuilder().write()
+                message = "Initialize scrapyard"
+                parents: object = []
+                commit = repo.create_commit(ref, author, author, message, tree_id, parents)
+                assert commit == repo.branches[branch_name].target
+                assert commit == repo.head.target
+            case "net":
+                raise Exception("TODO(tay)")
+            case "fs":
+                raise Exception("TODO(tay)")
+            case _:
+                raise NotImplementedError(f"Yard.init not implemented for '{self.type}'")
+
+    def push(self, name: str, obj: Object) -> Tuple[str,str]:
+        match self.type:
+            case "git":
+                path = self.loc
+                git = _ensure_pygit2()
+                # Find the scrapyard
+                repo_path = git.discover_repository(path)
                 if repo_path is None:
-                    raise ScrapError(f"Please create a scrapyard; {yard_location.value!r} is not initialized")
+                    raise ScrapError(f"Please create a scrapyard; {path!r} is not initialized")
+                repo = git.Repository(repo_path, git.GIT_REPOSITORY_OPEN_BARE)
+                serialized = serialize(obj)
+                # Make a git tree starting from previous commit's tree
+                prev_commit = repo.get(repo.head.target)
+                root = repo.TreeBuilder(prev_commit.tree)
+                obj_id = repo.create_blob(serialized)
+                # TODO(max): Figure out how to handle names like a/b; make directories?
+                root.insert(name, obj_id, git.GIT_FILEMODE_BLOB)
+                tree_id = root.write()
+                # Commit the tree
+                ref = repo.head.name
+                author = repo.default_signature
+                message = f"Update {name}"
+                parents = [repo.head.target]
+                commit = repo.create_commit(ref, author, author, message, tree_id, parents)
+                assert commit == repo.branches["trunk"].target
+                assert commit == repo.head.target
+                return name, obj_id
+            case "net":
+                raise Exception("TODO(tay)")
+            case "fs":
+                raise Exception("TODO(tay)")
+            case _:
+                raise NotImplementedError(f"Yard.push not implemented for '{self.type}'")
+
+    def fetch_by_id(self, obj_id: str) -> Object:
+        match self.type:
+            # TODO(tay): walk through git and create a memory thing on startup instead of doing this for every reference
+            case "git":
+                yl = self.loc
+                git = _ensure_pygit2()
+                repo_path = git.discover_repository(yl)
+                if repo_path is None:
+                    raise ScrapError(f"Please create a scrapyard; {yl!r} is not initialized")
+                repo = git.Repository(repo_path, git.GIT_REPOSITORY_OPEN_BARE)
+                obj = repo.get(obj_id)
+                if obj is None:
+                    raise ScrapError(f"Could not find object $sha1'{obj_id}")
+                if not isinstance(obj, git.Blob):
+                    raise ScrapError(f"Object $sha1'{obj_id} is not a blob")
+                return deserialize(obj.data.decode("utf-8"))
+            case "net":
+                raise Exception("TODO(tay)")
+            case "fs":
+                raise Exception("TODO(tay)")
+            case _:
+                raise NotImplementedError(f"Yard.fetch_by_id not implemented for '{self.type}'")
+
+    def fetch_by_name(self, name: str, pin: int|None = None) -> Object:
+        match self.type:
+            # TODO(tay): walk through git and create a memory thing on startup instead of doing this for every reference
+            case "git":
+                yl = self.loc
+                git = _ensure_pygit2()
+                repo_path = git.discover_repository(yl)
+                if repo_path is None:
+                    raise ScrapError(f"Please create a scrapyard; {yl!r} is not initialized")
                 repo = git.Repository(repo_path, git.GIT_REPOSITORY_OPEN_BARE)
                 if pin == None:
                     commit = repo.head.peel(git.Commit)
@@ -1252,6 +1349,38 @@ def eval_exp(env: Env, exp: Object, pin: int|None = None) -> Object:
                         if pin <= n:
                             return deserialize((commit.tree / name).data.decode("utf-8"))
                         n += 1
+                raise Exception("TODO(tay)")
+            case "net":
+                raise Exception("TODO(tay)")
+            case "fs":
+                raise Exception("TODO(tay)")
+            case _:
+                raise NotImplementedError(f"Yard.fetch_by_name not implemented for '{self.type}'")
+
+    def serve(self, address: str) -> None:
+        match self.type:
+            case "git":
+                raise Exception("TODO(tay)")
+            case "net":
+                raise Exception("TODO(tay)")
+            case "fs":
+                raise Exception("TODO(tay)")
+            case _:
+                raise NotImplementedError(f"Yard.fetch_by_name not implemented for '{self.type}'")
+
+
+def eval_exp(env: Env, exp: Object, pin: int|None = None) -> Object:
+    logger.debug(exp)
+    if isinstance(exp, (Int, Float, String, Bytes, Hole, Closure, NativeFunction, Symbol)):
+        return exp
+    if isinstance(exp, Var):
+        name = exp.name
+        value = env.get(name)
+        if value is None:
+            yard = env.get("$$scrapyard")
+            if yard:
+                assert isinstance(yard, Yard)
+                return yard.fetch_by_name(name, pin)
             raise NameError(f"name '{exp.name}' is not defined")
         return value
     if isinstance(exp, Binop):
@@ -1349,19 +1478,9 @@ def eval_exp(env: Env, exp: Object, pin: int|None = None) -> Object:
     elif isinstance(exp, Spread):
         raise RuntimeError("cannot evaluate a spread")
     if isinstance(exp, HashVar):
-        yard_location = env["$$scrapyard"]
-        assert isinstance(yard_location, String)
-        git = _ensure_pygit2()
-        repo_path = git.discover_repository(yard_location.value)
-        if repo_path is None:
-            raise ScrapError(f"Please create a scrapyard; {yard_location.value!r} is not initialized")
-        repo = git.Repository(repo_path, git.GIT_REPOSITORY_OPEN_BARE)
-        obj = repo.get(exp.name)
-        if obj is None:
-            raise ScrapError(f"Could not find object $sha1'{exp.name}")
-        if not isinstance(obj, git.Blob):
-            raise ScrapError(f"Object $sha1'{exp.name} is not a blob")
-        return deserialize(obj.data.decode("utf-8"))
+        yard = env["$$scrapyard"]
+        assert isinstance(yard, Yard)
+        return yard.fetch_by_id(exp.name)
     raise NotImplementedError(f"eval_exp not implemented for {exp}")
 
 
@@ -3983,34 +4102,44 @@ class PreludeTests(EndToEndTestsBase):
             Symbol("true"),
         )
 
-    @unittest.skipIf(_dont_have_pygit2(), "Can't run test without pygit2")
-    def test_hash_var_looks_up_in_scrapyard(self) -> None:
-        # x = self._run("fac = | 0 -> 1 | n -> n * fac (n-1)")
-        x = self._run("f . f = n -> 120") # TODO
-        # TODO(max): Do this in-memory instead of on-disk
-        with tempfile.TemporaryDirectory() as tempdir:
-            yard_init(tempdir)
-            _, obj_id = yard_commit(tempdir, "a_test_object", x)
-            env = {"$$scrapyard": String(tempdir)}
-            result = eval_exp(env, HashVar(obj_id))
-            self.assertEqual(result, x)
-            self.assertEqual(self._run(f"$sha1'{obj_id} 5", env), Int(120))
+class ScrapyardTests(EndToEndTestsBase):
+    def _test_scrapyard(self, td):
+        yard = Yard(td)
+        yard.init()
+        env = {"$$scrapyard": yard}
+        for n in [0,1,2]:
+            x = self._run(f"f . f = _ -> {n}")
+            _, obj_id = yard.push("test_obj", x)
+            self.assertEqual(eval_exp(env, HashVar(obj_id)), x)
+            self.assertEqual(self._run(f"$sha1'{obj_id} 123", env), Int(n))
+            self.assertEqual(self._run(f"test_obj 123", env), Int(n))
+        for n in [0,1,2]:
+            self.assertEqual(self._run(f"test_obj^^{n} 123", env), Int(n))
 
     @unittest.skipIf(_dont_have_pygit2(), "Can't run test without pygit2")
-    def test_hash_var_looks_up_in_scrapyard_at_pin(self) -> None:
+    def test_scrapyard_git(self) -> None:
         # TODO(max): Do this in-memory instead of on-disk
-        with tempfile.TemporaryDirectory() as tempdir:
-            yard_init(tempdir)
-            env = {"$$scrapyard": String(tempdir)}
-            for n in [0,1,2]:
-                x = self._run(str(n))
-                _, obj_id = yard_commit(tempdir, "test_obj", x)
-                result = eval_exp(env, HashVar(obj_id))
-                self.assertEqual(result, x)
-                self.assertEqual(self._run(f"$sha1'{obj_id}", env), Int(n))
-                self.assertEqual(self._run(f"test_obj", env), Int(n))
-            for n in [0,1,2]:
-                self.assertEqual(self._run(f"test_obj^^{n}", env), Int(n))
+        with tempfile.TemporaryDirectory() as td:
+            self._test_scrapyard(td + "/.git")
+            # TODO(tay): also make sure that it's actually git in the background instead of fs
+
+    def test_scrapyard_fs(self) -> None:
+        # TODO(max): Do this in-memory instead of on-disk
+        with tempfile.TemporaryDirectory() as td:
+            self._test_scrapyard(td)
+
+    def test_scrapyard_net(self) -> None:
+        class TemporaryScrapyardServerAddress():
+                def __init__(self, addr):
+                    self.addr = addr
+                def __enter__(self):
+                    # TODO(tay)
+                    return self.addr
+                def __exit__(self, _type, _value, _trace):
+                    # TODO(tay)
+                    pass
+        with TemporaryScrapyardServerAddress(":9090") as td:
+            self._test_scrapyard(td)
 
 class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:
@@ -4649,69 +4778,22 @@ def _ensure_pygit2() -> ModuleType:
     except ImportError:
         raise ScrapError("Please install pygit2 to work with scrapyards")
 
-
-def yard_init(path: str) -> None:
-    git = _ensure_pygit2()
-    branch_name = "trunk"
-    repo = git.init_repository(path, initial_head=branch_name, bare=True)
-    try:
-        repo.head
-    except git.GitError:
-        pass
-    else:
-        raise ScrapError("Scrapyard already initialized; cannot init scrapyard again")
-    # Make an initial commit so that all other commands can do the normal
-    # commit flow
-    ref = "HEAD"
-    author = repo.default_signature
-    # Make an empty tree
-    tree_id = repo.TreeBuilder().write()
-    message = "Initialize scrapyard"
-    parents: object = []
-    commit = repo.create_commit(ref, author, author, message, tree_id, parents)
-    assert commit == repo.branches[branch_name].target
-    assert commit == repo.head.target
-
+def yard_info_command(args: argparse.Namespace) -> None:
+    raise Exception("TODO(tay)") # print current configs/default etc
 
 def yard_init_command(args: argparse.Namespace) -> None:
-    yard_init(args.yard)
+    Yard(args.yard).init()
 
-
-def yard_commit(path: str, scrap_name: str, obj: Object) -> Tuple[str, str]:
-    git = _ensure_pygit2()
-    # Find the scrapyard
-    repo_path = git.discover_repository(path)
-    if repo_path is None:
-        raise ScrapError(f"Please create a scrapyard; {path!r} is not initialized")
-    repo = git.Repository(repo_path, git.GIT_REPOSITORY_OPEN_BARE)
-    serialized = serialize(obj)
-    # Make a git tree starting from previous commit's tree
-    prev_commit = repo.get(repo.head.target)
-    root = repo.TreeBuilder(prev_commit.tree)
-    obj_id = repo.create_blob(serialized)
-    # TODO(max): Figure out how to handle names like a/b; make directories?
-    root.insert(scrap_name, obj_id, git.GIT_FILEMODE_BLOB)
-    tree_id = root.write()
-    # Commit the tree
-    ref = repo.head.name
-    author = repo.default_signature
-    message = f"Update {scrap_name}"
-    parents = [repo.head.target]
-    commit = repo.create_commit(ref, author, author, message, tree_id, parents)
-    assert commit == repo.branches["trunk"].target
-    assert commit == repo.head.target
-    return scrap_name, obj_id
-
-
-def yard_commit_command(args: argparse.Namespace) -> None:
+def yard_push_command(args: argparse.Namespace) -> None:
     obj = eval_exp(STDLIB, parse(tokenize(args.program_file.read())))
-    # TODO(tay): example -> fs implementation
-    # TODO(tay): example/.git -> git implementation
-    # TODO(tay): example.com -> network implementation
-    scrap_name, obj_id = yard_commit(args.yard, args.scrap_name, obj)
+    yard = Yard(args.yard)
+    scrap_name, obj_id = yard.push(args.scrap_name, obj)
     print(args.scrap_name, obj_id)
 
-def serve_command(args: argparse.Namespace) -> None:
+def yard_serve_command(args: argparse.Namespace) -> None:
+    Yard(args.yard).serve(args.address)
+
+def repl_serve_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
     server: Union[type[socketserver.TCPServer], type[socketserver.ForkingTCPServer]]
@@ -4725,6 +4807,7 @@ def serve_command(args: argparse.Namespace) -> None:
         print(f"serving at http://{host!s}:{port}")
         httpd.serve_forever()
 
+# TODO(tay): use STDIN patterns instead of filenames
 def main() -> None:
     parser = argparse.ArgumentParser(prog="scrapscript")
     subparsers = parser.add_subparsers(dest="command")
@@ -4732,6 +4815,12 @@ def main() -> None:
     repl = subparsers.add_parser("repl")
     repl.set_defaults(func=repl_command)
     repl.add_argument("--debug", action="store_true")
+
+    serve = subparsers.add_parser("repl-serve")
+    serve.set_defaults(func=repl_serve_command)
+    serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument("--debug", action="store_true")
+    serve.add_argument("--fork", action="store_true")
 
     test = subparsers.add_parser("test")
     test.set_defaults(func=test_command)
@@ -4749,20 +4838,20 @@ def main() -> None:
     apply.add_argument("--debug", action="store_true")
 
     yard = subparsers.add_parser("yard").add_subparsers(dest="command", required=True)
+    yard_info = yard.add_parser("info")
+    yard_info.set_defaults(func=yard_info_command)
     yard_init = yard.add_parser("init")
     yard_init.set_defaults(func=yard_init_command)
     yard_init.add_argument("yard")
-    yard_commit = yard.add_parser("commit")
-    yard_commit.set_defaults(func=yard_commit_command)
-    yard_commit.add_argument("yard")
-    yard_commit.add_argument("scrap_name")
-    yard_commit.add_argument("program_file", type=argparse.FileType("r"))
-
-    serve = subparsers.add_parser("serve")
-    serve.set_defaults(func=serve_command)
-    serve.add_argument("--port", type=int, default=8000)
-    serve.add_argument("--debug", action="store_true")
-    serve.add_argument("--fork", action="store_true")
+    yard_push = yard.add_parser("push")
+    yard_push.set_defaults(func=yard_push_command)
+    yard_push.add_argument("yard") 
+    yard_push.add_argument("scrap_name")
+    yard_push.add_argument("program_file", type=argparse.FileType("r"))
+    yard_serve = yard.add_parser("serve")
+    yard_serve.set_defaults(func=yard_serve_command)
+    yard_serve.add_argument("yard") 
+    yard_serve.add_argument("address") 
 
     args = parser.parse_args()
     if not args.command:

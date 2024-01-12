@@ -1228,11 +1228,24 @@ def improve_closure(closure: Closure) -> Closure:
     env = {boundvar: value for boundvar, value in closure.env.items() if boundvar in freevars}
     return Closure(env, closure.func)
 
-
 # TODO(tay): use baseclass/inheritance instead?
 # TODO(tay): this probably shouldn't be an Object, but i want the type system to stop complaining...
-# TODO(tay): we need to implement signatures and stuff in here...
+# TODO(tay): we need to implement signature verification and stuff in here...
 class Yard(Object):
+
+    def _load_yard_from_git(self) -> None:
+        git = _ensure_pygit2()
+        repo_path = git.discover_repository(self.loc)
+        self.scraps = dict()
+        self.map = dict()
+        if repo_path:
+            repo = git.Repository(repo_path, git.GIT_REPOSITORY_OPEN_BARE)
+            for commit in repo.walk(repo.head.target, git.GIT_SORT_REVERSE):
+                for entry in commit.tree:
+                    obj_id = str(entry.id)
+                    self.scraps[obj_id] = ("TODO(tay): sig", deserialize(repo.get(obj_id).data.decode("utf-8")))
+                    self.map[entry.name] = self.map.get(entry.name,[])
+                    self.map[entry.name].append((datetime.now(), obj_id))
 
     def __init__(self, loc: str|None) -> None:
         self.map: dict[str,list[tuple[datetime,str|None]]] = dict()  # e.g. { "jsmith/fib": [("2021-...","123...")], ... }
@@ -1244,11 +1257,12 @@ class Yard(Object):
         elif loc.endswith("/.git"):
             self.type = "git"
             self.loc = loc.replace("/.git","")
+            self._load_yard_from_git()
         elif urlparse(loc).netloc:
             self.type = "net"
             self.loc = urlparse(loc)
         else:
-            self.type = "fs"
+            self.type = "dir"
             self.loc = loc
 
     def init(self) -> None:
@@ -1277,9 +1291,10 @@ class Yard(Object):
                 commit = repo.create_commit(ref, author, author, message, tree_id, parents)
                 assert commit == repo.branches[branch_name].target
                 assert commit == repo.head.target
+                self._load_yard_from_git()
             case "net":
                 raise Exception("TODO(tay)")
-            case "fs":
+            case "dir":
                 raise Exception("TODO(tay)")
             case _:
                 raise NotImplementedError(f"Yard.init not implemented for '{self.type}'")
@@ -1316,68 +1331,33 @@ class Yard(Object):
                 commit = repo.create_commit(ref, author, author, message, tree_id, parents)
                 assert commit == repo.branches["trunk"].target
                 assert commit == repo.head.target
+                self._load_yard_from_git()
                 return name, obj_id
             case "net":
                 raise Exception("TODO(tay)")
-            case "fs":
+            case "dir":
                 raise Exception("TODO(tay)")
             case _:
                 raise NotImplementedError(f"Yard.push not implemented for '{self.type}'")
 
     def fetch_by_id(self, obj_id: str) -> Object|None:
         match self.type:
-            case "mem":
-                return self.scraps.get(obj_id,(None,None))[1]
-            # TODO(tay): walk through git and create a memory thing on startup instead of doing this for every reference
-            case "git":
-                yl = self.loc
-                git = _ensure_pygit2()
-                repo_path = git.discover_repository(yl)
-                if repo_path is None:
-                    raise ScrapError(f"Please create a scrapyard; {yl!r} is not initialized")
-                repo = git.Repository(repo_path, git.GIT_REPOSITORY_OPEN_BARE)
-                obj = repo.get(obj_id)
-                if obj is None:
-                    raise ScrapError(f"Could not find object $sha1'{obj_id}")
-                if not isinstance(obj, git.Blob):
-                    raise ScrapError(f"Object $sha1'{obj_id} is not a blob")
-                return deserialize(obj.data.decode("utf-8"))
+            case "mem" | "git" | "dir":
+                return self.scraps.get(str(obj_id),(None,None))[1]
             case "net":
-                raise Exception("TODO(tay)")
-            case "fs":
                 raise Exception("TODO(tay)")
             case _:
                 raise NotImplementedError(f"Yard.fetch_by_id not implemented for '{self.type}'")
 
     def fetch_by_name(self, name: str, pin: int|None = None) -> Object|None:
         match self.type:
-            case "mem":
+            case "mem" | "git" | "dir":
                 try:
                     obj_id = self.map.get(name,[])[pin if pin != None else -1][1]
                     return self.fetch_by_id(obj_id) if obj_id else None
                 except IndexError:
                     return None
-            # TODO(tay): walk through git and create a memory thing on startup instead of doing this for every reference
-            case "git":
-                yl = self.loc
-                git = _ensure_pygit2()
-                repo_path = git.discover_repository(yl)
-                if repo_path is None:
-                    raise ScrapError(f"Please create a scrapyard; {yl!r} is not initialized")
-                repo = git.Repository(repo_path, git.GIT_REPOSITORY_OPEN_BARE)
-                if pin == None:
-                    commit = repo.head.peel(git.Commit)
-                    return deserialize((commit.tree / name).data.decode("utf-8"))
-                else:
-                    n = -1
-                    for commit in repo.walk(repo.head.target, git.GIT_SORT_REVERSE):
-                        if pin <= n:
-                            return deserialize((commit.tree / name).data.decode("utf-8"))
-                        n += 1
-                raise Exception("TODO(tay)")
             case "net":
-                raise Exception("TODO(tay)")
-            case "fs":
                 raise Exception("TODO(tay)")
             case _:
                 raise NotImplementedError(f"Yard.fetch_by_name not implemented for '{self.type}'")
@@ -1390,7 +1370,7 @@ class Yard(Object):
                 raise Exception("TODO(tay)")
             case "net":
                 raise Exception("TODO(tay)")
-            case "fs":
+            case "dir":
                 raise Exception("TODO(tay)")
             case _:
                 raise NotImplementedError(f"Yard.fetch_by_name not implemented for '{self.type}'")
@@ -1407,7 +1387,9 @@ def eval_exp(env: Env, exp: Object, pin: int|None = None) -> Object:
             yard = env.get("$$scrapyard")
             if yard:
                 assert isinstance(yard, Yard)
-                return yard.fetch_by_name(name, pin)
+                scrap = yard.fetch_by_name(name, pin)
+                if scrap:
+                    return scrap
             raise NameError(f"name '{exp.name}' is not defined")
         return value
     if isinstance(exp, Binop):
@@ -4155,9 +4137,9 @@ class ScrapyardTests(EndToEndTestsBase):
         # TODO(max): Do this in-memory instead of on-disk
         with tempfile.TemporaryDirectory() as td:
             self._test_scrapyard(td + "/.git")
-            # TODO(tay): also make sure that it's actually git in the background instead of fs
+            # TODO(tay): also make sure that it's actually git in the background instead of dir
 
-    def test_scrapyard_fs(self) -> None:
+    def test_scrapyard_dir(self) -> None:
         # TODO(max): Do this in-memory instead of on-disk
         with tempfile.TemporaryDirectory() as td:
             self._test_scrapyard(td)

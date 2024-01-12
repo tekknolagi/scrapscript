@@ -23,6 +23,8 @@ from typing import Any, Callable, Dict, Mapping, Optional, Set, Tuple, Union
 from urllib.parse import urlparse
 from datetime import datetime
 import hashlib
+import http.client
+import threading
 
 readline: Optional[ModuleType]
 try:
@@ -1228,23 +1230,6 @@ def improve_closure(closure: Closure) -> Closure:
     env = {boundvar: value for boundvar, value in closure.env.items() if boundvar in freevars}
     return Closure(env, closure.func)
 
-
-class YardServer(http.server.SimpleHTTPRequestHandler):
-    def __init__(self, m, s, **args):
-        super().__init__(**args)
-        self.map: dict[str,list[tuple[str,str|None]]] = m  # e.g. { "jsmith/fib": [("2021-...","123...")], ... }
-        self.scraps: dict[str,tuple[str,Object]] = s  # e.g. { "123...": signed_eval_exp(sig, {}, Int(456)), ... }
-    def do_GET(self) -> None:
-        obj_id = urllib.parse.urlsplit(self.path).path
-        scrap = self.scraps.get(str(obj_id),(None,None))[1]
-        if scrap:
-            self.send_response(200)
-            self.wfile.write(serialize(scrap))
-        else:
-            self.send_response(404)
-    def do_POST(self) -> None:
-        raise Exception("TODO(tay)")
-
 # TODO(tay): use baseclass/inheritance instead?
 # TODO(tay): this probably shouldn't be an Object, but i want the type system to stop complaining...
 # TODO(tay): we need to implement signature verification and stuff in here...
@@ -1287,7 +1272,7 @@ class Yard(Object):
             self._load_yard_from_git()
         elif urlparse(loc).netloc:
             self.type = "net"
-            self.loc = urlparse(loc)
+            self.loc = loc
         else:
             self.type = "dir"
             self.loc = loc
@@ -1295,7 +1280,7 @@ class Yard(Object):
 
     def init(self) -> None:
         match self.type:
-            case "mem":
+            case "mem" | "net":
                 pass
             case "git":
                 path = self.loc
@@ -1320,8 +1305,6 @@ class Yard(Object):
                 assert commit == repo.branches[branch_name].target
                 assert commit == repo.head.target
                 self._load_yard_from_git()
-            case "net":
-                raise Exception("TODO(tay)")
             case "dir":
                 os.makedirs(f"{self.loc}/scraps")
                 with open(f"{self.loc}/map.json", "w") as file:
@@ -1364,6 +1347,12 @@ class Yard(Object):
                 self._load_yard_from_git()
                 return name, obj_id
             case "net":
+                if self.loc:
+                    conn = http.client.HTTPConnection(urlparse(self.loc).netloc)
+                    conn.request("POST", f"/{name}", serialize(obj))
+                    response = conn.getresponse()
+                    if response.status != 200:
+                        raise Exception("TODO(tay)")
                 raise Exception("TODO(tay)")
             case "dir":
                 obj_id = hashlib.sha256(serialize(obj)).hexdigest()
@@ -1400,8 +1389,39 @@ class Yard(Object):
             case _:
                 raise NotImplementedError(f"Yard.fetch_by_name not implemented for '{self.type}'")
 
-    def Server(self, *args) -> YardServer:
-        return YardServer(self.map, self.scraps, *args)
+    def Server(self, *args):
+        class YardServer(http.server.SimpleHTTPRequestHandler):
+            def __init__(self, yard: Yard, **args):
+                super().__init__(**args)
+                self.yard = yard
+            def do_GET(self) -> None:
+                # TODO(tay): instead of query params, preface hashes with a dollar sign, otherwise assume name
+                query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                name = query.get("name",[None])[0]
+                obj_id = query.get("id",[None])[0]
+                if name: 
+                    scrap = self.yard.fetch_by_name(name, int(query.get("pin",[""])[0]))
+                    if scrap:
+                        self.send_response(200)
+                        self.wfile.write(serialize(scrap))
+                        return
+                if obj_id:
+                    scrap = self.yard.fetch_by_id(obj_id)
+                    if scrap:
+                        self.send_response(200)
+                        self.wfile.write(serialize(scrap))
+                        return
+                self.send_response(404)
+            def do_POST(self) -> None:
+                # TODO(tay): if no name/route provided, store the blob in the scrapyard without updating the map
+                name = urllib.parse.urlsplit(self.path).path[1:]
+                print(name)
+                obj = deserialize(self.rfile.read(int(self.headers['Content-Length'])).decode('utf-8'))
+                print(obj)
+                self.yard.push(name, obj)
+                self.send_response(200)
+        return YardServer(self, *args)
+
 
 def eval_exp(env: Env, exp: Object, pin: int|None = None) -> Object:
     logger.debug(exp)
@@ -4175,7 +4195,10 @@ class ScrapyardTests(EndToEndTestsBase):
             yard = Yard(td)
             yard.init()
             # TODO(tay): use random open port
-            with socketserver.TCPServer(("", 9090), yard.Server) as httpd:
+            with socketserver.TCPServer(("127.0.0.1", 9090), yard.Server) as httpd:
+                server_thread = threading.Thread(target=httpd.serve_forever)
+                server_thread.daemon = True
+                server_thread.start()
                 host, port = httpd.server_address
                 self._test_scrapyard(f"http://{host}:{port}")
 

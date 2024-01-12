@@ -1245,10 +1245,20 @@ class Yard(Object):
                     obj_id = str(entry.id)
                     self.scraps[obj_id] = ("TODO(tay): sig", deserialize(repo.get(obj_id).data.decode("utf-8")))
                     self.map[entry.name] = self.map.get(entry.name,[])
-                    self.map[entry.name].append((datetime.now(), obj_id))
+                    self.map[entry.name].append((datetime.now().isoformat(), obj_id))
+
+    def _load_yard_from_dir(self) -> None:
+        if not os.path.exists(f"{self.loc}/map.json"):
+            return
+        with open(f"{self.loc}/map.json", "r") as m:
+            self.map = json.load(m)
+        self.scraps = dict()
+        for obj_id in os.listdir(f"{self.loc}/scraps"):
+            with open(f"{self.loc}/scraps/{obj_id}", "rb") as data:
+                self.scraps[obj_id] = ("TODO(tay): sig", deserialize(data.read().decode("utf-8")))
 
     def __init__(self, loc: str|None) -> None:
-        self.map: dict[str,list[tuple[datetime,str|None]]] = dict()  # e.g. { "jsmith/fib": [("2021-...","123...")], ... }
+        self.map: dict[str,list[tuple[str,str|None]]] = dict()  # e.g. { "jsmith/fib": [("2021-...","123...")], ... }
         self.scraps: dict[str,tuple[str,Object]] = dict()  # e.g. { "123...": signed_eval_exp(sig, {}, Int(456)), ... }
         # TODO(tay): instead of storing loc and type, just store the yard and map in mem
         if not loc:
@@ -1264,6 +1274,7 @@ class Yard(Object):
         else:
             self.type = "dir"
             self.loc = loc
+            self._load_yard_from_dir()
 
     def init(self) -> None:
         match self.type:
@@ -1295,7 +1306,9 @@ class Yard(Object):
             case "net":
                 raise Exception("TODO(tay)")
             case "dir":
-                raise Exception("TODO(tay)")
+                os.makedirs(f"{self.loc}/scraps")
+                with open(f"{self.loc}/map.json", "w") as file:
+                    json.dump({}, file)
             case _:
                 raise NotImplementedError(f"Yard.init not implemented for '{self.type}'")
 
@@ -1336,7 +1349,15 @@ class Yard(Object):
             case "net":
                 raise Exception("TODO(tay)")
             case "dir":
-                raise Exception("TODO(tay)")
+                obj_id = hashlib.sha256(serialize(obj)).hexdigest()
+                self.scraps[obj_id] = ("TODO(tay): sig", obj)
+                self.map[name] = self.map.get(name,[])
+                self.map[name].append((datetime.now().isoformat(), obj_id))
+                with open(f"{self.loc}/scraps/{name}", "wb") as file:
+                    file.write(serialize(obj))
+                with open(f"{self.loc}/map.json", "w") as file:
+                    json.dump(self.map, file)
+                return name, obj_id
             case _:
                 raise NotImplementedError(f"Yard.push not implemented for '{self.type}'")
 
@@ -4140,7 +4161,6 @@ class ScrapyardTests(EndToEndTestsBase):
             # TODO(tay): also make sure that it's actually git in the background instead of dir
 
     def test_scrapyard_dir(self) -> None:
-        # TODO(max): Do this in-memory instead of on-disk
         with tempfile.TemporaryDirectory() as td:
             self._test_scrapyard(td)
 
@@ -4154,7 +4174,7 @@ class ScrapyardTests(EndToEndTestsBase):
                 def __exit__(self, _type, _value, _trace):
                     # TODO(tay)
                     pass
-        with TemporaryScrapyardServerAddress(":9090") as td:
+        with TemporaryScrapyardServerAddress("http://localhost:9090") as td:
             self._test_scrapyard(td)
 
 class BencodeTests(unittest.TestCase):

@@ -21,6 +21,8 @@ from enum import auto
 from types import FunctionType, ModuleType
 from typing import Any, Callable, Dict, Mapping, Optional, Set, Tuple, Union
 from urllib.parse import urlparse
+from datetime import datetime
+import hashlib
 
 readline: Optional[ModuleType]
 try:
@@ -1228,11 +1230,18 @@ def improve_closure(closure: Closure) -> Closure:
 
 
 # TODO(tay): use baseclass/inheritance instead?
-class Yard:
+# TODO(tay): this probably shouldn't be an Object, but i want the type system to stop complaining...
+# TODO(tay): we need to implement signatures and stuff in here...
+class Yard(Object):
 
-    def __init__(self, loc: str) -> None:
+    def __init__(self, loc: str|None) -> None:
+        self.map: dict[str,list[tuple[datetime,str|None]]] = dict()  # e.g. { "jsmith/fib": [("2021-...","123...")], ... }
+        self.scraps: dict[str,tuple[str,Object]] = dict()  # e.g. { "123...": signed_eval_exp(sig, {}, Int(456)), ... }
         # TODO(tay): instead of storing loc and type, just store the yard and map in mem
-        if loc.endswith("/.git"):
+        if not loc:
+            self.type = "mem"
+            self.loc = None
+        elif loc.endswith("/.git"):
             self.type = "git"
             self.loc = loc.replace("/.git","")
         elif urlparse(loc).netloc:
@@ -1244,6 +1253,8 @@ class Yard:
 
     def init(self) -> None:
         match self.type:
+            case "mem":
+                pass
             case "git":
                 path = self.loc
                 git = _ensure_pygit2()
@@ -1275,6 +1286,12 @@ class Yard:
 
     def push(self, name: str, obj: Object) -> Tuple[str,str]:
         match self.type:
+            case "mem":
+                obj_id = hashlib.sha256(serialize(obj)).hexdigest()
+                self.map[name] = self.map.get(name,[])
+                self.map[name].append((datetime.now(), obj_id))
+                self.scraps[obj_id] = ("TODO(tay): sig", obj)
+                return name, obj_id
             case "git":
                 path = self.loc
                 git = _ensure_pygit2()
@@ -1307,8 +1324,10 @@ class Yard:
             case _:
                 raise NotImplementedError(f"Yard.push not implemented for '{self.type}'")
 
-    def fetch_by_id(self, obj_id: str) -> Object:
+    def fetch_by_id(self, obj_id: str) -> Object|None:
         match self.type:
+            case "mem":
+                return self.scraps.get(obj_id,(None,None))[1]
             # TODO(tay): walk through git and create a memory thing on startup instead of doing this for every reference
             case "git":
                 yl = self.loc
@@ -1330,8 +1349,14 @@ class Yard:
             case _:
                 raise NotImplementedError(f"Yard.fetch_by_id not implemented for '{self.type}'")
 
-    def fetch_by_name(self, name: str, pin: int|None = None) -> Object:
+    def fetch_by_name(self, name: str, pin: int|None = None) -> Object|None:
         match self.type:
+            case "mem":
+                try:
+                    obj_id = self.map.get(name,[])[pin if pin != None else -1][1]
+                    return self.fetch_by_id(obj_id) if obj_id else None
+                except IndexError:
+                    return None
             # TODO(tay): walk through git and create a memory thing on startup instead of doing this for every reference
             case "git":
                 yl = self.loc
@@ -1359,6 +1384,8 @@ class Yard:
 
     def serve(self, address: str) -> None:
         match self.type:
+            case "mem":
+                raise Exception("TODO(tay)")
             case "git":
                 raise Exception("TODO(tay)")
             case "net":
@@ -1480,7 +1507,10 @@ def eval_exp(env: Env, exp: Object, pin: int|None = None) -> Object:
     if isinstance(exp, HashVar):
         yard = env["$$scrapyard"]
         assert isinstance(yard, Yard)
-        return yard.fetch_by_id(exp.name)
+        scrap = yard.fetch_by_id(exp.name)
+        if scrap:
+            return scrap
+        raise RuntimeError(f"HashVar not found: {exp.name}")
     raise NotImplementedError(f"eval_exp not implemented for {exp}")
 
 
@@ -4106,15 +4136,19 @@ class ScrapyardTests(EndToEndTestsBase):
     def _test_scrapyard(self, td):
         yard = Yard(td)
         yard.init()
-        env = {"$$scrapyard": yard}
         for n in [0,1,2]:
             x = self._run(f"f . f = _ -> {n}")
             _, obj_id = yard.push("test_obj", x)
+            env = {"$$scrapyard": yard}
             self.assertEqual(eval_exp(env, HashVar(obj_id)), x)
             self.assertEqual(self._run(f"$sha1'{obj_id} 123", env), Int(n))
             self.assertEqual(self._run(f"test_obj 123", env), Int(n))
+        env = {"$$scrapyard": yard}
         for n in [0,1,2]:
             self.assertEqual(self._run(f"test_obj^^{n} 123", env), Int(n))
+
+    def test_scrapyard_mem(self) -> None:
+        self._test_scrapyard(None)
 
     @unittest.skipIf(_dont_have_pygit2(), "Can't run test without pygit2")
     def test_scrapyard_git(self) -> None:

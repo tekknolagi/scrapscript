@@ -25,6 +25,10 @@ from datetime import datetime
 import hashlib
 import http.client
 import threading
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 readline: Optional[ModuleType]
 try:
@@ -1248,7 +1252,7 @@ class Yard(Object):
             for commit in repo.walk(repo.head.target, git.GIT_SORT_REVERSE):
                 for entry in commit.tree:
                     obj_id = str(entry.id)
-                    self.scraps[obj_id] = ("TODO(tay): sig", deserialize(repo.get(obj_id).data.decode("utf-8")))
+                    self.scraps[obj_id] = (None, deserialize(repo.get(obj_id).data.decode("utf-8")))
                     self.map[entry.name] = self.map.get(entry.name, [])
                     self.map[entry.name].append((datetime.now().isoformat(), obj_id))
 
@@ -1260,14 +1264,16 @@ class Yard(Object):
         self.scraps = dict()
         for obj_id in os.listdir(f"{self.loc}/scraps"):
             with open(f"{self.loc}/scraps/{obj_id}", "rb") as data:
-                self.scraps[obj_id] = ("TODO(tay): sig", deserialize(data.read().decode("utf-8")))
+                self.scraps[obj_id] = (None, deserialize(data.read().decode("utf-8")))
 
-    def __init__(self, loc: str | None) -> None:
+    # TODO(tay): empty string key works for stuff at root :)
+    def __init__(self, loc: str | None, keys: dict[str, str]) -> None:
+        self.keys = keys
         self.map: dict[
             str, list[tuple[str, str | None]]
         ] = dict()  # e.g. { "jsmith/fib": [("2021-...","123...")], ... }
         self.scraps: dict[
-            str, tuple[str, Object]
+            str, tuple[str | None, Object]
         ] = dict()  # e.g. { "123...": signed_eval_exp(sig, {}, Int(456)), ... }
         if not loc:
             self.type = "mem"
@@ -1318,13 +1324,13 @@ class Yard(Object):
             case _:
                 raise NotImplementedError(f"Yard.init not implemented for '{self.type}'")
 
-    def push(self, name: str, obj: Object) -> Tuple[str, str]:
+    def push(self, name: str, obj: Object, sig: str | None) -> Tuple[str, str]:
         match self.type:
             case "mem":
                 obj_id = hashlib.sha256(serialize(obj)).hexdigest()
                 self.map[name] = self.map.get(name, [])
                 self.map[name].append((datetime.now().isoformat(), obj_id))
-                self.scraps[obj_id] = ("TODO(tay): sig", obj)
+                self.scraps[obj_id] = (sig, obj)
                 return name, obj_id
             case "git":
                 path = self.loc
@@ -1446,7 +1452,9 @@ class Yard(Object):
                 # TODO(tay): if no name/route provided (empty), store the blob in the scrapyard without updating the map
                 name = urllib.parse.urlsplit(self.path).path[1:]
                 obj = deserialize(self.rfile.read(int(self.headers["Content-Length"])).decode("utf-8"))
-                _, obj_id = self.yard.push(name, obj)
+                # TODO(tay): verify that sig can write to this prefix
+                sig = None
+                _, obj_id = self.yard.push(name, obj, sig)
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write(bytes(obj_id, "utf8"))
@@ -4195,11 +4203,12 @@ class PreludeTests(EndToEndTestsBase):
 
 class ScrapyardTests(EndToEndTestsBase):
     def _test_scrapyard(self, td):
-        yard = Yard(td)
+        yard = Yard(td, {})
         yard.init()
         for n in [0, 1, 2]:
             x = self._run(f"f . f = _ -> {n}")
-            _, obj_id = yard.push("test_obj", x)
+            sig = None  # TODO(tay)
+            _, obj_id = yard.push("test_obj", x, sig)
             env = {"$$scrapyard": yard}
             self.assertEqual(eval_exp(env, HashVar(obj_id)), x)
             self.assertEqual(self._run(f"$sha1'{obj_id} 123", env), Int(n))
@@ -4224,7 +4233,9 @@ class ScrapyardTests(EndToEndTestsBase):
 
     def test_scrapyard_net(self) -> None:
         with tempfile.TemporaryDirectory() as td:
-            yard = Yard(td)
+            private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
+            keys = {"tester": private_key.public_key()}
+            yard = Yard(td, keys)
             yard.init()
             # TODO(tay): use random open port
             server = socketserver.TCPServer
@@ -4881,18 +4892,20 @@ def yard_info_command(args: argparse.Namespace) -> None:
 
 
 def yard_init_command(args: argparse.Namespace) -> None:
-    Yard(args.yard).init()
+    Yard(args.yard, {}).init()
 
 
 def yard_push_command(args: argparse.Namespace) -> None:
     obj = eval_exp(STDLIB, parse(tokenize(args.program_file.read())))
-    yard = Yard(args.yard)
-    scrap_name, obj_id = yard.push(args.scrap_name, obj)
+    yard = Yard(args.yard, {})
+    sig = None  # TODO(tay)
+    scrap_name, obj_id = yard.push(args.scrap_name, obj, sig)
     print(args.scrap_name, obj_id)
 
 
 def yard_serve_command(args: argparse.Namespace) -> None:
-    with socketserver.TCPServer(("0.0.0.0", int(args.port)), Yard(args.yard).Server) as httpd:
+    keys = {}  # TODO(tay)
+    with socketserver.TCPServer(("0.0.0.0", int(args.port)), Yard(args.yard, keys).Server) as httpd:
         httpd.serve_forever()
 
 

@@ -4166,15 +4166,15 @@ class ScrapyardTests(EndToEndTestsBase):
 
     def test_scrapyard_net(self) -> None:
         class TemporaryScrapyardServerAddress():
-                def __init__(self, addr):
-                    self.addr = addr
+                def __init__(self):
+                    self.addr = "localhost:9090"
                 def __enter__(self):
                     # TODO(tay)
                     return self.addr
                 def __exit__(self, _type, _value, _trace):
                     # TODO(tay)
                     pass
-        with TemporaryScrapyardServerAddress("http://localhost:9090") as td:
+        with TemporaryScrapyardServer() as td:
             self._test_scrapyard(td)
 
 class BencodeTests(unittest.TestCase):

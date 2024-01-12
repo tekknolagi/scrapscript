@@ -28,6 +28,7 @@ import threading
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 readline: Optional[ModuleType]
@@ -1266,15 +1267,13 @@ class Yard(Object):
             with open(f"{self.loc}/scraps/{obj_id}", "rb") as data:
                 self.scraps[obj_id] = (None, deserialize(data.read().decode("utf-8")))
 
-    # TODO(tay): empty string key works for stuff at root :)
-    def __init__(self, loc: str | None, keys: dict[str, str]) -> None:
+    def __init__(self, loc: str | None, keys: dict[str, Any]) -> None:
+        # TODO(tay): empty string key works for stuff at root :)
         self.keys = keys
-        self.map: dict[
-            str, list[tuple[str, str | None]]
-        ] = dict()  # e.g. { "jsmith/fib": [("2021-...","123...")], ... }
-        self.scraps: dict[
-            str, tuple[str | None, Object]
-        ] = dict()  # e.g. { "123...": signed_eval_exp(sig, {}, Int(456)), ... }
+        # e.g. { "jsmith/fib": [("2021-...","123...")], ... }
+        self.map: dict[str, list[tuple[str, str | None]]] = dict()
+        # e.g. { "123...": signed_eval_exp(sig, {}, Int(456)), ... }
+        self.scraps: dict[str, tuple[str | None, Object]] = dict()
         if not loc:
             self.type = "mem"
             self.loc = None
@@ -1324,7 +1323,7 @@ class Yard(Object):
             case _:
                 raise NotImplementedError(f"Yard.init not implemented for '{self.type}'")
 
-    def push(self, name: str, obj: Object, sig: str | None) -> Tuple[str, str]:
+    def push(self, name: str, obj: Object, sig: bytes | None) -> Tuple[str, str]:
         match self.type:
             case "mem":
                 obj_id = hashlib.sha256(serialize(obj)).hexdigest()
@@ -1362,7 +1361,14 @@ class Yard(Object):
                 if not self.loc:
                     raise RuntimeError("no url defined for Yard.push")
                 conn = http.client.HTTPConnection(urlparse(self.loc).netloc)
-                conn.request("POST", f"/{name}", serialize(obj))
+                headers = (
+                    {
+                        "Authorization": sig.hex(),
+                    }
+                    if sig
+                    else {}
+                )
+                conn.request("POST", f"/{name}", serialize(obj), headers)
                 response = conn.getresponse()
                 if response.status != 200:
                     raise RuntimeError(f"scrapyard error: {response.reason}")
@@ -1452,8 +1458,18 @@ class Yard(Object):
                 # TODO(tay): if no name/route provided (empty), store the blob in the scrapyard without updating the map
                 name = urllib.parse.urlsplit(self.path).path[1:]
                 obj = deserialize(self.rfile.read(int(self.headers["Content-Length"])).decode("utf-8"))
-                # TODO(tay): verify that sig can write to this prefix
-                sig = None
+                sig = bytes.fromhex(self.headers.get("Authorization") or "")
+                public_key = self.yard.keys.get(name.split("/")[0])
+                if not public_key:
+                    self.send_response(401)
+                    self.end_headers()
+                    return
+                public_key.verify(
+                    sig,
+                    hashlib.sha256(serialize(obj)).digest(),
+                    padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
+                    hashes.SHA256(),
+                )
                 _, obj_id = self.yard.push(name, obj, sig)
                 self.send_response(200)
                 self.end_headers()
@@ -4202,12 +4218,16 @@ class PreludeTests(EndToEndTestsBase):
 
 
 class ScrapyardTests(EndToEndTestsBase):
-    def _test_scrapyard(self, td):
+    def _test_scrapyard(self, td, pk):
         yard = Yard(td, {})
         yard.init()
         for n in [0, 1, 2]:
             x = self._run(f"f . f = _ -> {n}")
-            sig = None  # TODO(tay)
+            sig = pk and pk.sign(
+                hashlib.sha256(serialize(x)).digest(),
+                padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
+                hashes.SHA256(),
+            )
             _, obj_id = yard.push("test_obj", x, sig)
             env = {"$$scrapyard": yard}
             self.assertEqual(eval_exp(env, HashVar(obj_id)), x)
@@ -4218,23 +4238,23 @@ class ScrapyardTests(EndToEndTestsBase):
             self.assertEqual(self._run(f"test_obj^^{n} 123", env), Int(n))
 
     def test_scrapyard_mem(self) -> None:
-        self._test_scrapyard(None)
+        self._test_scrapyard(None, None)
 
     @unittest.skipIf(_dont_have_pygit2(), "Can't run test without pygit2")
     def test_scrapyard_git(self) -> None:
         # TODO(max): Do this in-memory instead of on-disk
         with tempfile.TemporaryDirectory() as td:
-            self._test_scrapyard(td + "/.git")
+            self._test_scrapyard(td + "/.git", None)
             # TODO(tay): also make sure that it's actually git in the background instead of dir
 
     def test_scrapyard_dir(self) -> None:
         with tempfile.TemporaryDirectory() as td:
-            self._test_scrapyard(td)
+            self._test_scrapyard(td, None)
 
     def test_scrapyard_net(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
-            keys = {"tester": private_key.public_key()}
+            keys = {"test_obj": private_key.public_key()}
             yard = Yard(td, keys)
             yard.init()
             # TODO(tay): use random open port
@@ -4245,7 +4265,7 @@ class ScrapyardTests(EndToEndTestsBase):
                 server_thread.daemon = True
                 server_thread.start()
                 host, port = httpd.server_address
-                self._test_scrapyard(f"http://{host}:{port}")
+                self._test_scrapyard(f"http://{host}:{port}", private_key)
             httpd.shutdown()
 
 

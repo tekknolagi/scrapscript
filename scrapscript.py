@@ -1347,13 +1347,14 @@ class Yard(Object):
                 self._load_yard_from_git()
                 return name, obj_id
             case "net":
-                if self.loc:
-                    conn = http.client.HTTPConnection(urlparse(self.loc).netloc)
-                    conn.request("POST", f"/{name}", serialize(obj))
-                    response = conn.getresponse()
-                    if response.status != 200:
-                        raise Exception("TODO(tay)")
-                raise Exception("TODO(tay)")
+                if not self.loc:
+                    raise Exception("TODO(tay)")
+                conn = http.client.HTTPConnection(urlparse(self.loc).netloc)
+                conn.request("POST", f"/{name}", serialize(obj))
+                response = conn.getresponse()
+                if response.status != 200:
+                    raise Exception("TODO(tay)")
+                return name, response.read().decode()
             case "dir":
                 obj_id = hashlib.sha256(serialize(obj)).hexdigest()
                 self.scraps[obj_id] = ("TODO(tay): sig", obj)
@@ -1372,7 +1373,16 @@ class Yard(Object):
             case "mem" | "git" | "dir":
                 return self.scraps.get(str(obj_id),(None,None))[1]
             case "net":
-                raise Exception("TODO(tay)")
+                if not self.loc:
+                    raise Exception("TODO(tay)")
+                conn = http.client.HTTPConnection(urlparse(self.loc).netloc)
+                conn.request("GET", f"/${obj_id}")
+                response = conn.getresponse()
+                if response.status == 404:
+                    return None
+                if response.status != 200:
+                    raise Exception("TODO(tay)")
+                return deserialize(response.read().decode())
             case _:
                 raise NotImplementedError(f"Yard.fetch_by_id not implemented for '{self.type}'")
 
@@ -1385,41 +1395,53 @@ class Yard(Object):
                 except IndexError:
                     return None
             case "net":
-                raise Exception("TODO(tay)")
+                if not self.loc:
+                    raise Exception("TODO(tay)")
+                conn = http.client.HTTPConnection(urlparse(self.loc).netloc)
+                conn.request("GET", f"/{name}?v={pin if pin != None else ''}")
+                response = conn.getresponse()
+                if response.status == 404:
+                    return None
+                if response.status != 200:
+                    raise Exception("TODO(tay)")
+                return deserialize(response.read().decode())
             case _:
                 raise NotImplementedError(f"Yard.fetch_by_name not implemented for '{self.type}'")
 
     def Server(self, *args):
         class YardServer(http.server.SimpleHTTPRequestHandler):
-            def __init__(self, yard: Yard, **args):
-                super().__init__(**args)
+            def __init__(self, yard: Yard, *args: Any, **kwargs: Any) -> None:
                 self.yard = yard
+                super().__init__(*args, **kwargs)
             def do_GET(self) -> None:
-                # TODO(tay): instead of query params, preface hashes with a dollar sign, otherwise assume name
-                query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
-                name = query.get("name",[None])[0]
-                obj_id = query.get("id",[None])[0]
-                if name: 
-                    scrap = self.yard.fetch_by_name(name, int(query.get("pin",[""])[0]))
-                    if scrap:
-                        self.send_response(200)
-                        self.wfile.write(serialize(scrap))
-                        return
-                if obj_id:
+                path = urllib.parse.urlsplit(self.path).path[1:]
+                if path.startswith("$"): 
+                    obj_id = path[1:]
                     scrap = self.yard.fetch_by_id(obj_id)
                     if scrap:
                         self.send_response(200)
+                        self.end_headers()
+                        self.wfile.write(serialize(scrap))
+                        return
+                else:
+                    query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                    v: str|None = query.get("v",[None])[0]
+                    scrap = self.yard.fetch_by_name(path, pin = int(v) if v != None and v != "" else None)
+                    if scrap:
+                        self.send_response(200)
+                        self.end_headers()
                         self.wfile.write(serialize(scrap))
                         return
                 self.send_response(404)
+                self.end_headers()
             def do_POST(self) -> None:
-                # TODO(tay): if no name/route provided, store the blob in the scrapyard without updating the map
+                # TODO(tay): if no name/route provided (empty), store the blob in the scrapyard without updating the map
                 name = urllib.parse.urlsplit(self.path).path[1:]
-                print(name)
                 obj = deserialize(self.rfile.read(int(self.headers['Content-Length'])).decode('utf-8'))
-                print(obj)
-                self.yard.push(name, obj)
+                _, obj_id = self.yard.push(name, obj)
                 self.send_response(200)
+                self.end_headers()
+                self.wfile.write(bytes(obj_id, "utf8"))
         return YardServer(self, *args)
 
 
@@ -4195,12 +4217,15 @@ class ScrapyardTests(EndToEndTestsBase):
             yard = Yard(td)
             yard.init()
             # TODO(tay): use random open port
-            with socketserver.TCPServer(("127.0.0.1", 9090), yard.Server) as httpd:
+            server = socketserver.TCPServer
+            server.allow_reuse_port = True
+            with server(("127.0.0.1", 9090), yard.Server) as httpd:
                 server_thread = threading.Thread(target=httpd.serve_forever)
                 server_thread.daemon = True
                 server_thread.start()
                 host, port = httpd.server_address
                 self._test_scrapyard(f"http://{host}:{port}")
+            httpd.shutdown()
 
 class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:

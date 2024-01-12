@@ -686,6 +686,7 @@ class Bool(Object):
         assert isinstance(msg["value"], int)
         return Bool(bool(msg["value"]))
 
+
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Hole(Object):
     def __str__(self) -> str:
@@ -1032,6 +1033,7 @@ class Access(Object):
         # TODO: Better pretty printing for Access
         return self.__repr__()
 
+
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Pin(Object):
     obj: Object
@@ -1040,6 +1042,7 @@ class Pin(Object):
     def __str__(self) -> str:
         # TODO: Better pretty printing for Pin
         return self.__repr__()
+
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Symbol(Object):
@@ -1230,11 +1233,11 @@ def improve_closure(closure: Closure) -> Closure:
     env = {boundvar: value for boundvar, value in closure.env.items() if boundvar in freevars}
     return Closure(env, closure.func)
 
+
 # TODO(tay): use baseclass/inheritance instead?
 # TODO(tay): this probably shouldn't be an Object, but i want the type system to stop complaining...
 # TODO(tay): we need to implement signature verification and stuff in here...
 class Yard(Object):
-
     def _load_yard_from_git(self) -> None:
         git = _ensure_pygit2()
         repo_path = git.discover_repository(self.loc)
@@ -1246,7 +1249,7 @@ class Yard(Object):
                 for entry in commit.tree:
                     obj_id = str(entry.id)
                     self.scraps[obj_id] = ("TODO(tay): sig", deserialize(repo.get(obj_id).data.decode("utf-8")))
-                    self.map[entry.name] = self.map.get(entry.name,[])
+                    self.map[entry.name] = self.map.get(entry.name, [])
                     self.map[entry.name].append((datetime.now().isoformat(), obj_id))
 
     def _load_yard_from_dir(self) -> None:
@@ -1259,15 +1262,19 @@ class Yard(Object):
             with open(f"{self.loc}/scraps/{obj_id}", "rb") as data:
                 self.scraps[obj_id] = ("TODO(tay): sig", deserialize(data.read().decode("utf-8")))
 
-    def __init__(self, loc: str|None) -> None:
-        self.map: dict[str,list[tuple[str,str|None]]] = dict()  # e.g. { "jsmith/fib": [("2021-...","123...")], ... }
-        self.scraps: dict[str,tuple[str,Object]] = dict()  # e.g. { "123...": signed_eval_exp(sig, {}, Int(456)), ... }
+    def __init__(self, loc: str | None) -> None:
+        self.map: dict[
+            str, list[tuple[str, str | None]]
+        ] = dict()  # e.g. { "jsmith/fib": [("2021-...","123...")], ... }
+        self.scraps: dict[
+            str, tuple[str, Object]
+        ] = dict()  # e.g. { "123...": signed_eval_exp(sig, {}, Int(456)), ... }
         if not loc:
             self.type = "mem"
             self.loc = None
         elif loc.endswith("/.git"):
             self.type = "git"
-            self.loc = loc.replace("/.git","")
+            self.loc = loc.replace("/.git", "")
             self._load_yard_from_git()
         elif urlparse(loc).netloc:
             self.type = "net"
@@ -1311,11 +1318,11 @@ class Yard(Object):
             case _:
                 raise NotImplementedError(f"Yard.init not implemented for '{self.type}'")
 
-    def push(self, name: str, obj: Object) -> Tuple[str,str]:
+    def push(self, name: str, obj: Object) -> Tuple[str, str]:
         match self.type:
             case "mem":
                 obj_id = hashlib.sha256(serialize(obj)).hexdigest()
-                self.map[name] = self.map.get(name,[])
+                self.map[name] = self.map.get(name, [])
                 self.map[name].append((datetime.now().isoformat(), obj_id))
                 self.scraps[obj_id] = ("TODO(tay): sig", obj)
                 return name, obj_id
@@ -1347,7 +1354,7 @@ class Yard(Object):
                 return name, obj_id
             case "net":
                 if not self.loc:
-                    raise RuntimeError(f"no url defined for Yard.push")
+                    raise RuntimeError("no url defined for Yard.push")
                 conn = http.client.HTTPConnection(urlparse(self.loc).netloc)
                 conn.request("POST", f"/{name}", serialize(obj))
                 response = conn.getresponse()
@@ -1357,7 +1364,7 @@ class Yard(Object):
             case "dir":
                 obj_id = hashlib.sha256(serialize(obj)).hexdigest()
                 self.scraps[obj_id] = ("TODO(tay): sig", obj)
-                self.map[name] = self.map.get(name,[])
+                self.map[name] = self.map.get(name, [])
                 self.map[name].append((datetime.now().isoformat(), obj_id))
                 with open(f"{self.loc}/scraps/{name}", "wb") as file:
                     file.write(serialize(obj))
@@ -1367,13 +1374,13 @@ class Yard(Object):
             case _:
                 raise NotImplementedError(f"Yard.push not implemented for '{self.type}'")
 
-    def fetch_by_id(self, obj_id: str) -> Object|None:
+    def fetch_by_id(self, obj_id: str) -> Object | None:
         match self.type:
             case "mem" | "git" | "dir":
-                return self.scraps.get(str(obj_id),(None,None))[1]
+                return self.scraps.get(str(obj_id), (None, None))[1]
             case "net":
                 if not self.loc:
-                    raise RuntimeError(f"no url defined for Yard.fetch_by_id")
+                    raise RuntimeError("no url defined for Yard.fetch_by_id")
                 conn = http.client.HTTPConnection(urlparse(self.loc).netloc)
                 conn.request("GET", f"/${obj_id}")
                 response = conn.getresponse()
@@ -1385,19 +1392,19 @@ class Yard(Object):
             case _:
                 raise NotImplementedError(f"Yard.fetch_by_id not implemented for '{self.type}'")
 
-    def fetch_by_name(self, name: str, pin: int|None = None) -> Object|None:
+    def fetch_by_name(self, name: str, pin: int | None = None) -> Object | None:
         match self.type:
             case "mem" | "git" | "dir":
                 try:
-                    obj_id = self.map.get(name,[])[pin if pin != None else -1][1]
+                    obj_id = self.map.get(name, [])[pin if pin is not None else -1][1]
                     return self.fetch_by_id(obj_id) if obj_id else None
                 except IndexError:
                     return None
             case "net":
                 if not self.loc:
-                    raise RuntimeError(f"no url defined for Yard.fetch_by_name")
+                    raise RuntimeError("no url defined for Yard.fetch_by_name")
                 conn = http.client.HTTPConnection(urlparse(self.loc).netloc)
-                conn.request("GET", f"/{name}?v={pin if pin != None else ''}")
+                conn.request("GET", f"/{name}?v={pin if pin is not None else ''}")
                 response = conn.getresponse()
                 if response.status == 404:
                     return None
@@ -1412,9 +1419,10 @@ class Yard(Object):
             def __init__(self, yard: Yard, *args: Any, **kwargs: Any) -> None:
                 self.yard = yard
                 super().__init__(*args, **kwargs)
+
             def do_GET(self) -> None:
                 path = urllib.parse.urlsplit(self.path).path[1:]
-                if path.startswith("$"): 
+                if path.startswith("$"):
                     obj_id = path[1:]
                     scrap = self.yard.fetch_by_id(obj_id)
                     if scrap:
@@ -1424,8 +1432,8 @@ class Yard(Object):
                         return
                 else:
                     query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
-                    v: str|None = query.get("v",[None])[0]
-                    scrap = self.yard.fetch_by_name(path, pin = int(v) if v != None and v != "" else None)
+                    v: str | None = query.get("v", [None])[0]
+                    scrap = self.yard.fetch_by_name(path, pin=int(v) if v is not None and v != "" else None)
                     if scrap:
                         self.send_response(200)
                         self.end_headers()
@@ -1433,18 +1441,20 @@ class Yard(Object):
                         return
                 self.send_response(404)
                 self.end_headers()
+
             def do_POST(self) -> None:
                 # TODO(tay): if no name/route provided (empty), store the blob in the scrapyard without updating the map
                 name = urllib.parse.urlsplit(self.path).path[1:]
-                obj = deserialize(self.rfile.read(int(self.headers['Content-Length'])).decode('utf-8'))
+                obj = deserialize(self.rfile.read(int(self.headers["Content-Length"])).decode("utf-8"))
                 _, obj_id = self.yard.push(name, obj)
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write(bytes(obj_id, "utf8"))
+
         return YardServer(self, *args)
 
 
-def eval_exp(env: Env, exp: Object, pin: int|None = None) -> Object:
+def eval_exp(env: Env, exp: Object, pin: int | None = None) -> Object:
     logger.debug(exp)
     if isinstance(exp, (Int, Float, String, Bytes, Hole, Closure, NativeFunction, Symbol)):
         return exp
@@ -1545,7 +1555,7 @@ def eval_exp(env: Env, exp: Object, pin: int|None = None) -> Object:
             return obj.items[access_at.value]
         raise TypeError(f"attempted to access from type {type(obj).__name__}")
     if isinstance(exp, Pin) and isinstance(exp.version, Int):
-        return eval_exp(env, exp.obj, pin = exp.version.value)
+        return eval_exp(env, exp.obj, pin=exp.version.value)
     if isinstance(exp, Pin):
         raise NotImplementedError(f"pinned versions not implemented for {type(exp)}")
     if isinstance(exp, Compose):
@@ -4182,19 +4192,20 @@ class PreludeTests(EndToEndTestsBase):
             Symbol("true"),
         )
 
+
 class ScrapyardTests(EndToEndTestsBase):
     def _test_scrapyard(self, td):
         yard = Yard(td)
         yard.init()
-        for n in [0,1,2]:
+        for n in [0, 1, 2]:
             x = self._run(f"f . f = _ -> {n}")
             _, obj_id = yard.push("test_obj", x)
             env = {"$$scrapyard": yard}
             self.assertEqual(eval_exp(env, HashVar(obj_id)), x)
             self.assertEqual(self._run(f"$sha1'{obj_id} 123", env), Int(n))
-            self.assertEqual(self._run(f"test_obj 123", env), Int(n))
+            self.assertEqual(self._run("test_obj 123", env), Int(n))
         env = {"$$scrapyard": yard}
-        for n in [0,1,2]:
+        for n in [0, 1, 2]:
             self.assertEqual(self._run(f"test_obj^^{n} 123", env), Int(n))
 
     def test_scrapyard_mem(self) -> None:
@@ -4225,6 +4236,7 @@ class ScrapyardTests(EndToEndTestsBase):
                 host, port = httpd.server_address
                 self._test_scrapyard(f"http://{host}:{port}")
             httpd.shutdown()
+
 
 class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:
@@ -4863,11 +4875,14 @@ def _ensure_pygit2() -> ModuleType:
     except ImportError:
         raise ScrapError("Please install pygit2 to work with scrapyards")
 
+
 def yard_info_command(args: argparse.Namespace) -> None:
-    raise Exception("TODO(tay)") # print current configs/default etc
+    raise Exception("TODO(tay)")  # print current configs/default etc
+
 
 def yard_init_command(args: argparse.Namespace) -> None:
     Yard(args.yard).init()
+
 
 def yard_push_command(args: argparse.Namespace) -> None:
     obj = eval_exp(STDLIB, parse(tokenize(args.program_file.read())))
@@ -4875,9 +4890,11 @@ def yard_push_command(args: argparse.Namespace) -> None:
     scrap_name, obj_id = yard.push(args.scrap_name, obj)
     print(args.scrap_name, obj_id)
 
+
 def yard_serve_command(args: argparse.Namespace) -> None:
     with socketserver.TCPServer(("0.0.0.0", int(args.port)), Yard(args.yard).Server) as httpd:
         httpd.serve_forever()
+
 
 def repl_serve_command(args: argparse.Namespace) -> None:
     if args.debug:
@@ -4892,6 +4909,7 @@ def repl_serve_command(args: argparse.Namespace) -> None:
         host, port = httpd.server_address
         print(f"serving at http://{host!s}:{port}")
         httpd.serve_forever()
+
 
 # TODO(tay): use STDIN patterns instead of filenames
 def main() -> None:
@@ -4931,13 +4949,13 @@ def main() -> None:
     yard_init.add_argument("yard")
     yard_push = yard.add_parser("push")
     yard_push.set_defaults(func=yard_push_command)
-    yard_push.add_argument("yard") 
+    yard_push.add_argument("yard")
     yard_push.add_argument("scrap_name")
     yard_push.add_argument("program_file", type=argparse.FileType("r"))
     yard_serve = yard.add_parser("serve")
     yard_serve.set_defaults(func=yard_serve_command)
-    yard_serve.add_argument("yard") 
-    yard_serve.add_argument("port") 
+    yard_serve.add_argument("yard")
+    yard_serve.add_argument("port")
 
     args = parser.parse_args()
     if not args.command:

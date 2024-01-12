@@ -1228,6 +1228,23 @@ def improve_closure(closure: Closure) -> Closure:
     env = {boundvar: value for boundvar, value in closure.env.items() if boundvar in freevars}
     return Closure(env, closure.func)
 
+
+class YardServer(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, m, s, **args):
+        super().__init__(**args)
+        self.map: dict[str,list[tuple[str,str|None]]] = m  # e.g. { "jsmith/fib": [("2021-...","123...")], ... }
+        self.scraps: dict[str,tuple[str,Object]] = s  # e.g. { "123...": signed_eval_exp(sig, {}, Int(456)), ... }
+    def do_GET(self) -> None:
+        obj_id = urllib.parse.urlsplit(self.path).path
+        scrap = self.scraps.get(str(obj_id),(None,None))[1]
+        if scrap:
+            self.send_response(200)
+            self.wfile.write(serialize(scrap))
+        else:
+            self.send_response(404)
+    def do_POST(self) -> None:
+        raise Exception("TODO(tay)")
+
 # TODO(tay): use baseclass/inheritance instead?
 # TODO(tay): this probably shouldn't be an Object, but i want the type system to stop complaining...
 # TODO(tay): we need to implement signature verification and stuff in here...
@@ -1317,7 +1334,7 @@ class Yard(Object):
             case "mem":
                 obj_id = hashlib.sha256(serialize(obj)).hexdigest()
                 self.map[name] = self.map.get(name,[])
-                self.map[name].append((datetime.now(), obj_id))
+                self.map[name].append((datetime.now().isoformat(), obj_id))
                 self.scraps[obj_id] = ("TODO(tay): sig", obj)
                 return name, obj_id
             case "git":
@@ -1383,19 +1400,8 @@ class Yard(Object):
             case _:
                 raise NotImplementedError(f"Yard.fetch_by_name not implemented for '{self.type}'")
 
-    def serve(self, address: str) -> None:
-        match self.type:
-            case "mem":
-                raise Exception("TODO(tay)")
-            case "git":
-                raise Exception("TODO(tay)")
-            case "net":
-                raise Exception("TODO(tay)")
-            case "dir":
-                raise Exception("TODO(tay)")
-            case _:
-                raise NotImplementedError(f"Yard.fetch_by_name not implemented for '{self.type}'")
-
+    def Server(self, *args) -> YardServer:
+        return YardServer(self.map, self.scraps, *args)
 
 def eval_exp(env: Env, exp: Object, pin: int|None = None) -> Object:
     logger.debug(exp)
@@ -4165,17 +4171,13 @@ class ScrapyardTests(EndToEndTestsBase):
             self._test_scrapyard(td)
 
     def test_scrapyard_net(self) -> None:
-        class TemporaryScrapyardServerAddress():
-                def __init__(self):
-                    self.addr = "localhost:9090"
-                def __enter__(self):
-                    # TODO(tay)
-                    return self.addr
-                def __exit__(self, _type, _value, _trace):
-                    # TODO(tay)
-                    pass
-        with TemporaryScrapyardServer() as td:
-            self._test_scrapyard(td)
+        with tempfile.TemporaryDirectory() as td:
+            yard = Yard(td)
+            yard.init()
+            # TODO(tay): use random open port
+            with socketserver.TCPServer(("", 9090), yard.Server) as httpd:
+                host, port = httpd.server_address
+                self._test_scrapyard(f"http://{host}:{port}")
 
 class BencodeTests(unittest.TestCase):
     def test_bencode_int(self) -> None:

@@ -1262,7 +1262,6 @@ class Yard(Object):
     def __init__(self, loc: str|None) -> None:
         self.map: dict[str,list[tuple[str,str|None]]] = dict()  # e.g. { "jsmith/fib": [("2021-...","123...")], ... }
         self.scraps: dict[str,tuple[str,Object]] = dict()  # e.g. { "123...": signed_eval_exp(sig, {}, Int(456)), ... }
-        # TODO(tay): instead of storing loc and type, just store the yard and map in mem
         if not loc:
             self.type = "mem"
             self.loc = None
@@ -1348,12 +1347,12 @@ class Yard(Object):
                 return name, obj_id
             case "net":
                 if not self.loc:
-                    raise Exception("TODO(tay)")
+                    raise RuntimeError(f"no url defined for Yard.push")
                 conn = http.client.HTTPConnection(urlparse(self.loc).netloc)
                 conn.request("POST", f"/{name}", serialize(obj))
                 response = conn.getresponse()
                 if response.status != 200:
-                    raise Exception("TODO(tay)")
+                    raise RuntimeError(f"scrapyard error: {response.reason}")
                 return name, response.read().decode()
             case "dir":
                 obj_id = hashlib.sha256(serialize(obj)).hexdigest()
@@ -1374,14 +1373,14 @@ class Yard(Object):
                 return self.scraps.get(str(obj_id),(None,None))[1]
             case "net":
                 if not self.loc:
-                    raise Exception("TODO(tay)")
+                    raise RuntimeError(f"no url defined for Yard.fetch_by_id")
                 conn = http.client.HTTPConnection(urlparse(self.loc).netloc)
                 conn.request("GET", f"/${obj_id}")
                 response = conn.getresponse()
                 if response.status == 404:
                     return None
                 if response.status != 200:
-                    raise Exception("TODO(tay)")
+                    raise RuntimeError(f"scrapyard error: {response.reason}")
                 return deserialize(response.read().decode())
             case _:
                 raise NotImplementedError(f"Yard.fetch_by_id not implemented for '{self.type}'")
@@ -1396,14 +1395,14 @@ class Yard(Object):
                     return None
             case "net":
                 if not self.loc:
-                    raise Exception("TODO(tay)")
+                    raise RuntimeError(f"no url defined for Yard.fetch_by_name")
                 conn = http.client.HTTPConnection(urlparse(self.loc).netloc)
                 conn.request("GET", f"/{name}?v={pin if pin != None else ''}")
                 response = conn.getresponse()
                 if response.status == 404:
                     return None
                 if response.status != 200:
-                    raise Exception("TODO(tay)")
+                    raise RuntimeError(f"scrapyard error: {response.reason}")
                 return deserialize(response.read().decode())
             case _:
                 raise NotImplementedError(f"Yard.fetch_by_name not implemented for '{self.type}'")
@@ -4877,7 +4876,8 @@ def yard_push_command(args: argparse.Namespace) -> None:
     print(args.scrap_name, obj_id)
 
 def yard_serve_command(args: argparse.Namespace) -> None:
-    Yard(args.yard).serve(args.address)
+    with socketserver.TCPServer(("0.0.0.0", int(args.port)), Yard(args.yard).Server) as httpd:
+        httpd.serve_forever()
 
 def repl_serve_command(args: argparse.Namespace) -> None:
     if args.debug:
@@ -4937,7 +4937,7 @@ def main() -> None:
     yard_serve = yard.add_parser("serve")
     yard_serve.set_defaults(func=yard_serve_command)
     yard_serve.add_argument("yard") 
-    yard_serve.add_argument("address") 
+    yard_serve.add_argument("port") 
 
     args = parser.parse_args()
     if not args.command:

@@ -40,11 +40,9 @@ jobs:
       - name: Install system dependencies
         run: sudo apt install --yes libssl-dev
       - name: Install Python
-        run: sudo apt install --yes ${{matrix.PYTHON}}
-      - name: Uninstall Python FFI
-        run: sudo apt remove python3-cffi
+        run: sudo apt install --yes ${{matrix.PYTHON}} python3-cffi
       - name: Install Python packages
-        run: python3 -m pip install cffi cryptography
+        run: python3 -m pip install cryptography
       - name: Run tests
         run: ${{matrix.PYTHON}} scrapscript.py test
   build_docker_image:

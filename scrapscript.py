@@ -28,8 +28,8 @@ import threading
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+import importlib.util
 
 readline: Optional[ModuleType]
 try:
@@ -2930,12 +2930,7 @@ class MatchTests(unittest.TestCase):
 
 
 def _dont_have_pygit2() -> bool:
-    try:
-        import pygit2
-
-        return False
-    except ImportError:
-        return True
+    return importlib.util.find_spec("pygit2") is not None
 
 
 class EvalTests(unittest.TestCase):

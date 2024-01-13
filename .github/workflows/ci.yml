@@ -38,11 +38,12 @@ jobs:
       - name: Update local package lists
         run: sudo apt update
       - name: Install system dependencies
-        run: sudo apt install --yes libssl-dev
+        run: sudo apt install --yes gcc libffi-dev libssl-dev
       - name: Install Python
-        run: sudo apt install --yes ${{matrix.PYTHON}} python3-cffi
+        run: sudo apt install --yes ${{matrix.PYTHON}}
       - name: Install Python packages
-        run: python3 -m pip install cryptography
+        run:
+          python3 -m pip install --upgrade --force-reinstall cffi cryptography
       - name: Run tests
         run: ${{matrix.PYTHON}} scrapscript.py test
   build_docker_image:

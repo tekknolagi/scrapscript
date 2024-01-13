@@ -2930,7 +2930,7 @@ class MatchTests(unittest.TestCase):
 
 
 def _dont_have_pygit2() -> bool:
-    return importlib.util.find_spec("pygit2") is not None
+    return importlib.util.find_spec("pygit2") is None
 
 
 class EvalTests(unittest.TestCase):

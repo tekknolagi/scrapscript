@@ -41,6 +41,8 @@ jobs:
         run: sudo apt install --yes libssl-dev
       - name: Install Python
         run: sudo apt install --yes ${{matrix.PYTHON}}
+      - name: Uninstall Python FFI
+        run: sudo apt remove python3-cffi
       - name: Install Python packages
         run: python3 -m pip install cffi cryptography
       - name: Run tests

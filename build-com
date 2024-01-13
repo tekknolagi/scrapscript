@@ -11,6 +11,7 @@ wget https://cosmo.zip/pub/cosmos/bin/python
 wget https://cosmo.zip/pub/cosmos/bin/zip
 chmod +x python
 chmod +x zip
+./python -m pip download cryptography
 ./python -m compileall scrapscript.py
 mkdir Lib
 cp __pycache__/scrapscript.*.pyc Lib/scrapscript.pyc

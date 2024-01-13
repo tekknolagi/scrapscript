@@ -4257,13 +4257,13 @@ class ScrapyardTests(EndToEndTestsBase):
             yard.init()
             # TODO(tay): use random open port
             server = socketserver.TCPServer
-            server.allow_reuse_port = True
+            server.allow_reuse_address = True
             with server(("127.0.0.1", 9090), yard.Server) as httpd:
                 server_thread = threading.Thread(target=httpd.serve_forever)
                 server_thread.daemon = True
                 server_thread.start()
                 host, port = httpd.server_address
-                self._test_scrapyard(f"http://{host!r}:{port!r}", private_key)
+                self._test_scrapyard(f"http://{host!s}:{port}", private_key)
             httpd.shutdown()
 
 

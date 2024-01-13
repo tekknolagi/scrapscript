@@ -1243,6 +1243,11 @@ def improve_closure(closure: Closure) -> Closure:
 # TODO(tay): this probably shouldn't be an Object, but i want the type system to stop complaining...
 # TODO(tay): we need to implement signature verification and stuff in here...
 class Yard(Object):
+    loc: str | None
+    map: dict[str, list[tuple[str, str | None]]]
+    scraps: dict[str, tuple[bytes | None, Object]]
+    keys: dict[str, Any]
+
     def _load_yard_from_git(self) -> None:
         git = _ensure_pygit2()
         repo_path = git.discover_repository(self.loc)
@@ -1270,10 +1275,8 @@ class Yard(Object):
     def __init__(self, loc: str | None, keys: dict[str, Any]) -> None:
         # TODO(tay): empty string key works for stuff at root :)
         self.keys = keys
-        # e.g. { "jsmith/fib": [("2021-...","123...")], ... }
-        self.map: dict[str, list[tuple[str, str | None]]] = dict()
-        # e.g. { "123...": signed_eval_exp(sig, {}, Int(456)), ... }
-        self.scraps: dict[str, tuple[str | None, Object]] = dict()
+        self.map = dict()  # e.g. { "jsmith/fib": [("2021-...","123...")], ... }
+        self.scraps = dict()  # e.g. { "123...": signed_eval_exp(sig, {}, Int(456)), ... }
         if not loc:
             self.type = "mem"
             self.loc = None
@@ -1375,7 +1378,7 @@ class Yard(Object):
                 return name, response.read().decode()
             case "dir":
                 obj_id = hashlib.sha256(serialize(obj)).hexdigest()
-                self.scraps[obj_id] = ("TODO(tay): sig", obj)
+                self.scraps[obj_id] = (None, obj)
                 self.map[name] = self.map.get(name, [])
                 self.map[name].append((datetime.now().isoformat(), obj_id))
                 with open(f"{self.loc}/scraps/{name}", "wb") as file:
@@ -1426,7 +1429,7 @@ class Yard(Object):
             case _:
                 raise NotImplementedError(f"Yard.fetch_by_name not implemented for '{self.type}'")
 
-    def Server(self, *args):
+    def Server(self, *args: Any) -> http.server.SimpleHTTPRequestHandler:
         class YardServer(http.server.SimpleHTTPRequestHandler):
             def __init__(self, yard: Yard, *args: Any, **kwargs: Any) -> None:
                 self.yard = yard
@@ -4213,7 +4216,7 @@ class PreludeTests(EndToEndTestsBase):
 
 
 class ScrapyardTests(EndToEndTestsBase):
-    def _test_scrapyard(self, td, pk):
+    def _test_scrapyard(self, td: str | None, pk: Any) -> None:
         yard = Yard(td, {})
         yard.init()
         for n in [0, 1, 2]:
@@ -4260,7 +4263,7 @@ class ScrapyardTests(EndToEndTestsBase):
                 server_thread.daemon = True
                 server_thread.start()
                 host, port = httpd.server_address
-                self._test_scrapyard(f"http://{host}:{port}", private_key)
+                self._test_scrapyard(f"http://{host!r}:{port!r}", private_key)
             httpd.shutdown()
 
 
@@ -4919,7 +4922,7 @@ def yard_push_command(args: argparse.Namespace) -> None:
 
 
 def yard_serve_command(args: argparse.Namespace) -> None:
-    keys = {}  # TODO(tay)
+    keys: dict[str, Any] = {}  # TODO(tay)
     with socketserver.TCPServer(("0.0.0.0", int(args.port)), Yard(args.yard, keys).Server) as httpd:
         httpd.serve_forever()
 

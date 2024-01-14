@@ -4218,7 +4218,6 @@ class PreludeTests(EndToEndTestsBase):
         )
 
 
-@unittest.skipIf(_dont_have_cryptography(), "Can't run test without cryptography")
 class ScrapyardTests(EndToEndTestsBase):
     def _test_scrapyard(self, td: str | None, pk: Any) -> None:
         from cryptography.hazmat.primitives import hashes
@@ -4256,6 +4255,7 @@ class ScrapyardTests(EndToEndTestsBase):
         with tempfile.TemporaryDirectory() as td:
             self._test_scrapyard(td, None)
 
+    @unittest.skipIf(_dont_have_cryptography(), "Can't run test without cryptography")
     def test_scrapyard_net(self) -> None:
         from cryptography.hazmat.backends import default_backend
         from cryptography.hazmat.primitives.asymmetric import rsa

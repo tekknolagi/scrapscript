@@ -27,6 +27,8 @@ import http.client
 import threading
 import importlib.util
 
+SCRAPYARD: str | None = os.environ.get("SCRAPYARD")
+
 readline: Optional[ModuleType]
 try:
     import readline
@@ -1377,7 +1379,7 @@ class Yard(Object):
                 self.scraps[obj_id] = (None, obj)
                 self.map[name] = self.map.get(name, [])
                 self.map[name].append((datetime.now().isoformat(), obj_id))
-                with open(f"{self.loc}/scraps/{name}", "wb") as file:
+                with open(f"{self.loc}/scraps/{obj_id}", "wb") as file:
                     file.write(serialize(obj))
                 with open(f"{self.loc}/map.json", "w") as file:
                     json.dump(self.map, file)
@@ -4865,7 +4867,7 @@ def eval_command(args: argparse.Namespace) -> None:
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
-    result = eval_exp(boot_env(), ast)
+    result = eval_exp({**boot_env(), "$$scrapyard": Yard(SCRAPYARD, {})}, ast)
     print(result)
 
 
@@ -4881,7 +4883,7 @@ def apply_command(args: argparse.Namespace) -> None:
     logger.debug("AST (f): %s", ast_f)
     ast_x = parse(tokens_x)
     logger.debug("AST (f): %s", ast_x)
-    result = eval_exp(boot_env(), Apply(ast_f, ast_x))
+    result = eval_exp({**boot_env(), "$$scrapyard": Yard(SCRAPYARD, {})}, Apply(ast_f, ast_x))
     print(result)
 
 
@@ -4924,13 +4926,13 @@ def yard_info_command(args: argparse.Namespace) -> None:
 
 
 def yard_init_command(args: argparse.Namespace) -> None:
-    Yard(args.yard, {}).init()
+    Yard(SCRAPYARD, {}).init()
 
 
 def yard_push_command(args: argparse.Namespace) -> None:
     text = args.scrap if isinstance(args.scrap, str) else args.scrap.read()
     obj = eval_exp(STDLIB, parse(tokenize(text)))
-    yard = Yard(args.yard, {})
+    yard = Yard(SCRAPYARD, {})
     sig = None  # TODO(tay)
     scrap_name, obj_id = yard.push(args.scrap_name, obj, sig)
     print(args.scrap_name, obj_id)
@@ -4938,7 +4940,7 @@ def yard_push_command(args: argparse.Namespace) -> None:
 
 def yard_serve_command(args: argparse.Namespace) -> None:
     keys: dict[str, Any] = {}  # TODO(tay)
-    with socketserver.TCPServer(("0.0.0.0", int(args.port)), Yard(args.yard, keys).Server) as httpd:
+    with socketserver.TCPServer(("0.0.0.0", int(args.port)), Yard(SCRAPYARD, keys).Server) as httpd:
         httpd.serve_forever()
 
 
@@ -4957,7 +4959,6 @@ def repl_serve_command(args: argparse.Namespace) -> None:
         httpd.serve_forever()
 
 
-# TODO(tay): use STDIN patterns instead of filenames
 def main() -> None:
     parser = argparse.ArgumentParser(prog="scrapscript")
     subparsers = parser.add_subparsers(dest="command")
@@ -4993,15 +4994,12 @@ def main() -> None:
     yard_info.set_defaults(func=yard_info_command)
     yard_init = yard.add_parser("init")
     yard_init.set_defaults(func=yard_init_command)
-    yard_init.add_argument("yard")
     yard_push = yard.add_parser("push")
     yard_push.set_defaults(func=yard_push_command)
-    yard_push.add_argument("yard")
     yard_push.add_argument("scrap_name")
     yard_push.add_argument("scrap", nargs="?", default=sys.stdin)
     yard_serve = yard.add_parser("serve")
     yard_serve.set_defaults(func=yard_serve_command)
-    yard_serve.add_argument("yard")
     yard_serve.add_argument("port")
 
     args = parser.parse_args()

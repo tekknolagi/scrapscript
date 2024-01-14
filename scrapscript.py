@@ -1458,22 +1458,25 @@ class Yard(Object):
             def do_POST(self) -> None:
                 from cryptography.hazmat.primitives import hashes
                 from cryptography.hazmat.primitives.asymmetric import padding
+                from cryptography.exceptions import InvalidSignature
 
                 # TODO(tay): if no name/route provided (empty), store the blob in the scrapyard without updating the map
                 name = urllib.parse.urlsplit(self.path).path[1:]
                 obj = deserialize(self.rfile.read(int(self.headers["Content-Length"])).decode("utf-8"))
                 sig = bytes.fromhex(self.headers.get("Authorization") or "")
-                public_key = self.yard.keys.get(name.split("/")[0])
-                if not public_key:
-                    self.send_response(401)
-                    self.end_headers()
-                    return
-                public_key.verify(
-                    sig,
-                    hashlib.sha256(serialize(obj)).digest(),
-                    padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
-                    hashes.SHA256(),
-                )
+                # Empty string optionally serves as a catch-all for any top-level routes that aren't claimed.
+                public_key = self.yard.keys.get(name.split("/")[0]) or self.yard.keys.get("")
+                if public_key:
+                    try:
+                        public_key.verify(
+                            sig,
+                            hashlib.sha256(serialize(obj)).digest(),
+                            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
+                            hashes.SHA256(),
+                        )
+                    except InvalidSignature:
+                        self.send_response(401)
+                        self.end_headers()
                 _, obj_id = self.yard.push(name, obj, sig)
                 self.send_response(200)
                 self.end_headers()

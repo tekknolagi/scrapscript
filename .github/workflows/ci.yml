@@ -2,77 +2,74 @@ name: Run tests
 
 on:
   push:
-    branches: [trunk]
+    branches: [ trunk ]
   pull_request:
-    branches: [trunk]
+    branches: [ trunk ]
+
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+
 jobs:
   run_lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Get deadsnakes repo
-        run: sudo add-apt-repository --yes ppa:deadsnakes/ppa
-      - name: Update local package lists
-        run: sudo apt update
-      - name: Install Python
-        run: sudo apt install --yes python3.10
-      - run: python3.10 -m pip install --user pipx
-      - run: python3.10 -m pipx install poetry
-      - run: poetry install --with=dev
-      - run: poetry run ruff check scrapscript.py
-      - run: poetry run mypy --strict scrapscript.py
+    - uses: actions/checkout@v3
+    - name: Get deadsnakes repo
+      run: sudo add-apt-repository --yes ppa:deadsnakes/ppa
+    - name: Update local package lists
+      run: sudo apt update
+    - name: Install Python
+      run: sudo apt install --yes python3.10
+    - run: python3.10 -m pip install --user pipx
+    - run: python3.10 -m pipx install poetry
+    - run: poetry install --with=dev
+    - run: poetry run ruff check scrapscript.py
+    - run: poetry run mypy --strict scrapscript.py
   run_unit_tests:
     strategy:
       matrix:
         PYTHON: [python3.10, python3.11, python3.12]
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v3
-      - name: Get deadsnakes repo
-        run: sudo add-apt-repository --yes ppa:deadsnakes/ppa
-      - name: Update local package lists
-        run: sudo apt update
-      - name: Install system dependencies
-        run: sudo apt install --yes gcc libffi-dev libssl-dev
-      - name: Install Python
-        run: sudo apt install --yes ${{matrix.PYTHON}}
-      - name: Install Python packages
-        run:
-          python3 -m pip install --upgrade --force-reinstall cffi cryptography
-      - name: Run tests
-        run: ${{matrix.PYTHON}} scrapscript.py test
+    - uses: actions/checkout@v3
+    - name: Get deadsnakes repo
+      run: sudo add-apt-repository --yes ppa:deadsnakes/ppa
+    - name: Update local package lists
+      run: sudo apt update
+    - name: Install Python
+      run: sudo apt install --yes ${{matrix.PYTHON}}
+    - name: Run tests
+      run: ${{matrix.PYTHON}} scrapscript.py test
   build_docker_image:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v3
-      - name: Log in to the Container registry
-        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-      - name: Build and push Docker image
-        uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-      - name: Try a little hello world
-        run: docker run ${{ steps.meta.outputs.tags }} apply "1 + 2"
+    - uses: actions/checkout@v3
+    - name: Log in to the Container registry
+      uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Extract metadata (tags, labels) for Docker
+      id: meta
+      uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+    - name: Build and push Docker image
+      uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+    - name: Try a little hello world
+      run: docker run ${{ steps.meta.outputs.tags }} apply "1 + 2"
   deploy:
     runs-on: ubuntu-latest
     if: |

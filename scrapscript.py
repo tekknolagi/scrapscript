@@ -25,14 +25,7 @@ from datetime import datetime
 import hashlib
 import http.client
 import threading
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cffi import FFI
 import importlib.util
-
-ffi = FFI()
 
 readline: Optional[ModuleType]
 try:
@@ -1461,6 +1454,9 @@ class Yard(Object):
                 self.end_headers()
 
             def do_POST(self) -> None:
+                from cryptography.hazmat.primitives import hashes
+                from cryptography.hazmat.primitives.asymmetric import padding
+
                 # TODO(tay): if no name/route provided (empty), store the blob in the scrapyard without updating the map
                 name = urllib.parse.urlsplit(self.path).path[1:]
                 obj = deserialize(self.rfile.read(int(self.headers["Content-Length"])).decode("utf-8"))
@@ -2939,6 +2935,10 @@ def _dont_have_pygit2() -> bool:
     return importlib.util.find_spec("pygit2") is None
 
 
+def _dont_have_cryptography() -> bool:
+    return importlib.util.find_spec("cryptography") is None
+
+
 class EvalTests(unittest.TestCase):
     def test_eval_int_returns_int(self) -> None:
         exp = Int(5)
@@ -4218,8 +4218,12 @@ class PreludeTests(EndToEndTestsBase):
         )
 
 
+@unittest.skipIf(_dont_have_cryptography(), "Can't run test without cryptography")
 class ScrapyardTests(EndToEndTestsBase):
     def _test_scrapyard(self, td: str | None, pk: Any) -> None:
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import padding
+
         yard = Yard(td, {})
         yard.init()
         for n in [0, 1, 2]:
@@ -4253,6 +4257,9 @@ class ScrapyardTests(EndToEndTestsBase):
             self._test_scrapyard(td, None)
 
     def test_scrapyard_net(self) -> None:
+        from cryptography.hazmat.backends import default_backend
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
         with tempfile.TemporaryDirectory() as td:
             private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
             keys = {"test_obj": private_key.public_key()}

@@ -1,15 +1,15 @@
 [tool.poetry]
 authors = [
-  "Max Bernstein <python@bernsteinbear.com>",
-  "Chris Gregory <christopher.b.gregory@gmail.com>",
+    "Max Bernstein <python@bernsteinbear.com>",
+    "Chris Gregory <christopher.b.gregory@gmail.com>",
 ]
 classifiers = [
-  "Intended Audience :: Developers",
-  "Topic :: Software Development",
-  "Programming Language :: Python",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
 ]
 description = "Scrapscript interpreter"
 keywords = ["scrapscript", "interpreter"]
@@ -21,8 +21,6 @@ version = "0.1.0"
 
 [tool.poetry.dependencies]
 python = ">=3.8"
-pygit2 = "^1.13.3"
-cryptography = "^41.0.7"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.7.0"
@@ -52,9 +50,9 @@ max-line-length = 120
 
 [tool.pylint.messages_control]
 disable = [
-  "missing-function-docstring",
-  "missing-module-docstring",
-  "missing-class-docstring",
+    "missing-function-docstring",
+    "missing-module-docstring",
+    "missing-class-docstring",
 ]
 
 [tool.pylint.reports]

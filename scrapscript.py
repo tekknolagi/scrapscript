@@ -2936,7 +2936,7 @@ def _dont_have_pygit2() -> bool:
 
 
 def _dont_have_cryptography() -> bool:
-    return importlib.util.find_spec("cryptography") is None
+    return importlib.util.find_spec("cryptography") is None or importlib.util.find_spec("_cffi_backend") is None
 
 
 class EvalTests(unittest.TestCase):

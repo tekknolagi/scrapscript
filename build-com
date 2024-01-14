@@ -18,6 +18,6 @@ cp style.css repl.html Lib
 cp python scrapscript.com
 ./zip -r scrapscript.com Lib .args
 echo "Testing..."
-./scrapscript.com apply "1+2"
+./scrapscript.com eval "1+2"
 cd "$PREV"
 cp "$DIR"/scrapscript.com .

@@ -4860,7 +4860,7 @@ def eval_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
-    program = args.program_file.read()
+    program = args.scrap if isinstance(args.scrap, str) else args.scrap.read()
     tokens = tokenize(program)
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
@@ -4873,11 +4873,15 @@ def apply_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
-    tokens = tokenize(args.program)
-    logger.debug("Tokens: %s", tokens)
-    ast = parse(tokens)
-    logger.debug("AST: %s", ast)
-    result = eval_exp(boot_env(), ast)
+    tokens_f = tokenize(args.f)
+    logger.debug("Tokens (f): %s", tokens_f)
+    tokens_x = tokenize(args.x if isinstance(args.x, str) else args.x.read())
+    logger.debug("Tokens (x): %s", tokens_x)
+    ast_f = parse(tokens_f)
+    logger.debug("AST (f): %s", ast_f)
+    ast_x = parse(tokens_x)
+    logger.debug("AST (f): %s", ast_x)
+    result = eval_exp(boot_env(), Apply(ast_f, ast_x))
     print(result)
 
 
@@ -4924,7 +4928,8 @@ def yard_init_command(args: argparse.Namespace) -> None:
 
 
 def yard_push_command(args: argparse.Namespace) -> None:
-    obj = eval_exp(STDLIB, parse(tokenize(args.program_file.read())))
+    text = args.scrap if isinstance(args.scrap, str) else args.scrap.read()
+    obj = eval_exp(STDLIB, parse(tokenize(text)))
     yard = Yard(args.yard, {})
     sig = None  # TODO(tay)
     scrap_name, obj_id = yard.push(args.scrap_name, obj, sig)
@@ -4974,12 +4979,13 @@ def main() -> None:
 
     eval_ = subparsers.add_parser("eval")
     eval_.set_defaults(func=eval_command)
-    eval_.add_argument("program_file", type=argparse.FileType("r"))
+    eval_.add_argument("scrap", nargs="?", default=sys.stdin)
     eval_.add_argument("--debug", action="store_true")
 
     apply = subparsers.add_parser("apply")
     apply.set_defaults(func=apply_command)
-    apply.add_argument("program")
+    apply.add_argument("f")
+    apply.add_argument("x", nargs="?", default=sys.stdin)
     apply.add_argument("--debug", action="store_true")
 
     yard = subparsers.add_parser("yard").add_subparsers(dest="command", required=True)
@@ -4992,7 +4998,7 @@ def main() -> None:
     yard_push.set_defaults(func=yard_push_command)
     yard_push.add_argument("yard")
     yard_push.add_argument("scrap_name")
-    yard_push.add_argument("program_file", type=argparse.FileType("r"))
+    yard_push.add_argument("scrap", nargs="?", default=sys.stdin)
     yard_serve = yard.add_parser("serve")
     yard_serve.set_defaults(func=yard_serve_command)
     yard_serve.add_argument("yard")

@@ -516,22 +516,19 @@ class Object:
             assert isinstance(func, FunctionType)
             OBJECT_DESERIALIZERS[cls.__name__] = func
 
-    def serialize(self) -> Dict[bytes, object]:
+    def serialize(self) -> Dict[str, object]:
         cls = type(self)
-        result: Dict[bytes, object] = {b"type": cls.__name__.encode("utf-8")}
+        result: Dict[str, object] = {"type": cls.__name__}
         for field in dataclasses.fields(cls):
             if issubclass(field.type, Object):
                 value = getattr(self, field.name)
-                result[field.name.encode("utf-8")] = value.serialize()
+                result[field.name] = value.serialize()
             else:
                 raise NotImplementedError("serializing non-Object fields; write your own serialize function")
         return result
 
-    def _serialize(self, **kwargs: object) -> Dict[bytes, object]:
-        return {
-            b"type": type(self).__name__.encode("utf-8"),
-            **{key.encode("utf-8"): value for key, value in kwargs.items()},
-        }
+    def _serialize(self, **kwargs: object) -> Dict[str, object]:
+        return {"type": type(self).__name__, **kwargs}
 
     @staticmethod
     def deserialize(msg: Dict[str, Any]) -> "Object":
@@ -562,7 +559,7 @@ class Object:
 class Int(Object):
     value: int
 
-    def serialize(self) -> Dict[bytes, object]:
+    def serialize(self) -> Dict[str, object]:
         return self._serialize(value=self.value)
 
     @staticmethod
@@ -579,7 +576,7 @@ class Int(Object):
 class Float(Object):
     value: float
 
-    def serialize(self) -> Dict[bytes, object]:
+    def serialize(self) -> Dict[str, object]:
         raise NotImplementedError("serialization for Float is not supported")
 
     @staticmethod
@@ -594,8 +591,8 @@ class Float(Object):
 class String(Object):
     value: str
 
-    def serialize(self) -> Dict[bytes, object]:
-        return {b"type": b"String", b"value": self.value.encode("utf-8")}
+    def serialize(self) -> Dict[str, object]:
+        return {"type": "String", "value": self.value}
 
     @staticmethod
     def deserialize(msg: Dict[str, object]) -> "String":
@@ -612,8 +609,8 @@ class String(Object):
 class Bytes(Object):
     value: bytes
 
-    def serialize(self) -> Dict[bytes, object]:
-        return {b"type": b"Bytes", b"value": self.value}
+    def serialize(self) -> Dict[str, object]:
+        return {"type": "Bytes", "value": str(self)}
 
     @staticmethod
     def deserialize(msg: Dict[str, object]) -> "Bytes":
@@ -629,8 +626,8 @@ class Bytes(Object):
 class Var(Object):
     name: str
 
-    def serialize(self) -> Dict[bytes, object]:
-        return {b"type": b"Var", b"name": self.name.encode("utf-8")}
+    def serialize(self) -> Dict[str, object]:
+        return {"type": "Var", "name": self.name}
 
     @staticmethod
     def deserialize(msg: Dict[str, object]) -> "Var":
@@ -743,12 +740,12 @@ class Binop(Object):
     left: Object
     right: Object
 
-    def serialize(self) -> Dict[bytes, object]:
+    def serialize(self) -> Dict[str, object]:
         return {
-            b"type": b"Binop",
-            b"op": self.op.name.encode("utf-8"),
-            b"left": self.left.serialize(),
-            b"right": self.right.serialize(),
+            "type": "Binop",
+            "op": self.op.name,
+            "left": self.left.serialize(),
+            "right": self.right.serialize(),
         }
 
     @staticmethod
@@ -774,8 +771,8 @@ class Binop(Object):
 class List(Object):
     items: typing.List[Object]
 
-    def serialize(self) -> Dict[bytes, object]:
-        return {b"type": b"List", b"items": [item.serialize() for item in self.items]}
+    def serialize(self) -> Dict[str, object]:
+        return {"type": "List", "items": [item.serialize() for item in self.items]}
 
     def __str__(self) -> str:
         inner = ", ".join(str(item) for item in self.items)
@@ -841,8 +838,8 @@ class Assert(Object):
         return self.__repr__()
 
 
-def serialize_env(env: Env) -> Dict[bytes, object]:
-    return {key.encode("utf-8"): value.serialize() for key, value in env.items()}
+def serialize_env(env: Env) -> Dict[str, object]:
+    return {key: value.serialize() for key, value in env.items()}
 
 
 def deserialize_env(msg: Dict[str, Any]) -> Env:
@@ -853,7 +850,7 @@ def deserialize_env(msg: Dict[str, Any]) -> Env:
 class EnvObject(Object):
     env: Env
 
-    def serialize(self) -> Dict[bytes, object]:
+    def serialize(self) -> Dict[str, object]:
         return self._serialize(env=serialize_env(self.env))
 
     @staticmethod
@@ -882,7 +879,7 @@ class MatchCase(Object):
 class MatchFunction(Object):
     cases: typing.List[MatchCase]
 
-    def serialize(self) -> Dict[bytes, object]:
+    def serialize(self) -> Dict[str, object]:
         return self._serialize(cases=[case.serialize() for case in self.cases])
 
     def __str__(self) -> str:
@@ -894,8 +891,8 @@ class MatchFunction(Object):
 class Relocation(Object):
     name: str
 
-    def serialize(self) -> Dict[bytes, object]:
-        return self._serialize(name=self.name.encode("utf-8"))
+    def serialize(self) -> Dict[str, object]:
+        return self._serialize(name=self.name)
 
     def __str__(self) -> str:
         # TODO: Better pretty printing for Relocation
@@ -926,7 +923,7 @@ class NativeFunction(Object):
     name: str
     func: Callable[[Object], Object]
 
-    def serialize(self) -> Dict[bytes, object]:
+    def serialize(self) -> Dict[str, object]:
         return NativeFunctionRelocation(self.name).serialize()
 
     def __str__(self) -> str:
@@ -939,7 +936,7 @@ class Closure(Object):
     env: Env
     func: Union[Function, MatchFunction]
 
-    def serialize(self) -> Dict[bytes, object]:
+    def serialize(self) -> Dict[str, object]:
         return self._serialize(env=serialize_env(self.env), func=self.func.serialize())
 
     @staticmethod
@@ -963,8 +960,8 @@ class Closure(Object):
 class Record(Object):
     data: Dict[str, Object]
 
-    def serialize(self) -> Dict[bytes, object]:
-        return self._serialize(data={key.encode("utf-8"): value.serialize() for key, value in self.data.items()})
+    def serialize(self) -> Dict[str, object]:
+        return self._serialize(data={key: value.serialize() for key, value in self.data.items()})
 
     @staticmethod
     def deserialize(msg: Dict[str, object]) -> "Record":
@@ -993,8 +990,8 @@ class Access(Object):
 class Symbol(Object):
     value: str
 
-    def serialize(self) -> Dict[bytes, object]:
-        return self._serialize(value=self.value.encode("utf-8"))
+    def serialize(self) -> Dict[str, object]:
+        return self._serialize(value=self.value)
 
     @staticmethod
     def deserialize(msg: Dict[str, object]) -> "Symbol":
@@ -1295,6 +1292,8 @@ def bencode(obj: object) -> bytes:
     assert not isinstance(obj, bool)
     if isinstance(obj, int):
         return b"i" + str(int(obj)).encode("ascii") + b"e"
+    if isinstance(obj, str):
+        return bencode(obj.encode("utf-8"))
     if isinstance(obj, bytes):
         return str(len(obj)).encode("ascii") + b":" + obj
     if isinstance(obj, list):
@@ -3986,11 +3985,11 @@ class BdecodeTests(unittest.TestCase):
 class ObjectSerializeTests(unittest.TestCase):
     def test_serialize_int(self) -> None:
         obj = Int(123)
-        self.assertEqual(obj.serialize(), {b"type": b"Int", b"value": 123})
+        self.assertEqual(obj.serialize(), {"type": "Int", "value": 123})
 
     def test_serialize_negative_int(self) -> None:
         obj = Int(-123)
-        self.assertEqual(obj.serialize(), {b"type": b"Int", b"value": -123})
+        self.assertEqual(obj.serialize(), {"type": "Int", "value": -123})
 
     def test_serialize_float_raises_not_implemented_error(self) -> None:
         obj = Float(3.14)
@@ -3999,29 +3998,29 @@ class ObjectSerializeTests(unittest.TestCase):
 
     def test_serialize_str(self) -> None:
         obj = String("abc")
-        self.assertEqual(obj.serialize(), {b"type": b"String", b"value": b"abc"})
+        self.assertEqual(obj.serialize(), {"type": "String", "value": "abc"})
 
     def test_serialize_bytes(self) -> None:
         obj = Bytes(b"abc")
-        self.assertEqual(obj.serialize(), {b"type": b"Bytes", b"value": b"abc"})
+        self.assertEqual(obj.serialize(), {"type": "Bytes", "value": "~~YWJj"})
 
     def test_serialize_var(self) -> None:
         obj = Var("abc")
-        self.assertEqual(obj.serialize(), {b"type": b"Var", b"name": b"abc"})
+        self.assertEqual(obj.serialize(), {"type": "Var", "name": "abc"})
 
     def test_serialize_symbol(self) -> None:
         obj = Symbol("true")
-        self.assertEqual(obj.serialize(), {b"type": b"Symbol", b"value": b"true"})
+        self.assertEqual(obj.serialize(), {"type": "Symbol", "value": "true"})
 
     def test_serialize_binary_add(self) -> None:
         obj = Binop(BinopKind.ADD, Int(123), Int(456))
         self.assertEqual(
             obj.serialize(),
             {
-                b"left": {b"type": b"Int", b"value": 123},
-                b"op": b"ADD",
-                b"right": {b"type": b"Int", b"value": 456},
-                b"type": b"Binop",
+                "left": {"type": "Int", "value": 123},
+                "op": "ADD",
+                "right": {"type": "Int", "value": 456},
+                "type": "Binop",
             },
         )
 
@@ -4029,25 +4028,25 @@ class ObjectSerializeTests(unittest.TestCase):
         obj = List([Int(1), Int(2)])
         self.assertEqual(
             obj.serialize(),
-            {b"type": b"List", b"items": [{b"type": b"Int", b"value": 1}, {b"type": b"Int", b"value": 2}]},
+            {"type": "List", "items": [{"type": "Int", "value": 1}, {"type": "Int", "value": 2}]},
         )
 
     def test_serialize_assign(self) -> None:
         obj = Assign(Var("x"), Int(2))
         self.assertEqual(
             obj.serialize(),
-            {b"type": b"Assign", b"name": {b"name": b"x", b"type": b"Var"}, b"value": {b"type": b"Int", b"value": 2}},
+            {"type": "Assign", "name": {"name": "x", "type": "Var"}, "value": {"type": "Int", "value": 2}},
         )
 
     def test_serialize_record(self) -> None:
         obj = Record({"x": Int(1)})
-        self.assertEqual(obj.serialize(), {b"data": {b"x": {b"type": b"Int", b"value": 1}}, b"type": b"Record"})
+        self.assertEqual(obj.serialize(), {"data": {"x": {"type": "Int", "value": 1}}, "type": "Record"})
 
     def test_serialize_env_object(self) -> None:
         obj = EnvObject({"x": Int(1)})
         self.assertEqual(
             obj.serialize(),
-            {b"env": {b"x": {b"type": b"Int", b"value": 1}}, b"type": b"EnvObject"},
+            {"env": {"x": {"type": "Int", "value": 1}}, "type": "EnvObject"},
         )
 
     def test_serialize_function(self) -> None:
@@ -4055,9 +4054,9 @@ class ObjectSerializeTests(unittest.TestCase):
         self.assertEqual(
             obj.serialize(),
             {
-                b"arg": {b"name": b"x", b"type": b"Var"},
-                b"body": {b"name": b"x", b"type": b"Var"},
-                b"type": b"Function",
+                "arg": {"name": "x", "type": "Var"},
+                "body": {"name": "x", "type": "Var"},
+                "type": "Function",
             },
         )
 
@@ -4066,9 +4065,9 @@ class ObjectSerializeTests(unittest.TestCase):
         self.assertEqual(
             obj.serialize(),
             {
-                b"func": {b"name": b"f", b"type": b"Var"},
-                b"arg": {b"name": b"x", b"type": b"Var"},
-                b"type": b"Apply",
+                "func": {"name": "f", "type": "Var"},
+                "arg": {"name": "x", "type": "Var"},
+                "type": "Apply",
             },
         )
 
@@ -4077,13 +4076,13 @@ class ObjectSerializeTests(unittest.TestCase):
         self.assertEqual(
             obj.serialize(),
             {
-                b"env": {b"a": {b"type": b"Int", b"value": 123}},
-                b"func": {
-                    b"arg": {b"name": b"x", b"type": b"Var"},
-                    b"body": {b"name": b"x", b"type": b"Var"},
-                    b"type": b"Function",
+                "env": {"a": {"type": "Int", "value": 123}},
+                "func": {
+                    "arg": {"name": "x", "type": "Var"},
+                    "body": {"name": "x", "type": "Var"},
+                    "type": "Function",
                 },
-                b"type": b"Closure",
+                "type": "Closure",
             },
         )
 
@@ -4186,7 +4185,7 @@ class SerializeTests(unittest.TestCase):
 
     def test_serialize_bytes(self) -> None:
         obj = Bytes(b"abc")
-        self.assertEqual(serialize(obj), b"d4:type5:Bytes5:value3:abce")
+        self.assertEqual(serialize(obj), b"d4:type5:Bytes5:value6:~~YWJje")
 
     def test_serialize_var(self) -> None:
         obj = Var("abc")

@@ -1162,7 +1162,9 @@ def free_in(exp: Object) -> Set[str]:
     if isinstance(exp, MatchCase):
         if isinstance(exp.pattern, Var):
             return free_in(exp.body) - {exp.pattern.name}
-        # TODO(max): List/record destructuring
+        if isinstance(exp.pattern, List):
+            return free_in(exp.body) - free_in(exp.pattern)
+        # TODO(max): Record destructuring
         return free_in(exp.body)
     if isinstance(exp, Apply):
         return free_in(exp.func) | free_in(exp.arg)
@@ -3552,6 +3554,14 @@ class ClosureOptimizeTests(unittest.TestCase):
     def test_match_case_var(self) -> None:
         exp = MatchCase(Var("x"), Binop(BinopKind.ADD, Var("x"), Var("y")))
         self.assertEqual(free_in(exp), {"y"})
+
+    def test_match_case_list(self) -> None:
+        exp = MatchCase(List([Var("x")]), Binop(BinopKind.ADD, Var("x"), Var("y")))
+        self.assertEqual(free_in(exp), {"y"})
+
+    def test_match_case_list_spread(self) -> None:
+        exp = MatchCase(List([Spread()]), Binop(BinopKind.ADD, Var("xs"), Var("y")))
+        self.assertEqual(free_in(exp), {"xs", "y"})
 
     def test_apply(self) -> None:
         self.assertEqual(free_in(Apply(Var("x"), Var("y"))), {"x", "y"})

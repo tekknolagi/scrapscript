@@ -4414,12 +4414,12 @@ PRELUDE = """
 id = x -> x
 
 . compile =
-  | {type = "Int", value = value} -> $$int_as_str value
-  | {type = "Var", name = name} -> name
-  | {type = "Binop", op = op, left = left, right = right} -> (compile left) ++ op ++ (compile right)
-  | {type = "List", items = items} -> "[" ++ (join ", " (map compile items)) ++ "]"
-  | {type = "Assign", name = name, value = value} -> "((" ++ name ++ ") =>" ++ (compile value) ++ ")("
-  | {type = "Where", binding={type="Assign", name=name, value=value}, body=body} ->
+  | {type="Int", value=value} -> $$int_as_str value
+  | {type="Var", name=name} -> name
+  | {type="Binop", op=op, left=left, right=right} -> (compile left) ++ op ++ (compile right)
+  | {type="List", items=items} -> "[" ++ (join ", " (map compile items)) ++ "]"
+  | {type="Assign", name=name, value=value} -> "((" ++ name ++ ") =>" ++ (compile value) ++ ")("
+  | {type="Where", binding={type="Assign", name=name, value=value}, body=body} ->
       "(" ++ (compile name) ++ " => " ++ (compile body) ++ ")(" ++ (compile value) ++ ")"
 
 . join = sep ->

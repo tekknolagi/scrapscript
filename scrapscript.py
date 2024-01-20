@@ -1183,17 +1183,16 @@ def improve_closure(closure: Closure) -> Closure:
     return Closure(env, closure.func)
 
 
-def lift_simple(x: object) -> Object:
+def as_record(x: object) -> Object:
     if isinstance(x, int):
         return Int(x)
     if isinstance(x, str):
         return String(x)
+    if isinstance(x, list):
+        return List([as_record(item) for item in x])
+    if isinstance(x, dict):
+        return Record({key: as_record(value) for key, value in x.items()})
     raise NotImplementedError(type(x))
-
-
-def as_record(obj: dict[str, object]) -> Record:
-    conv: Callable[[object], Object] = lambda x: as_record(x) if isinstance(x, dict) else lift_simple(x)
-    return Record({key: conv(value) for key, value in obj.items()})
 
 
 # pylint: disable=redefined-builtin
@@ -4414,6 +4413,20 @@ STDLIB = {
 PRELUDE = """
 id = x -> x
 
+. compile =
+  | {type = "Int", value = value} -> $$int_as_str value
+  | {type = "Var", name = name} -> name
+  | {type = "Binop", op = op, left = left, right = right} -> (compile left) ++ op ++ (compile right)
+  | {type = "List", items = items} -> "[" ++ (join ", " (map compile items)) ++ "]"
+  | {type = "Assign", name = name, value = value} -> "((" ++ name ++ ") =>" ++ (compile value) ++ ")(" 
+  | {type = "Where", binding={type="Assign", name=name, value=value}, body=body} ->
+      "(" ++ (compile name) ++ " => " ++ (compile body) ++ ")(" ++ (compile value) ++ ")"
+
+. join = sep ->
+  | [] -> ""
+  | [x] -> x
+  | [x, ...xs] -> x ++ sep ++ (join sep xs)
+
 . quicksort =
   | [] -> []
   | [p, ...xs] -> (concat ((quicksort (ltp xs p)) +< p) (quicksort (gtp xs p))
@@ -4454,11 +4467,6 @@ id = x -> x
 . any = f ->
   | [] -> #false
   | [x, ...xs] -> f x || any f xs
-
-. compile =
-  | {type = "Int", value = value} -> $$int_as_str value
-  | {type = "Var", name = name} -> name
-  | {type = "Binop", op = op, left = left, right = right } -> (compile left) ++ op ++ (compile right)
 """
 
 

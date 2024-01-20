@@ -743,7 +743,7 @@ class Binop(Object):
     def serialize(self) -> Dict[str, object]:
         return {
             "type": "Binop",
-            "op": self.op.name,
+            "op": BinopKind.to_str(self.op),
             "left": self.left.serialize(),
             "right": self.right.serialize(),
         }
@@ -4394,6 +4394,12 @@ def listlength(obj: Object) -> Object:
     return Int(len(obj.items))
 
 
+def int_as_str(obj: Object) -> String:
+    if not isinstance(obj, Int):
+        raise TypeError(f"int_as_str expected Int, but got {type(obj).__name__}")
+    return String(str(obj.value))
+
+
 STDLIB = {
     "$$add": Closure({}, Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))),
     "$$fetch": NativeFunction("$$fetch", fetch),
@@ -4401,6 +4407,7 @@ STDLIB = {
     "$$serialize": NativeFunction("$$serialize", lambda obj: Bytes(serialize(obj))),
     "$$listlength": NativeFunction("$$listlength", listlength),
     "$$asrecord": NativeFunction("$$asrecord", lambda exp: as_record(exp.serialize())),
+    "$$int_as_str": NativeFunction("$$int_as_str", int_as_str),
 }
 
 
@@ -4447,6 +4454,11 @@ id = x -> x
 . any = f ->
   | [] -> #false
   | [x, ...xs] -> f x || any f xs
+
+. compile =
+  | {type = "Int", value = value} -> $$int_as_str value
+  | {type = "Var", name = name} -> name
+  | {type = "Binop", op = op, left = left, right = right } -> (compile left) ++ op ++ (compile right)
 """
 
 

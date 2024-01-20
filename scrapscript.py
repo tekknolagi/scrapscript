@@ -1439,7 +1439,7 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
         ast = parse(tokens)
         env = query.get("env")
         if env is None:
-            env = STDLIB
+            env = boot_env()
         else:
             if len(env) != 1:
                 raise TypeError("Need exactly one env")

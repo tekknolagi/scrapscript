@@ -253,6 +253,8 @@ class Lexer:
         while self.has_input() and is_identifier_char(c := self.peek_char()):
             self.read_char()
             buf += c
+        if buf == "guard":
+            return self.make_token(Operator, "guard")
         return self.make_token(Name, buf)
 
     def read_bytes(self) -> Token:
@@ -303,6 +305,7 @@ PS = {
     "::": lp(2000),
     "@": rp(1001),
     "": rp(1000),
+    "guard": rp(5.5),
     ">>": lp(14),
     "<<": lp(14),
     "^": rp(13),
@@ -342,7 +345,7 @@ PS = {
 HIGHEST_PREC: float = max(max(p.pl, p.pr) for p in PS.values())
 
 
-OPER_CHARS = set("".join(PS.keys()))
+OPER_CHARS = set("".join(PS.keys())) - set("guard")
 assert " " not in OPER_CHARS
 
 
@@ -493,6 +496,8 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         elif op == Operator("@"):
             # TODO: revisit whether to use @ or . for field access
             l = Access(l, parse(tokens, pr))
+        elif op == Operator("guard"):
+            l = Guard(l, parse(tokens, pr))
         else:
             assert not isinstance(op, Juxt)
             assert isinstance(op, Operator)
@@ -863,6 +868,12 @@ class EnvObject(Object):
 
     def __str__(self) -> str:
         return f"EnvObject(keys={self.env.keys()})"
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Guard(Object):
+    pattern: Object
+    cond: Object
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -2327,6 +2338,18 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_symbol_returns_symbol(self) -> None:
         self.assertEqual(parse([SymbolToken("abc")]), Symbol("abc"))
+
+    def test_parse_guard(self) -> None:
+        self.assertEqual(
+            parse(tokenize("| x guard y -> x")),
+            MatchFunction([MatchCase(Guard(Var("x"), Var("y")), Var("x"))]),
+        )
+
+    def test_parse_guard_exp(self) -> None:
+        self.assertEqual(
+            parse(tokenize("| x guard x==1 -> x")),
+            MatchFunction([MatchCase(Guard(Var("x"), Binop(BinopKind.EQUAL, Var("x"), Int(1))), Var("x"))]),
+        )
 
 
 class MatchTests(unittest.TestCase):

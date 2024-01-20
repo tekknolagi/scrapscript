@@ -1164,12 +1164,7 @@ def free_in(exp: Object) -> Set[str]:
             return set()
         return set.union(*(free_in(case) for case in exp.cases))
     if isinstance(exp, MatchCase):
-        if isinstance(exp.pattern, Var):
-            return free_in(exp.body) - {exp.pattern.name}
-        if isinstance(exp.pattern, List):
-            return free_in(exp.body) - free_in(exp.pattern)
-        # TODO(max): Record destructuring
-        return free_in(exp.body)
+        return free_in(exp.body) - free_in(exp.pattern)
     if isinstance(exp, Apply):
         return free_in(exp.func) | free_in(exp.arg)
     if isinstance(exp, Where):
@@ -3572,6 +3567,25 @@ class ClosureOptimizeTests(unittest.TestCase):
     def test_match_case_list_spread(self) -> None:
         exp = MatchCase(List([Spread()]), Binop(BinopKind.ADD, Var("xs"), Var("y")))
         self.assertEqual(free_in(exp), {"xs", "y"})
+
+    def test_match_case_list_spread_name(self) -> None:
+        exp = MatchCase(List([Spread("xs")]), Binop(BinopKind.ADD, Var("xs"), Var("y")))
+        self.assertEqual(free_in(exp), {"y"})
+
+    def test_match_case_record(self) -> None:
+        exp = MatchCase(
+            Record({"x": Int(1), "y": Var("y"), "a": Var("z")}),
+            Binop(BinopKind.ADD, Binop(BinopKind.ADD, Var("x"), Var("y")), Var("z")),
+        )
+        self.assertEqual(free_in(exp), {"x"})
+
+    def test_match_case_record_spread(self) -> None:
+        exp = MatchCase(Record({"...": Spread()}), Binop(BinopKind.ADD, Var("x"), Var("y")))
+        self.assertEqual(free_in(exp), {"x", "y"})
+
+    def test_match_case_record_spread_name(self) -> None:
+        exp = MatchCase(Record({"...": Spread("x")}), Binop(BinopKind.ADD, Var("x"), Var("y")))
+        self.assertEqual(free_in(exp), {"y"})
 
     def test_apply(self) -> None:
         self.assertEqual(free_in(Apply(Var("x"), Var("y"))), {"x", "y"})

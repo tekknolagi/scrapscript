@@ -1209,6 +1209,9 @@ def eval_exp(env: Env, exp: Object) -> Object:
             # captured environment with a binding to themselves.
             assert isinstance(value.env, dict)
             value.env[exp.name.name] = value
+            # We still improve_closure here even though we also did it on
+            # Closure creation because the Closure might not need a binding for
+            # itself (it might not be recursive).
             value = improve_closure(value)
         return EnvObject({**env, exp.name.name: value})
     if isinstance(exp, Where):
@@ -1225,13 +1228,13 @@ def eval_exp(env: Env, exp: Object) -> Object:
     if isinstance(exp, Function):
         if not isinstance(exp.arg, Var):
             raise RuntimeError(f"expected variable in function definition {exp.arg}")
-        # TODO(max): Add "closure improve", which filters bindings to those
-        # used by the underlying function.
-        return Closure(env, exp)
+        value = Closure(env, exp)
+        value = improve_closure(value)
+        return value
     if isinstance(exp, MatchFunction):
-        # TODO(max): Add "closure improve", which filters bindings to those
-        # used by the underlying function.
-        return Closure(env, exp)
+        value = Closure(env, exp)
+        value = improve_closure(value)
+        return value
     if isinstance(exp, Apply):
         if isinstance(exp.func, Var) and exp.func.name == "$$quote":
             return exp.arg
@@ -2719,9 +2722,13 @@ class EvalTests(unittest.TestCase):
         )
         self.assertEqual(eval_exp({}, exp), List([Int(3), Int(7)]))
 
-    def test_eval_with_function_returns_function(self) -> None:
+    def test_eval_with_function_returns_closure_with_improved_env(self) -> None:
         exp = Function(Var("x"), Var("x"))
-        self.assertEqual(eval_exp({}, exp), Closure({}, Function(Var("x"), Var("x"))))
+        self.assertEqual(eval_exp({"a": Int(1), "b": Int(2)}, exp), Closure({}, exp))
+
+    def test_eval_with_match_function_returns_closure_with_improved_env(self) -> None:
+        exp = MatchFunction([])
+        self.assertEqual(eval_exp({"a": Int(1), "b": Int(2)}, exp), Closure({}, exp))
 
     def test_eval_assign_returns_env_object(self) -> None:
         exp = Assign(Var("a"), Int(1))
@@ -2896,8 +2903,8 @@ class EvalTests(unittest.TestCase):
             Function(
                 Var("x"),
                 Apply(
-                    Closure(env, Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2)))),
-                    Apply(Closure(env, Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3)))), Var("x")),
+                    Closure({}, Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2)))),
+                    Apply(Closure({}, Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3)))), Var("x")),
                 ),
             ),
         )

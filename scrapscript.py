@@ -4625,5 +4625,37 @@ def main() -> None:
         args.func(args)
 
 
+print(
+    compile_exp_js(
+        {},
+        parse(
+            tokenize(
+                """
+rand_array (new_generator 42) 0 100 10
+
+. rand_array = gen -> min -> max -> n -> n |>
+  | 0 -> []
+  | n -> (rand_val >+ rand_array new_gen min max (n - 1)
+    . rand_val = get_int new_gen
+    . new_gen = next gen min max)
+
+-- from Java's java.util.Random
+. new_generator = seed -> ({params = params, seed = seed, state = state}
+  . params = {mod = 281474976710656, mult = 25214903917, inc = 11}
+  . state = {min = 0, max = 0})
+
+. get_int = gen -> $$floor (get gen)
+
+. get = gen -> (gen@seed / gen@params@mod) * (gen@state@max - gen@state@min)
+
+. next = gen -> min -> max -> ({params = gen@params, seed = next_seed, state = {min = min, max = max}}
+  . next_seed = gen@state@min + (gen@seed * gen@params@mult + gen@params@inc) % gen@params@mod)
+"""
+            )
+        ),
+    )
+)
+
+
 if __name__ == "__main__":
     main()

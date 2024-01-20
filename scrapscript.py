@@ -1167,6 +1167,8 @@ def free_in(exp: Object) -> Set[str]:
         return free_in(exp.body) - free_in(exp.pattern)
     if isinstance(exp, Apply):
         return free_in(exp.func) | free_in(exp.arg)
+    if isinstance(exp, Access):
+        return free_in(exp.obj) | free_in(exp.at)
     if isinstance(exp, Where):
         assert isinstance(exp.binding, Assign)
         return (free_in(exp.body) - {exp.binding.name.name}) | free_in(exp.binding)
@@ -3589,6 +3591,9 @@ class ClosureOptimizeTests(unittest.TestCase):
 
     def test_apply(self) -> None:
         self.assertEqual(free_in(Apply(Var("x"), Var("y"))), {"x", "y"})
+
+    def test_access(self) -> None:
+        self.assertEqual(free_in(Access(Var("x"), Var("y"))), {"x", "y"})
 
     def test_where(self) -> None:
         exp = parse(tokenize("x . x = 1"))

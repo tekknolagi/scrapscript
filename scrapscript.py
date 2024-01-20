@@ -367,6 +367,13 @@ def parse_assign(tokens: typing.List[Token], p: float = 0) -> "Assign":
     return assign
 
 
+def build_match_case(expr: "Object") -> "MatchCase":
+    if not isinstance(expr, Function):
+        raise ParseError(f"expected function in match expression {expr!r}")
+    arg, body = expr.arg, expr.body
+    return MatchCase(arg, body)
+
+
 def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     if not tokens:
         raise UnexpectedEOFError("unexpected end of input")
@@ -404,15 +411,11 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
             l = Spread()
     elif token == Operator("|"):
         expr = parse(tokens, PS["|"].pr)  # TODO: make this work for larger arities
-        if not isinstance(expr, Function):
-            raise ParseError(f"expected function in match expression {expr!r}")
-        cases = [MatchCase(expr.arg, expr.body)]
+        cases = [build_match_case(expr)]
         while tokens and tokens[0] == Operator("|"):
             tokens.pop(0)
             expr = parse(tokens, PS["|"].pr)  # TODO: make this work for larger arities
-            if not isinstance(expr, Function):
-                raise ParseError(f"expected function in match expression {expr!r}")
-            cases.append(MatchCase(expr.arg, expr.body))
+            cases.append(build_match_case(expr))
         l = MatchFunction(cases)
     elif isinstance(token, LeftParen):
         if isinstance(tokens[0], RightParen):

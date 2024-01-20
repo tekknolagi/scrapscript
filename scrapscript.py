@@ -1142,6 +1142,10 @@ def free_in(exp: Object) -> Set[str]:
         return set()
     if isinstance(exp, Var):
         return {exp.name}
+    if isinstance(exp, Spread):
+        if exp.name is not None:
+            return {exp.name}
+        return set()
     if isinstance(exp, Binop):
         return free_in(exp.left) | free_in(exp.right)
     if isinstance(exp, List):
@@ -3502,6 +3506,14 @@ class ClosureOptimizeTests(unittest.TestCase):
 
     def test_hole(self) -> None:
         self.assertEqual(free_in(Hole()), set())
+
+    def test_spread(self) -> None:
+        self.assertEqual(free_in(Spread()), set())
+
+    def test_spread_name(self) -> None:
+        # TODO(max): Should this be assumed to always be in a place where it
+        # defines a name, and therefore never have free variables?
+        self.assertEqual(free_in(Spread("x")), {"x"})
 
     def test_nativefunction(self) -> None:
         self.assertEqual(free_in(NativeFunction("id", lambda x: x)), set())

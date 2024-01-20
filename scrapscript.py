@@ -3482,7 +3482,7 @@ class EndToEndTests(EndToEndTestsBase):
         self.assertEqual(
             self._run(
                 """
-        f {x = 4, y = 5} 
+        f {x = 4, y = 5}
         . f =
           | {} -> 0
           | {x = a, ...} -> a
@@ -4418,7 +4418,7 @@ id = x -> x
   | {type = "Var", name = name} -> name
   | {type = "Binop", op = op, left = left, right = right} -> (compile left) ++ op ++ (compile right)
   | {type = "List", items = items} -> "[" ++ (join ", " (map compile items)) ++ "]"
-  | {type = "Assign", name = name, value = value} -> "((" ++ name ++ ") =>" ++ (compile value) ++ ")(" 
+  | {type = "Assign", name = name, value = value} -> "((" ++ name ++ ") =>" ++ (compile value) ++ ")("
   | {type = "Where", binding={type="Assign", name=name, value=value}, body=body} ->
       "(" ++ (compile name) ++ " => " ++ (compile body) ++ ")(" ++ (compile value) ++ ")"
 
@@ -4459,7 +4459,7 @@ id = x -> x
   | n ->
     | [] -> []
     | [x, ...xs] -> x >+ take (n - 1) xs
-    
+
 . all = f ->
   | [] -> #true
   | [x, ...xs] -> f x && all f xs

@@ -4421,6 +4421,9 @@ id = x -> x
   | {type="Assign", name=name, value=value} -> "((" ++ name ++ ") =>" ++ (compile value) ++ ")("
   | {type="Where", binding={type="Assign", name=name, value=value}, body=body} ->
       "(" ++ (compile name) ++ " => " ++ (compile body) ++ ")(" ++ (compile value) ++ ")"
+  | {type="Function", arg=arg, body=body} ->
+      "(" ++ (compile arg) ++ " => " ++ (compile body) ++ ")"
+  | {type="Apply", func=func, arg=arg} -> "(" ++ (compile func) ++ ")(" ++ (compile arg) ++ ")"
 
 . join = sep ->
   | [] -> ""

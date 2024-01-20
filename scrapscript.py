@@ -1152,6 +1152,10 @@ def free_in(exp: Object) -> Set[str]:
         if not exp.items:
             return set()
         return set.union(*(free_in(item) for item in exp.items))
+    if isinstance(exp, Record):
+        if not exp.data:
+            return set()
+        return set.union(*(free_in(value) for key, value in exp.data.items()))
     if isinstance(exp, Function):
         assert isinstance(exp.arg, Var)
         return free_in(exp.body) - {exp.arg.name}
@@ -3534,6 +3538,12 @@ class ClosureOptimizeTests(unittest.TestCase):
 
     def test_list(self) -> None:
         self.assertEqual(free_in(List([Var("x"), Var("y")])), {"x", "y"})
+
+    def test_empty_record(self) -> None:
+        self.assertEqual(free_in(Record({})), set())
+
+    def test_record(self) -> None:
+        self.assertEqual(free_in(Record({"x": Var("x"), "y": Var("y")})), {"x", "y"})
 
     def test_function(self) -> None:
         exp = parse(tokenize("x -> x + y"))

@@ -1183,6 +1183,20 @@ def improve_closure(closure: Closure) -> Closure:
     return Closure(env, closure.func)
 
 
+def lift_simple(x: object) -> Object:
+    if isinstance(x, int):
+        return Int(x)
+    if isinstance(x, str):
+        return String(x)
+    raise NotImplementedError(type(x))
+
+
+def as_record(obj: dict[str, object]) -> Record:
+    conv: Callable[[object], Object] = lambda x: as_record(x) if isinstance(x, dict) else lift_simple(x)
+    return Record({key: conv(value) for key, value in obj.items()})
+
+
+# pylint: disable=redefined-builtin
 def eval_exp(env: Env, exp: Object) -> Object:
     logger.debug(exp)
     if isinstance(exp, (Int, Float, String, Bytes, Hole, Closure, NativeFunction, Symbol)):
@@ -4386,6 +4400,7 @@ STDLIB = {
     "$$jsondecode": NativeFunction("$$jsondecode", jsondecode),
     "$$serialize": NativeFunction("$$serialize", lambda obj: Bytes(serialize(obj))),
     "$$listlength": NativeFunction("$$listlength", listlength),
+    "$$asrecord": NativeFunction("$$asrecord", lambda exp: as_record(exp.serialize())),
 }
 
 

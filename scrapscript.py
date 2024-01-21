@@ -4399,6 +4399,18 @@ def int_as_str(obj: Object) -> String:
     return String(str(obj.value))
 
 
+def str_as_str(obj: Object) -> String:
+    if not isinstance(obj, String):
+        raise TypeError(f"str_as_str expected String, but got {type(obj).__name__}")
+    return String(repr(obj.value))
+
+
+def record_each(obj: Object) -> Object:
+    if not isinstance(obj, Record):
+        raise TypeError(f"record_each expected Record, but got {type(obj).__name__}")
+    return List([Record({"key": String(key), "value": value}) for key, value in obj.data.items()])
+
+
 STDLIB = {
     "$$add": Closure({}, Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))),
     "$$fetch": NativeFunction("$$fetch", fetch),
@@ -4407,6 +4419,8 @@ STDLIB = {
     "$$listlength": NativeFunction("$$listlength", listlength),
     "$$asrecord": NativeFunction("$$asrecord", lambda exp: as_record(exp.serialize())),
     "$$int_as_str": NativeFunction("$$int_as_str", int_as_str),
+    "$$str_as_str": NativeFunction("$$str_as_str", str_as_str),
+    "$$record_each": NativeFunction("$$record_each", record_each),
 }
 
 
@@ -4416,9 +4430,13 @@ id = x -> x
 . compile =
   | {type="Int", value=value} -> $$int_as_str value
   | {type="Var", name=name} -> name
+  | {type="String", value=value} -> $$str_as_str value
   | {type="Binop", op="++", left=left, right=right} -> (compile left) ++ "+" ++ (compile right)
   | {type="Binop", op=op, left=left, right=right} -> (compile left) ++ op ++ (compile right)
   | {type="List", items=items} -> "[" ++ (join ", " (map compile items)) ++ "]"
+  | {type="Record", data=data} -> ("{" ++ (join ", " (map compile_pair ($$record_each data))) ++ "}"
+    . compile_pair = | {key=key, value=value} -> key ++ ":" ++ (compile value)
+  )
   | {type="Assign", name=name, value=value} -> "((" ++ name ++ ") =>" ++ (compile value) ++ ")("
   | {type="Where", binding={type="Assign", name=name, value=value}, body=body} ->
       "(" ++ (compile name) ++ " => " ++ (compile body) ++ ")(" ++ (compile value) ++ ")"

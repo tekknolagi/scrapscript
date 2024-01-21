@@ -2342,17 +2342,28 @@ class ParserTests(unittest.TestCase):
     def test_parse_symbol_returns_symbol(self) -> None:
         self.assertEqual(parse([SymbolToken("abc")]), Symbol("abc"))
 
-    # def test_parse_guard(self) -> None:
-    #     self.assertEqual(
-    #         parse(tokenize("| x guard y -> x")),
-    #         MatchFunction([MatchCase(Guard(Var("x"), Var("y")), Var("x"))]),
-    #     )
+    def test_parse_guard(self) -> None:
+        self.assertEqual(
+            parse(tokenize("| x guard y -> x")),
+            MatchFunction([MatchCase(Var("x"), Var("y"), Var("x"))]),
+        )
 
-    # def test_parse_guard_exp(self) -> None:
-    #     self.assertEqual(
-    #         parse(tokenize("| x guard x==1 -> x")),
-    #         MatchFunction([MatchCase(Guard(Var("x"), Binop(BinopKind.EQUAL, Var("x"), Int(1))), Var("x"))]),
-    #     )
+    def test_parse_guard_exp(self) -> None:
+        self.assertEqual(
+            parse(tokenize("| x guard x==1 -> x")),
+            MatchFunction([MatchCase(Var("x"), Binop(BinopKind.EQUAL, Var("x"), Int(1)), Var("x"))]),
+        )
+
+    def test_parse_multiple_guards(self) -> None:
+        self.assertEqual(
+            parse(tokenize("| x guard y -> x | a guard b -> 1")),
+            MatchFunction(
+                [
+                    MatchCase(Var("x"), Var("y"), Var("x")),
+                    MatchCase(Var("a"), Var("b"), Int(1)),
+                ]
+            ),
+        )
 
 
 class MatchTests(unittest.TestCase):

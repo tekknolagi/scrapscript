@@ -305,6 +305,7 @@ PS = {
     "::": lp(2000),
     "@": rp(1001),
     "": rp(1000),
+    "guard": rp(5.5),
     ">>": lp(14),
     "<<": lp(14),
     "^": rp(13),
@@ -328,7 +329,6 @@ PS = {
     "||": rp(7),
     "|>": rp(6),
     "<|": lp(6),
-    "guard": rp(5.5),
     "->": lp(5),
     "|": rp(4.5),
     ":": lp(4.5),
@@ -345,9 +345,7 @@ PS = {
 HIGHEST_PREC: float = max(max(p.pl, p.pr) for p in PS.values())
 
 
-# TODO(max): Consider making "guard" an operator with only punctuation (but
-# leave syntax-level "guard" keyword)
-OPER_CHARS = set(c for c in "".join(PS.keys()) if not c.isalpha())
+OPER_CHARS = set("".join(PS.keys())) - set("guard")
 assert " " not in OPER_CHARS
 
 
@@ -1093,26 +1091,17 @@ class MatchError(Exception):
     pass
 
 
-def match_guard(env: Env, guard: Optional[Object]) -> bool:
-    if guard is None:
-        return True
-    return eval_exp(env, guard) == Symbol("true")
-
-
-def match(obj: Object, pattern: Object, env: Optional[Env] = None, guard: Optional[Object] = None) -> Optional[Env]:
-    if env is None:
-        env = {}
+def match(obj: Object, pattern: Object) -> Optional[Env]:
     if isinstance(pattern, Int):
-        return {} if isinstance(obj, Int) and obj.value == pattern.value and match_guard(env, guard) else None
+        return {} if isinstance(obj, Int) and obj.value == pattern.value else None
     if isinstance(pattern, Float):
         raise MatchError("pattern matching is not supported for Floats")
     if isinstance(pattern, String):
-        return {} if isinstance(obj, String) and obj.value == pattern.value and match_guard(env, guard) else None
+        return {} if isinstance(obj, String) and obj.value == pattern.value else None
     if isinstance(pattern, Var):
-        env = {**env, pattern.name: obj}
-        return env if match_guard(env, guard) else None
+        return {pattern.name: obj}
     if isinstance(pattern, Symbol):
-        return {} if isinstance(obj, Symbol) and obj.value == pattern.value and match_guard(env, guard) else None
+        return {} if isinstance(obj, Symbol) and obj.value == pattern.value else None
     if isinstance(pattern, Record):
         if not isinstance(obj, Record):
             return None
@@ -1132,7 +1121,7 @@ def match(obj: Object, pattern: Object, env: Optional[Env] = None, guard: Option
             result.update(part)
         if not use_spread and len(pattern.data) != len(obj.data):
             return None
-        return result if match_guard(result, guard) else None
+        return result
     if isinstance(pattern, List):
         if not isinstance(obj, List):
             return None
@@ -1155,7 +1144,7 @@ def match(obj: Object, pattern: Object, env: Optional[Env] = None, guard: Option
             result.update(part)
         if not use_spread and len(pattern.items) != len(obj.items):
             return None
-        return result if match_guard(result, guard) else None
+        return result
     raise NotImplementedError(f"match not implemented for {type(pattern).__name__}")
 
 
@@ -2376,12 +2365,6 @@ class ParserTests(unittest.TestCase):
                     MatchCase(Var("a"), Var("b"), Int(1)),
                 ]
             ),
-        )
-
-    def test_parse_guard_pipe(self) -> None:
-        self.assertEqual(
-            parse(tokenize("| x guard x |> f -> x")),
-            MatchFunction([MatchCase(Var("x"), Apply(Var("f"), Var("x")), Var("x"))]),
         )
 
 

@@ -4416,6 +4416,7 @@ id = x -> x
 . compile =
   | {type="Int", value=value} -> $$int_as_str value
   | {type="Var", name=name} -> name
+  | {type="Binop", op="++", left=left, right=right} -> (compile left) ++ "+" ++ (compile right)
   | {type="Binop", op=op, left=left, right=right} -> (compile left) ++ op ++ (compile right)
   | {type="List", items=items} -> "[" ++ (join ", " (map compile items)) ++ "]"
   | {type="Assign", name=name, value=value} -> "((" ++ name ++ ") =>" ++ (compile value) ++ ")("

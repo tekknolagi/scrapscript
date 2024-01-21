@@ -1281,8 +1281,10 @@ def eval_exp(env: Env, exp: Object) -> Object:
         elif isinstance(callee.func, MatchFunction):
             arg = eval_exp(env, exp.arg)
             for case in callee.func.cases:
-                m = match(arg, case.pattern, env, case.guard)
+                m = match(arg, case.pattern)
                 if m is None:
+                    continue
+                if case.guard is not None and eval_exp({**env, **m}, case.guard) != Symbol("true"):
                     continue
                 return eval_exp({**callee.env, **m}, case.body)
             raise MatchError("no matching cases")

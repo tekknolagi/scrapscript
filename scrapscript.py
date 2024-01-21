@@ -4449,7 +4449,9 @@ id = x -> x
              cases
     . compile_case =
     | {type="MatchCase", pattern={type="Int", value=value}, body=body} ->
-        "if (__arg == " ++ ($$int_as_str value) ++ ") { return " ++ (compile body) ++ "; }"
+        "if (__arg === " ++ ($$int_as_str value) ++ ") { return " ++ (compile body) ++ "; }"
+    | {type="MatchCase", pattern={type="String", value=value}, body=body} ->
+        "if (__arg === " ++ ($$str_as_str value) ++ ") { return " ++ (compile body) ++ "; }"
   )
 
 . join = sep ->

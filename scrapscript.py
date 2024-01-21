@@ -345,7 +345,7 @@ PS = {
 HIGHEST_PREC: float = max(max(p.pl, p.pr) for p in PS.values())
 
 
-OPER_CHARS = set("".join(PS.keys())) - set("guard")
+OPER_CHARS = set(c for c in "".join(PS.keys()) if not c.isalpha())
 assert " " not in OPER_CHARS
 
 

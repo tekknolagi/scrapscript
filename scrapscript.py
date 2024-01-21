@@ -3469,7 +3469,7 @@ class EndToEndTests(EndToEndTestsBase):
         self.assertEqual(
             self._run(
                 """
-        f {x = 4, y = 5} 
+        f {x = 4, y = 5}
         . f =
           | {} -> 0
           | {x = a, ...} -> a
@@ -4424,7 +4424,7 @@ id = x -> x
   | n ->
     | [] -> []
     | [x, ...xs] -> x >+ take (n - 1) xs
-    
+
 . all = f ->
   | [] -> #true
   | [x, ...xs] -> f x && all f xs

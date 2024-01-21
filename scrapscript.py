@@ -4444,6 +4444,7 @@ id = x -> x
       "(" ++ (compile arg) ++ " => " ++ (compile body) ++ ")"
   | {type="Apply", func=func, arg=arg} -> "(" ++ (compile func) ++ ")(" ++ (compile arg) ++ ")"
   | {type="MatchFunction", cases=cases} ->
+      -- TODO(max): Figure out what to do about __arg. Gensym?
       (foldr (case -> acc -> (compile_case case) ++ "\n" ++ acc)
              "raise 'no matching cases';"
              cases
@@ -4452,6 +4453,12 @@ id = x -> x
         "if (__arg === " ++ ($$int_as_str value) ++ ") { return " ++ (compile body) ++ "; }"
     | {type="MatchCase", pattern={type="String", value=value}, body=body} ->
         "if (__arg === " ++ ($$str_as_str value) ++ ") { return " ++ (compile body) ++ "; }"
+    | {type="MatchCase", pattern={type="Var", name=name}, body=body} ->
+        "return (" ++ compile ({type="Where",
+                  binding={type="Assign",
+                           name={type="Var", name=name},
+                           value={type="Var", name="__arg"}},
+                  body=body}) ++ ");"
   )
 
 . join = sep ->

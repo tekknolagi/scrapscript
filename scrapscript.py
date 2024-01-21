@@ -4459,6 +4459,8 @@ id = x -> x
                            name={type="Var", name=name},
                            value={type="Var", name="__arg"}},
                   body=body}) ++ ");"
+    | {type="MatchCase", pattern={type="Record", data={}}, body=body} ->
+        "if (__arg === {}) { return " ++ (compile body) ++ "; }"
   )
 
 . join = sep ->

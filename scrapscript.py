@@ -1093,17 +1093,26 @@ class MatchError(Exception):
     pass
 
 
-def match(obj: Object, pattern: Object) -> Optional[Env]:
+def match_guard(env: Env, guard: Optional[Object]) -> bool:
+    if guard is None:
+        return True
+    return eval_exp(env, guard) == Symbol("true")
+
+
+def match(obj: Object, pattern: Object, env: Optional[Env] = None, guard: Optional[Object] = None) -> Optional[Env]:
+    if env is None:
+        env = {}
     if isinstance(pattern, Int):
-        return {} if isinstance(obj, Int) and obj.value == pattern.value else None
+        return {} if isinstance(obj, Int) and obj.value == pattern.value and match_guard(env, guard) else None
     if isinstance(pattern, Float):
         raise MatchError("pattern matching is not supported for Floats")
     if isinstance(pattern, String):
-        return {} if isinstance(obj, String) and obj.value == pattern.value else None
+        return {} if isinstance(obj, String) and obj.value == pattern.value and match_guard(env, guard) else None
     if isinstance(pattern, Var):
-        return {pattern.name: obj}
+        env = {**env, pattern.name: obj}
+        return env if match_guard(env, guard) else None
     if isinstance(pattern, Symbol):
-        return {} if isinstance(obj, Symbol) and obj.value == pattern.value else None
+        return {} if isinstance(obj, Symbol) and obj.value == pattern.value and match_guard(env, guard) else None
     if isinstance(pattern, Record):
         if not isinstance(obj, Record):
             return None
@@ -1123,7 +1132,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
             result.update(part)
         if not use_spread and len(pattern.data) != len(obj.data):
             return None
-        return result
+        return result if match_guard(result, guard) else None
     if isinstance(pattern, List):
         if not isinstance(obj, List):
             return None
@@ -1146,7 +1155,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
             result.update(part)
         if not use_spread and len(pattern.items) != len(obj.items):
             return None
-        return result
+        return result if match_guard(result, guard) else None
     raise NotImplementedError(f"match not implemented for {type(pattern).__name__}")
 
 
@@ -1272,7 +1281,7 @@ def eval_exp(env: Env, exp: Object) -> Object:
         elif isinstance(callee.func, MatchFunction):
             arg = eval_exp(env, exp.arg)
             for case in callee.func.cases:
-                m = match(arg, case.pattern)
+                m = match(arg, case.pattern, env, case.guard)
                 if m is None:
                     continue
                 return eval_exp({**callee.env, **m}, case.body)
@@ -3255,6 +3264,98 @@ class EndToEndTests(EndToEndTestsBase):
                 """
             ),
             Int(3),
+        )
+
+    def test_match_guard_closure_var(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                id 1
+                . id =
+                  | x guard cond -> "one"
+                  | x -> "idk"
+                . cond = 2
+                """
+            ),
+            String("idk"),
+        )
+
+    def test_match_record_guard_pass(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                id {cond=#true}
+                . id =
+                  | {cond=cond} guard cond -> "yes"
+                  | x -> "no"
+                """
+            ),
+            String("yes"),
+        )
+
+    def test_match_record_guard_fail(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                id {cond=#false}
+                . id =
+                  | {cond=cond} guard cond -> "yes"
+                  | x -> "no"
+                """
+            ),
+            String("no"),
+        )
+
+    def test_match_list_guard_pass(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                id [#true]
+                . id =
+                  | [cond] guard cond -> "yes"
+                  | x -> "no"
+                """
+            ),
+            String("yes"),
+        )
+
+    def test_match_list_guard_fail(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                id [#false]
+                . id =
+                  | [cond] guard cond -> "yes"
+                  | x -> "no"
+                """
+            ),
+            String("no"),
+        )
+
+    def test_match_guard_pass(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                id 1
+                . id =
+                  | x guard x==1 -> "one"
+                  | x -> "idk"
+                """
+            ),
+            String("one"),
+        )
+
+    def test_match_guard_fail(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+                id 2
+                . id =
+                  | x guard x==1 -> "one"
+                  | x -> "idk"
+                """
+            ),
+            String("idk"),
         )
 
     def test_match_var_binds_first_arm(self) -> None:

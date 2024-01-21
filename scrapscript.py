@@ -4443,6 +4443,14 @@ id = x -> x
   | {type="Function", arg=arg, body=body} ->
       "(" ++ (compile arg) ++ " => " ++ (compile body) ++ ")"
   | {type="Apply", func=func, arg=arg} -> "(" ++ (compile func) ++ ")(" ++ (compile arg) ++ ")"
+  | {type="MatchFunction", cases=cases} ->
+      (foldr (case -> acc -> (compile_case case) ++ "\n" ++ acc)
+             "raise 'no matching cases';"
+             cases
+    . compile_case =
+    | {type="MatchCase", pattern={type="Int", value=value}, body=body} ->
+        "if (__arg == " ++ ($$int_as_str value) ++ ") { return " ++ (compile body) ++ "; }"
+  )
 
 . join = sep ->
   | [] -> ""

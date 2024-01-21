@@ -305,7 +305,6 @@ PS = {
     "::": lp(2000),
     "@": rp(1001),
     "": rp(1000),
-    "guard": rp(5.5),
     ">>": lp(14),
     "<<": lp(14),
     "^": rp(13),
@@ -329,6 +328,7 @@ PS = {
     "||": rp(7),
     "|>": rp(6),
     "<|": lp(6),
+    "guard": rp(5.5),
     "->": lp(5),
     "|": rp(4.5),
     ":": lp(4.5),
@@ -345,7 +345,9 @@ PS = {
 HIGHEST_PREC: float = max(max(p.pl, p.pr) for p in PS.values())
 
 
-OPER_CHARS = set("".join(PS.keys())) - set("guard")
+# TODO(max): Consider making "guard" an operator with only punctuation (but
+# leave syntax-level "guard" keyword)
+OPER_CHARS = set(c for c in "".join(PS.keys()) if not c.isalpha())
 assert " " not in OPER_CHARS
 
 
@@ -2363,6 +2365,12 @@ class ParserTests(unittest.TestCase):
                     MatchCase(Var("a"), Var("b"), Int(1)),
                 ]
             ),
+        )
+
+    def test_parse_guard_pipe(self) -> None:
+        self.assertEqual(
+            parse(tokenize("| x guard x |> f -> x")),
+            MatchFunction([MatchCase(Var("x"), Apply(Var("f"), Var("x")), Var("x"))]),
         )
 
 

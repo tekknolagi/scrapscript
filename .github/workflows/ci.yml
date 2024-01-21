@@ -27,6 +27,7 @@ jobs:
     - run: python3.10 -m pipx install poetry
     - run: poetry install --with=dev
     - run: poetry run ruff check scrapscript.py
+    - run: poetry run ruff format --check scrapscript.py
     - run: poetry run mypy --strict scrapscript.py
   run_unit_tests:
     strategy:

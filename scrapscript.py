@@ -3086,6 +3086,9 @@ class EndToEndTests(EndToEndTestsBase):
     def test_int_add_returns_int(self) -> None:
         self.assertEqual(self._run("1 + 2"), Int(3))
 
+    def test_int_sub_returns_int(self) -> None:
+        self.assertEqual(self._run("1 - 2"), Int(-1))
+
     def test_string_concat_returns_string(self) -> None:
         self.assertEqual(self._run('"abc" ++ "def"'), String("abcdef"))
 

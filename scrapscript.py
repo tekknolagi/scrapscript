@@ -1243,18 +1243,16 @@ def eval_exp(env: Env, exp: Object) -> Object:
         if isinstance(exp.func, Var) and exp.func.name == "$$quote":
             return exp.arg
         callee = eval_exp(env, exp.func)
+        arg = eval_exp(env, exp.arg)
         if isinstance(callee, NativeFunction):
-            arg = eval_exp(env, exp.arg)
             return callee.func(arg)
         if not isinstance(callee, Closure):
             raise TypeError(f"attempted to apply a non-closure of type {type(callee).__name__}")
-        arg = eval_exp(env, exp.arg)
         if isinstance(callee.func, Function):
             assert isinstance(callee.func.arg, Var)
             new_env = {**callee.env, callee.func.arg.name: arg}
             return eval_exp(new_env, callee.func.body)
         elif isinstance(callee.func, MatchFunction):
-            arg = eval_exp(env, exp.arg)
             for case in callee.func.cases:
                 m = match(arg, case.pattern)
                 if m is None:

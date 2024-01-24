@@ -5,6 +5,8 @@ ARG COSMO=cosmos-$VER.zip
 RUN wget https://github.com/jart/cosmopolitan/releases/download/$VER/$COSMO
 WORKDIR cosmo
 RUN unzip ../$COSMO bin/ape.elf bin/assimilate bin/bash bin/python bin/zip
+# Remove some packages we're never going to use
+RUN sh bin/zip -A --delete bin/python "Lib/site-packages/*"
 RUN mkdir Lib
 COPY scrapscript.py Lib
 COPY .args .

@@ -4514,7 +4514,7 @@ def eval_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
-    program = args.program_file.read()
+    program = args.scrap if isinstance(args.scrap, str) else args.scrap.read()
     tokens = tokenize(program)
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
@@ -4527,11 +4527,15 @@ def apply_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
-    tokens = tokenize(args.program)
-    logger.debug("Tokens: %s", tokens)
-    ast = parse(tokens)
-    logger.debug("AST: %s", ast)
-    result = eval_exp(boot_env(), ast)
+    tokens_f = tokenize(args.f)
+    logger.debug("Tokens (f): %s", tokens_f)
+    tokens_x = tokenize(args.x if isinstance(args.x, str) else args.x.read())
+    logger.debug("Tokens (x): %s", tokens_x)
+    ast_f = parse(tokens_f)
+    logger.debug("AST (f): %s", ast_f)
+    ast_x = parse(tokens_x)
+    logger.debug("AST (f): %s", ast_x)
+    result = eval_exp(boot_env(), Apply(ast_f, ast_x))
     print(result)
 
 
@@ -4555,7 +4559,7 @@ def test_command(args: argparse.Namespace) -> None:
     unittest.main(argv=[__file__, *args.unittest_args])
 
 
-def serve_command(args: argparse.Namespace) -> None:
+def repl_serve_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
     server: Union[type[socketserver.TCPServer], type[socketserver.ForkingTCPServer]]
@@ -4585,19 +4589,33 @@ def main() -> None:
 
     eval_ = subparsers.add_parser("eval")
     eval_.set_defaults(func=eval_command)
-    eval_.add_argument("program_file", type=argparse.FileType("r"))
+    eval_.add_argument("scrap", nargs="?", default=sys.stdin)
     eval_.add_argument("--debug", action="store_true")
 
     apply = subparsers.add_parser("apply")
     apply.set_defaults(func=apply_command)
-    apply.add_argument("program")
+    apply.add_argument("f")
+    apply.add_argument("x", nargs="?", default=sys.stdin)
     apply.add_argument("--debug", action="store_true")
 
-    serve = subparsers.add_parser("serve")
-    serve.set_defaults(func=serve_command)
+    serve = subparsers.add_parser("repl-serve")
+    serve.set_defaults(func=repl_serve_command)
     serve.add_argument("--port", type=int, default=8000)
     serve.add_argument("--debug", action="store_true")
     serve.add_argument("--fork", action="store_true")
+
+    # TODO(tay): yard = subparsers.add_parser("yard").add_subparsers(dest="command", required=True)
+    # TODO(tay): yard_info = yard.add_parser("info")
+    # TODO(tay): yard_info.set_defaults(func=yard_info_command)
+    # TODO(tay): yard_init = yard.add_parser("init")
+    # TODO(tay): yard_init.set_defaults(func=yard_init_command)
+    # TODO(tay): yard_push = yard.add_parser("push")
+    # TODO(tay): yard_push.set_defaults(func=yard_push_command)
+    # TODO(tay): yard_push.add_argument("scrap_name")
+    # TODO(tay): yard_push.add_argument("scrap", nargs="?", default=sys.stdin)
+    # TODO(tay): yard_serve = yard.add_parser("serve")
+    # TODO(tay): yard_serve.set_defaults(func=yard_serve_command)
+    # TODO(tay): yard_serve.add_argument("port")
 
     args = parser.parse_args()
     if not args.command:

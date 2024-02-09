@@ -13,8 +13,8 @@ import socketserver
 import sys
 import typing
 import unittest
-import urllib.request
 import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from enum import auto
 from types import FunctionType, ModuleType

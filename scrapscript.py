@@ -4413,7 +4413,7 @@ id = x -> x
   | [x, ...xs] -> f x >+ map f xs
 
 . range =
-  | 1 -> [0]
+  | 0 -> []
   | i -> range (i - 1) +< (i - 1)
 
 . foldr = f -> a ->

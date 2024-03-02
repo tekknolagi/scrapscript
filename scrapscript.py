@@ -113,11 +113,6 @@ class Juxt(Token):
 
 
 @dataclass(eq=True)
-class SymbolToken(Token):
-    value: str
-
-
-@dataclass(eq=True)
 class EOF(Token):
     pass
 
@@ -169,13 +164,6 @@ class Lexer:
                 self.read_comment()
                 return self.read_one()
             return self.read_op(c)
-        if c == "#":
-            value = self.read_one()
-            if isinstance(value, EOF):
-                raise UnexpectedEOFError("while reading symbol")
-            if not isinstance(value, Name):
-                raise ParseError(f"expected name after #, got {value!r}")
-            return self.make_token(SymbolToken, value.value)
         if c == "~":
             if self.has_input() and self.peek_char() == "~":
                 self.read_char()
@@ -326,7 +314,9 @@ PS = {
     "||": rp(7),
     "|>": rp(6),
     "<|": lp(6),
+    "#": rp(5.5),
     "->": lp(5),
+    "=>": lp(4.75),
     "|": rp(4.5),
     ":": lp(4.5),
     "=": rp(4),
@@ -359,6 +349,8 @@ def parse_assign(tokens: typing.List[Token], p: float = 0) -> "Assign":
     assign = parse(tokens, p)
     if isinstance(assign, Spread):
         return Assign(Var("..."), assign)
+    if isinstance(assign, Binop) and assign.op == BinopKind.HASTYPE:
+        return Assign(Var("..."), assign)  # TODO
     if not isinstance(assign, Assign):
         raise ParseError("failed to parse variable assignment in record constructor")
     return assign
@@ -376,8 +368,6 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     elif isinstance(token, Name):
         # TODO: Handle kebab case vars
         l = Var(token.value)
-    elif isinstance(token, SymbolToken):
-        l = Symbol(token.value)
     elif isinstance(token, BytesLit):
         base = token.base
         if base == 85:
@@ -399,6 +389,21 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
             l = Spread(name)
         else:
             l = Spread()
+    elif token == Operator("#"):
+        tags = Tags({})
+        if not isinstance(tokens[0], Name):
+            raise ParseError(f"expected tag name but received {tokens[0]!r}")
+        name = tokens[0].value
+        tokens.pop(0)
+        expr = parse(tokens, PS["#"].pr)
+        tags.value[name] = expr
+        while tokens and tokens[0] == Operator("#"):
+            tokens.pop(0)
+            name = tokens[0].value
+            tokens.pop(0)
+            expr = parse(tokens, PS["#"].pr)
+            tags.value[name] = expr
+        l = tags
     elif token == Operator("|"):
         expr = parse(tokens, PS["|"].pr)  # TODO: make this work for larger arities
         if not isinstance(expr, Function):
@@ -473,9 +478,17 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
             break
         tokens.pop(0)
         if op == Operator("="):
-            if not isinstance(l, Var):
+            if isinstance(l, Binop) and BinopKind.HASTYPE == l.op:
+                l = l.left  # TODO
+            if isinstance(l, Var):
+                l = Assign(l, parse(tokens, pr))
+            else:
                 raise ParseError(f"expected variable in assignment {l!r}")
-            l = Assign(l, parse(tokens, pr))
+        elif op == Operator(":"):
+            if isinstance(l, Var):
+                l = Assign(l, parse(tokens, pr))
+            else:
+                raise ParseError(f"expected variable in type assignment {l!r}")
         elif op == Operator("->"):
             l = Function(l, parse(tokens, pr))
         elif op == Operator("|>"):
@@ -641,6 +654,14 @@ class Var(Object):
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Hole(Object):
+    def serialize(self) -> Dict[str, object]:
+        return {"type": "Hole"}
+
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Hole":
+        assert msg["type"] == "Hole"
+        return Hole()
+
     def __str__(self) -> str:
         return "()"
 
@@ -651,6 +672,68 @@ class Spread(Object):
 
     def __str__(self) -> str:
         return "..." if self.name is None else f"...{self.name}"
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Tags(Object):
+    value: dict[str, Object]
+
+    def serialize(self) -> Dict[str, object]:
+        return {"type": "Tags", "value": {k: v.serialize() for k, v in self.value.items()}}
+
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Tags":
+        raise Exception("TODO")
+
+    def __str__(self) -> str:
+        return " ".join([f"#{k} {v}" for k, v in self.value.items()])
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Tagger(Object):
+    of: Object
+    name: str
+
+    def serialize(self) -> Dict[str, object]:
+        return {"type": "Tagger", "of": self.of.serialize(), "name": self.name}
+
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Tag":
+        raise Exception("TODO")
+
+    def __str__(self) -> str:
+        return f"({self.of})::{self.name}"
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class Tag(Object):
+    of: Object
+    name: str
+    value: Object
+
+    def serialize(self) -> Dict[str, object]:
+        return {"type": "Tag", "of": self.of.serialize(), "value": self.value.serialize(), "name": self.name}
+
+    @staticmethod
+    def deserialize(msg: Dict[str, object]) -> "Tag":
+        assert msg["type"] == "Tag"
+        assert isinstance(msg["of"], dict)
+        assert isinstance(msg["value"], dict)
+        assert isinstance(msg["name"], str)
+        value = Object.deserialize(msg["value"])
+        of = Object.deserialize(msg["of"])
+        assert isinstance(value, Object)
+        assert isinstance(of, Object)
+        return Tag(of, msg["name"], value)
+
+    def __str__(self) -> str:
+        # TODO: This only works if true and false are not in scope...
+        if self.value == Hole() and self.of == Tags({"true": Hole(), "false": Hole()}):
+            if self.name == "true":
+                return "true"
+            if self.name == "false":
+                return "false"
+        return f"({self.of})::{self.name} {self.value}"
 
 
 Env = Mapping[str, Object]
@@ -679,6 +762,8 @@ class BinopKind(enum.Enum):
     HASTYPE = auto()
     PIPE = auto()
     REVERSE_PIPE = auto()
+    CONSTRUCT_TAG = auto()
+    GENERIC = auto()
 
     @classmethod
     def from_str(cls, x: str) -> "BinopKind":
@@ -705,6 +790,8 @@ class BinopKind(enum.Enum):
             ":": cls.HASTYPE,
             "|>": cls.PIPE,
             "<|": cls.REVERSE_PIPE,
+            "::": cls.CONSTRUCT_TAG,
+            "=>": cls.GENERIC,
         }[x]
 
     @classmethod
@@ -731,6 +818,7 @@ class BinopKind(enum.Enum):
             cls.HASTYPE: ":",
             cls.PIPE: "|>",
             cls.REVERSE_PIPE: "<|",
+            cls.CONSTRUCT_TAG: "::",
         }[binop_kind]
 
 
@@ -986,24 +1074,6 @@ class Access(Object):
         return self.__repr__()
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
-class Symbol(Object):
-    value: str
-
-    def serialize(self) -> Dict[str, object]:
-        return self._serialize(value=self.value)
-
-    @staticmethod
-    def deserialize(msg: Dict[str, object]) -> "Symbol":
-        assert msg["type"] == "Symbol"
-        value_obj = msg["value"]
-        assert isinstance(value_obj, str)
-        return Symbol(value_obj)
-
-    def __str__(self) -> str:
-        return f"#{self.value}"
-
-
 def unpack_number(obj: Object) -> Union[int, float]:
     if not isinstance(obj, (Int, Float)):
         raise TypeError(f"expected Int or Float, got {type(obj).__name__}")
@@ -1024,9 +1094,9 @@ def eval_str(env: Env, exp: Object) -> str:
 
 def eval_bool(env: Env, exp: Object) -> bool:
     result = eval_exp(env, exp)
-    if isinstance(result, Symbol) and result.value in ("true", "false"):
-        return result.value == "true"
-    raise TypeError(f"expected #true or #false, got {type(result).__name__}")
+    if isinstance(result, Tag) and result.name in ("true", "false"):
+        return result.name == "true"
+    raise TypeError(f"expected true or false, got {type(result).__name__}")
 
 
 def eval_list(env: Env, exp: Object) -> typing.List[Object]:
@@ -1037,7 +1107,7 @@ def eval_list(env: Env, exp: Object) -> typing.List[Object]:
 
 
 def make_bool(x: bool) -> Object:
-    return Symbol("true" if x else "false")
+    return Tag(Tags({"true": Hole(), "false": Hole()}), "true" if x else "false", Hole())
 
 
 def wrap_inferred_number_type(x: Union[int, float]) -> Object:
@@ -1070,6 +1140,8 @@ BINOP_HANDLERS: Dict[BinopKind, Callable[[Env, Object, Object], Object]] = {
     BinopKind.LIST_CONS: lambda env, x, y: List([eval_exp(env, x)] + eval_list(env, y)),
     BinopKind.LIST_APPEND: lambda env, x, y: List(eval_list(env, x) + [eval_exp(env, y)]),
     BinopKind.RIGHT_EVAL: lambda env, x, y: eval_exp(env, y),
+    BinopKind.CONSTRUCT_TAG: lambda env, x, y: Tagger(x, y.name),
+    BinopKind.GENERIC: lambda env, x, y: eval_exp(env, y),  # TODO
 }
 
 
@@ -1078,6 +1150,8 @@ class MatchError(Exception):
 
 
 def match(obj: Object, pattern: Object) -> Optional[Env]:
+    if isinstance(pattern, Hole):
+        return {} if isinstance(obj, Hole) else None
     if isinstance(pattern, Int):
         return {} if isinstance(obj, Int) and obj.value == pattern.value else None
     if isinstance(pattern, Float):
@@ -1086,8 +1160,6 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
         return {} if isinstance(obj, String) and obj.value == pattern.value else None
     if isinstance(pattern, Var):
         return {pattern.name: obj}
-    if isinstance(pattern, Symbol):
-        return {} if isinstance(obj, Symbol) and obj.value == pattern.value else None
     if isinstance(pattern, Record):
         if not isinstance(obj, Record):
             return None
@@ -1131,11 +1203,17 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
         if not use_spread and len(pattern.items) != len(obj.items):
             return None
         return result
+    if isinstance(pattern, Tags):
+        if not isinstance(obj, Tag):
+            return None
+        if obj.name not in pattern.value:
+            return None
+        return match(obj.value, pattern.value[obj.name])
     raise NotImplementedError(f"match not implemented for {type(pattern).__name__}")
 
 
 def free_in(exp: Object) -> Set[str]:
-    if isinstance(exp, (Int, Float, String, Bytes, Hole, NativeFunction, Symbol)):
+    if isinstance(exp, (Int, Float, String, Bytes, Hole, NativeFunction, Tagger)):
         return set()
     if isinstance(exp, Var):
         return {exp.name}
@@ -1174,6 +1252,10 @@ def free_in(exp: Object) -> Set[str]:
     if isinstance(exp, Closure):
         # TODO(max): Should this remove the set of keys in the closure env?
         return free_in(exp.func)
+    if isinstance(exp, Tag):
+        return free_in(exp.value)
+    if isinstance(exp, Tags):
+        return set.union(*(free_in(v) for v in exp.value.values()))
     raise NotImplementedError(("free_in", type(exp)))
 
 
@@ -1185,7 +1267,7 @@ def improve_closure(closure: Closure) -> Closure:
 
 def eval_exp(env: Env, exp: Object) -> Object:
     logger.debug(exp)
-    if isinstance(exp, (Int, Float, String, Bytes, Hole, Closure, NativeFunction, Symbol)):
+    if isinstance(exp, (Int, Float, String, Bytes, Hole, Closure, NativeFunction)):
         return exp
     if isinstance(exp, Var):
         value = env.get(exp.name)
@@ -1197,6 +1279,10 @@ def eval_exp(env: Env, exp: Object) -> Object:
         if handler is None:
             raise NotImplementedError(f"no handler for {exp.op}")
         return handler(env, exp.left, exp.right)
+    if isinstance(exp, Tag):
+        return Tag(exp.of, exp.name, eval_exp(env, exp.value))
+    if isinstance(exp, Tags):
+        return Tags({k: eval_exp(env, exp.value[k]) for k in exp.value})
     if isinstance(exp, List):
         return List([eval_exp(env, item) for item in exp.items])
     if isinstance(exp, Record):
@@ -1219,14 +1305,16 @@ def eval_exp(env: Env, exp: Object) -> Object:
             value = improve_closure(value)
         return EnvObject({**env, exp.name.name: value})
     if isinstance(exp, Where):
-        assert isinstance(exp.binding, Assign)
+        assert isinstance(exp.binding, Assign) or (
+            isinstance(exp.binding, Binop) and exp.binding.op == BinopKind.HASTYPE
+        )
         res_env = eval_exp(env, exp.binding)
         assert isinstance(res_env, EnvObject)
         new_env = {**env, **res_env.env}
         return eval_exp(new_env, exp.body)
     if isinstance(exp, Assert):
         cond = eval_exp(env, exp.cond)
-        if cond != Symbol("true"):
+        if cond != Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()):
             raise AssertionError(f"condition {exp.cond} failed")
         return eval_exp(env, exp.value)
     if isinstance(exp, Function):
@@ -1246,6 +1334,8 @@ def eval_exp(env: Env, exp: Object) -> Object:
         arg = eval_exp(env, exp.arg)
         if isinstance(callee, NativeFunction):
             return callee.func(arg)
+        if isinstance(callee, Tagger):
+            return Tag(callee.of, callee.name, arg)
         if not isinstance(callee, Closure):
             raise TypeError(f"attempted to apply a non-closure of type {type(callee).__name__}")
         if isinstance(callee.func, Function):
@@ -1860,19 +1950,91 @@ class TokenizerTests(unittest.TestCase):
             ],
         )
 
-    def test_tokenize_symbol_with_space(self) -> None:
-        self.assertEqual(tokenize("# abc"), [SymbolToken("abc")])
+    def test_tokenize_tag_with_space(self) -> None:
+        self.assertEqual(tokenize("# abc"), [Operator("#"), Name("abc")])
 
-    def test_tokenize_symbol_with_no_space(self) -> None:
-        self.assertEqual(tokenize("#abc"), [SymbolToken("abc")])
+    def test_tokenize_tag_with_no_space(self) -> None:
+        self.assertEqual(tokenize("#abc"), [Operator("#"), Name("abc")])
 
-    def test_tokenize_symbol_non_name_raises_parse_error(self) -> None:
-        with self.assertRaisesRegex(ParseError, "expected name"):
-            tokenize("#1")
+    def test_tokenize_tag_non_name_raises_parse_error(self) -> None:
+        self.assertEqual(tokenize("#1"), [Operator("#"), IntLit(1)])
 
-    def test_tokenize_symbol_eof_raises_unexpected_eof_error(self) -> None:
-        with self.assertRaisesRegex(UnexpectedEOFError, "while reading symbol"):
-            tokenize("#")
+    def test_tokenize_tag_eof_raises_unexpected_eof_error(self) -> None:
+        self.assertEqual(tokenize("#"), [Operator("#")])
+
+    def test_tokenize_tags_no_arg_no_spaces(self) -> None:
+        self.assertEqual(tokenize("#a#b"), [Operator("#"), Name("a"), Operator("#"), Name("b")])
+
+    def test_tokenize_tags_no_arg_extra_spaces(self) -> None:
+        self.assertEqual(tokenize("# a # b"), [Operator("#"), Name("a"), Operator("#"), Name("b")])
+
+    def test_tokenize_tags_with_args(self) -> None:
+        self.assertEqual(
+            tokenize("#a int #b int"), [Operator("#"), Name("a"), Name("int"), Operator("#"), Name("b"), Name("int")]
+        )
+
+    def test_tokenize_tags_with_no_name(self) -> None:
+        self.assertEqual(tokenize("# #a"), [Operator("#"), Operator("#"), Name("a")])
+
+    def test_tokenize_tags_with_incomplete_name(self) -> None:
+        self.assertEqual(tokenize("(#a #)"), [LeftParen(), Operator("#"), Name("a"), Operator("#"), RightParen()])
+
+    def test_tokenize_tags_with_record_type(self) -> None:
+        self.assertEqual(
+            tokenize("#a { b : b }"),
+            [
+                Operator("#"),
+                Name(value="a"),
+                LeftBrace(),
+                Name(value="b"),
+                Operator(value=":"),
+                Name(value="b"),
+                RightBrace(),
+            ],
+        )
+
+    @unittest.skip("TODO")
+    def test_tokenize_tags_with_hyphens(self) -> None:
+        self.assertEqual(
+            tokenize("#a-b c #d-e"),
+            [Operator("#"), Name(value="a-b"), Name(value="c"), Operator("#"), Name(value="d-e")],
+        )
+
+    @unittest.skip("TODO")
+    def test_tokenize_tags_with_generics_inline(self) -> None:
+        self.assertEqual(
+            tokenize("#a x => x #b y => y"),
+            [
+                Operator("#"),
+                Name(value="a"),
+                Name(value="x"),
+                Operator(value="=>"),
+                Name(value="x"),
+                Operator("#"),
+                Name(value="b"),
+                Name(value="y"),
+                Operator(value="=>"),
+                Name(value="y"),
+            ],
+        )
+
+    def test_tokenize_tags_with_type_assignment(self) -> None:
+        self.assertEqual(tokenize("t : #a"), [Name("t"), Operator(":"), Operator("#"), Name("a")])
+
+    def test_tokenize_tagger_with_left_parens(self) -> None:
+        self.assertEqual(tokenize("(a)::b"), [LeftParen(), Name("a"), RightParen(), Operator("::"), Name("b")])
+
+    def test_tokenize_tagger_with_right_parens(self) -> None:
+        self.assertEqual(
+            tokenize("a::(b)"),
+            [
+                Name("a"),
+                Operator("::"),
+                LeftParen(),
+                Name("b"),
+                RightParen(),
+            ],
+        )
 
 
 class ParserTests(unittest.TestCase):
@@ -2089,7 +2251,7 @@ class ParserTests(unittest.TestCase):
         )
 
     def test_parse_hastype(self) -> None:
-        self.assertEqual(parse([Name("a"), Operator(":"), Name("b")]), Binop(BinopKind.HASTYPE, Var("a"), Var("b")))
+        self.assertEqual(parse([Name("a"), Operator(":"), Name("b")]), Assign(Var("a"), Var("b")))
 
     def test_parse_hole(self) -> None:
         self.assertEqual(parse([LeftParen(), RightParen()]), Hole())
@@ -2323,8 +2485,8 @@ class ParserTests(unittest.TestCase):
         with self.assertRaisesRegex(ParseError, re.escape("unexpected token RightBrace(lineno=-1)")):
             parse([LeftBrace(), Name("x"), Operator("="), IntLit(1), Operator(","), RightBrace()])
 
-    def test_parse_symbol_returns_symbol(self) -> None:
-        self.assertEqual(parse([SymbolToken("abc")]), Symbol("abc"))
+    def test_parse_tags_returns_tags(self) -> None:
+        self.assertEqual(parse([Operator("#"), Name("abc"), LeftParen(), RightParen()]), Tags({"abc": Hole()}))
 
 
 class MatchTests(unittest.TestCase):
@@ -2591,14 +2753,14 @@ class MatchTests(unittest.TestCase):
             None,
         )
 
-    def test_match_symbol_with_equal_symbol_returns_empty_dict(self) -> None:
-        self.assertEqual(match(Symbol("abc"), pattern=Symbol("abc")), {})
+    def test_match_tags_with_equal_tags_returns_empty_dict(self) -> None:
+        self.assertEqual(match(Tag(Tags({"abc": Hole()}), "abc", Hole()), pattern=Tags({"abc": Hole()})), {})
 
-    def test_match_symbol_with_inequal_symbol_returns_none(self) -> None:
-        self.assertEqual(match(Symbol("def"), pattern=Symbol("abc")), None)
+    def test_match_tags_with_inequal_tags_returns_none(self) -> None:
+        self.assertEqual(match(Tag(Tags({"def": Hole()}), "def", Hole()), pattern=Tags({"abc": Hole()})), None)
 
-    def test_match_symbol_with_different_type_returns_none(self) -> None:
-        self.assertEqual(match(Int(123), pattern=Symbol("abc")), None)
+    def test_match_tags_with_different_type_returns_none(self) -> None:
+        self.assertEqual(match(Int(123), pattern=Tags({"abc": Hole()})), None)
 
 
 class EvalTests(unittest.TestCase):
@@ -2669,19 +2831,19 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_with_binop_equal_with_equal_returns_true(self) -> None:
         exp = Binop(BinopKind.EQUAL, Int(1), Int(1))
-        self.assertEqual(eval_exp({}, exp), Symbol("true"))
+        self.assertEqual(eval_exp({}, exp), Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()))
 
     def test_eval_with_binop_equal_with_inequal_returns_false(self) -> None:
         exp = Binop(BinopKind.EQUAL, Int(1), Int(2))
-        self.assertEqual(eval_exp({}, exp), Symbol("false"))
+        self.assertEqual(eval_exp({}, exp), Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole()))
 
     def test_eval_with_binop_not_equal_with_equal_returns_false(self) -> None:
         exp = Binop(BinopKind.NOT_EQUAL, Int(1), Int(1))
-        self.assertEqual(eval_exp({}, exp), Symbol("false"))
+        self.assertEqual(eval_exp({}, exp), Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole()))
 
     def test_eval_with_binop_not_equal_with_inequal_returns_true(self) -> None:
         exp = Binop(BinopKind.NOT_EQUAL, Int(1), Int(2))
-        self.assertEqual(eval_exp({}, exp), Symbol("true"))
+        self.assertEqual(eval_exp({}, exp), Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()))
 
     def test_eval_with_binop_concat_with_strings_returns_string(self) -> None:
         exp = Binop(BinopKind.STRING_CONCAT, String("hello"), String(" world"))
@@ -2781,16 +2943,19 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(env, {})
 
     def test_eval_assert_with_truthy_cond_returns_value(self) -> None:
-        exp = Assert(Int(123), Symbol("true"))
+        exp = Assert(Int(123), Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()))
         self.assertEqual(eval_exp({}, exp), Int(123))
 
     def test_eval_assert_with_falsey_cond_raises_assertion_error(self) -> None:
-        exp = Assert(Int(123), Symbol("false"))
-        with self.assertRaisesRegex(AssertionError, re.escape("condition #false failed")):
+        exp = Assert(Int(123), Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole()))
+        with self.assertRaisesRegex(AssertionError, re.escape("condition false failed")):
             eval_exp({}, exp)
 
     def test_eval_nested_assert(self) -> None:
-        exp = Assert(Assert(Int(123), Symbol("true")), Symbol("true"))
+        exp = Assert(
+            Assert(Int(123), Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole())),
+            Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()),
+        )
         self.assertEqual(eval_exp({}, exp), Int(123))
 
     def test_eval_hole(self) -> None:
@@ -2946,7 +3111,7 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_less_returns_bool(self) -> None:
         ast = Binop(BinopKind.LESS, Int(3), Int(4))
-        self.assertEqual(eval_exp({}, ast), Symbol("true"))
+        self.assertEqual(eval_exp({}, ast), Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()))
 
     def test_eval_less_on_non_bool_raises_type_error(self) -> None:
         ast = Binop(BinopKind.LESS, String("xyz"), Int(4))
@@ -2955,7 +3120,7 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_less_equal_returns_bool(self) -> None:
         ast = Binop(BinopKind.LESS_EQUAL, Int(3), Int(4))
-        self.assertEqual(eval_exp({}, ast), Symbol("true"))
+        self.assertEqual(eval_exp({}, ast), Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()))
 
     def test_eval_less_equal_on_non_bool_raises_type_error(self) -> None:
         ast = Binop(BinopKind.LESS_EQUAL, String("xyz"), Int(4))
@@ -2964,7 +3129,7 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_greater_returns_bool(self) -> None:
         ast = Binop(BinopKind.GREATER, Int(3), Int(4))
-        self.assertEqual(eval_exp({}, ast), Symbol("false"))
+        self.assertEqual(eval_exp({}, ast), Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole()))
 
     def test_eval_greater_on_non_bool_raises_type_error(self) -> None:
         ast = Binop(BinopKind.GREATER, String("xyz"), Int(4))
@@ -2973,7 +3138,7 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_greater_equal_returns_bool(self) -> None:
         ast = Binop(BinopKind.GREATER_EQUAL, Int(3), Int(4))
-        self.assertEqual(eval_exp({}, ast), Symbol("false"))
+        self.assertEqual(eval_exp({}, ast), Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole()))
 
     def test_eval_greater_equal_on_non_bool_raises_type_error(self) -> None:
         ast = Binop(BinopKind.GREATER_EQUAL, String("xyz"), Int(4))
@@ -2981,18 +3146,30 @@ class EvalTests(unittest.TestCase):
             eval_exp({}, ast)
 
     def test_boolean_and_evaluates_args(self) -> None:
-        ast = Binop(BinopKind.BOOL_AND, Symbol("true"), Var("a"))
-        self.assertEqual(eval_exp({"a": Symbol("false")}, ast), Symbol("false"))
+        ast = Binop(BinopKind.BOOL_AND, Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()), Var("a"))
+        self.assertEqual(
+            eval_exp({"a": Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole())}, ast),
+            Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole()),
+        )
 
-        ast = Binop(BinopKind.BOOL_AND, Var("a"), Symbol("false"))
-        self.assertEqual(eval_exp({"a": Symbol("true")}, ast), Symbol("false"))
+        ast = Binop(BinopKind.BOOL_AND, Var("a"), Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole()))
+        self.assertEqual(
+            eval_exp({"a": Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole())}, ast),
+            Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole()),
+        )
 
     def test_boolean_or_evaluates_args(self) -> None:
-        ast = Binop(BinopKind.BOOL_OR, Symbol("false"), Var("a"))
-        self.assertEqual(eval_exp({"a": Symbol("true")}, ast), Symbol("true"))
+        ast = Binop(BinopKind.BOOL_OR, Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole()), Var("a"))
+        self.assertEqual(
+            eval_exp({"a": Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole())}, ast),
+            Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()),
+        )
 
-        ast = Binop(BinopKind.BOOL_OR, Var("a"), Symbol("true"))
-        self.assertEqual(eval_exp({"a": Symbol("false")}, ast), Symbol("true"))
+        ast = Binop(BinopKind.BOOL_OR, Var("a"), Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()))
+        self.assertEqual(
+            eval_exp({"a": Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole())}, ast),
+            Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()),
+        )
 
     def test_boolean_and_short_circuit(self) -> None:
         def raise_func(message: Object) -> Object:
@@ -3002,8 +3179,8 @@ class EvalTests(unittest.TestCase):
 
         error = NativeFunction("error", raise_func)
         apply = Apply(Var("error"), String("expected failure"))
-        ast = Binop(BinopKind.BOOL_AND, Symbol("false"), apply)
-        self.assertEqual(eval_exp({"error": error}, ast), Symbol("false"))
+        ast = Binop(BinopKind.BOOL_AND, Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole()), apply)
+        self.assertEqual(eval_exp({"error": error}, ast), Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole()))
 
     def test_boolean_or_short_circuit(self) -> None:
         def raise_func(message: Object) -> Object:
@@ -3013,17 +3190,17 @@ class EvalTests(unittest.TestCase):
 
         error = NativeFunction("error", raise_func)
         apply = Apply(Var("error"), String("expected failure"))
-        ast = Binop(BinopKind.BOOL_OR, Symbol("true"), apply)
-        self.assertEqual(eval_exp({"error": error}, ast), Symbol("true"))
+        ast = Binop(BinopKind.BOOL_OR, Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()), apply)
+        self.assertEqual(eval_exp({"error": error}, ast), Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()))
 
     def test_boolean_and_on_int_raises_type_error(self) -> None:
         exp = Binop(BinopKind.BOOL_AND, Int(1), Int(2))
-        with self.assertRaisesRegex(TypeError, re.escape("expected #true or #false, got Int")):
+        with self.assertRaisesRegex(TypeError, re.escape("expected true or false, got Int")):
             eval_exp({}, exp)
 
     def test_boolean_or_on_int_raises_type_error(self) -> None:
         exp = Binop(BinopKind.BOOL_OR, Int(1), Int(2))
-        with self.assertRaisesRegex(TypeError, re.escape("expected #true or #false, got Int")):
+        with self.assertRaisesRegex(TypeError, re.escape("expected true or false, got Int")):
             eval_exp({}, exp)
 
     def test_eval_record_with_spread_fails(self) -> None:
@@ -3031,8 +3208,8 @@ class EvalTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "cannot evaluate a spread"):
             eval_exp({}, exp)
 
-    def test_eval_symbol_returns_symbol(self) -> None:
-        self.assertEqual(eval_exp({}, Symbol("abc")), Symbol("abc"))
+    def test_eval_tags_returns_tags(self) -> None:
+        self.assertEqual(eval_exp({}, Tags({"abc": Hole()})), Tags({"abc": Hole()}))
 
     def test_eval_float_and_float_addition_returns_float(self) -> None:
         self.assertEqual(eval_exp({}, Binop(BinopKind.ADD, Float(1.0), Float(2.0))), Float(3.0))
@@ -3428,17 +3605,20 @@ class EndToEndTests(EndToEndTestsBase):
     def test_exp_binds_tighter_than_mul(self) -> None:
         self.assertEqual(self._run("5 * 2 ^ 3"), Int(40))
 
-    def test_symbol_true_returns_true(self) -> None:
-        self.assertEqual(self._run("# true", {}), Symbol("true"))
+    def test_tag_true_returns_true(self) -> None:
+        self.assertEqual(self._run("bool :: true ()", {}), Tag(Var("bool"), "true", Hole()))
 
-    def test_symbol_false_returns_false(self) -> None:
-        self.assertEqual(self._run("#false", {}), Symbol("false"))
+    def test_tags_return_tags(self) -> None:
+        self.assertEqual(self._run("#a () #b ()", {}), Tags({"a": Hole(), "b": Hole()}))
 
     def test_boolean_and_binds_tighter_than_or(self) -> None:
-        self.assertEqual(self._run("#true || #true && boom", {}), Symbol("true"))
+        self.assertEqual(
+            self._run("true || false && boom", {"true": make_bool(True), "false": make_bool(False)}),
+            Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()),
+        )
 
     def test_compare_binds_tighter_than_boolean_and(self) -> None:
-        self.assertEqual(self._run("1 < 2 && 2 < 1"), Symbol("false"))
+        self.assertEqual(self._run("1 < 2 && 2 < 1"), Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole()))
 
     def test_match_list_spread(self) -> None:
         self.assertEqual(
@@ -3480,17 +3660,181 @@ class EndToEndTests(EndToEndTestsBase):
             Int(4),
         )
 
-    def test_match_expr_as_boolean_symbols(self) -> None:
+    def test_match_expr_as_boolean_tags(self) -> None:
         self.assertEqual(
             self._run(
                 """
         say (1 < 2)
         . say =
-          | #false -> "oh no"
-          | #true -> "omg"
+          | #false () -> "oh no"
+          | #true () -> "omg"
         """
             ),
             String("omg"),
+        )
+
+    def test_tags_with_extra_args(self) -> None:
+        with self.assertRaisesRegex(TypeError, "attempted to apply a non-closure"):
+            self._run("#a $$int $$int #b $$int")
+
+    def test_tags_with_extra_args_trailing(self) -> None:
+        with self.assertRaisesRegex(TypeError, "attempted to apply a non-closure"):
+            self._run("#a $$int #b $$int $$int")
+
+    @unittest.skip("TODO")
+    def test_tags_with_generics(self) -> None:
+        self.assertEqual(
+            self._run("#a list int #b list int"),
+            Tags({"a": Apply(Var("list"), Var("int")), "b": Apply(Var("list"), Var("int"))}),
+        )
+
+    @unittest.skip("TODO")
+    def test_tag_value_arg(self) -> None:
+        with self.assertRaisesRegex(ParseError, "TODO"):
+            self._run("#a 1")
+
+    def test_tag_function_identity(self) -> None:
+        self.assertEqual(self._run("|#a () -> 1"), Closure({}, MatchFunction([MatchCase(Tags({"a": Hole()}), Int(1))])))
+
+    def test_tags_identity(self) -> None:
+        self.assertEqual(
+            self._run("#abc $$int #def $$int"), Tags(value={"abc": Var(name="$$int"), "def": Var(name="$$int")})
+        )
+
+    def test_tag_type_assignment(self) -> None:
+        self.assertEqual(self._run("#a $$int"), Tags({"a": Var("$$int")}))
+
+    def test_tag_type_assignment_hole(self) -> None:
+        self.assertEqual(self._run("t . t : #a ()"), Tags({"a": Hole()}))
+
+    @unittest.skip("TODO")
+    def test_tag_assign_type_to_value(self) -> None:
+        with self.assertRaisesRegex(ParseError, "TODO"):
+            self._run("t . t = #a $$int")
+
+    @unittest.skip("TODO")
+    def test_tag_type_equality(self) -> None:
+        with self.assertRaisesRegex(ParseError, "TODO"):
+            self._run("#a $$int == #a $$int")
+
+    def test_tagger_with_left_parens(self) -> None:
+        self.assertEqual(self._run("(a)::b"), Tagger(Var("a"), "b"))
+
+    @unittest.skip("TODO")
+    def test_tagger_with_right_parens(self) -> None:
+        with self.assertRaisesRegex(ParseError, "TODO"):
+            self._run("a::(b)")
+
+    def test_tagger_with_var_arg(self) -> None:
+        self.assertEqual(
+            tokenize("a::b x . x = 1"),
+            [Name("a"), Operator("::"), Name("b"), Name("x"), Operator("."), Name("x"), Operator("="), IntLit(1)],
+        )
+
+    def test_tagger_with_literal_arg(self) -> None:
+        self.assertEqual(
+            tokenize("a::b 1"),
+            [Name("a"), Operator("::"), Name("b"), IntLit(1)],
+        )
+
+    @unittest.skip("TODO")
+    def test_tagger_with_typed_assignment(self) -> None:
+        self.assertEqual(self._run("a . a : t = b::c . b : #c ()"), Tagger(Var("b"), "c"))
+
+    def test_tagger_identity_with_arg(self) -> None:
+        self.assertEqual(self._run("(#a $$int)::a 1"), Tag(Tags({"a": Var("$$int")}), "a", Int(1)))
+
+    def test_tagger_identity_no_arg(self) -> None:
+        self.assertEqual(self._run("(#a $$int)::a"), Tagger(Tags({"a": Var("$$int")}), "a"))
+
+    def test_tagger_identity_var(self) -> None:
+        self.assertEqual(self._run("t::a 1 . t : #a $$int"), Tag(Var("t"), "a", Int(1)))
+
+    def test_tagger_match_first(self) -> None:
+        self.assertEqual(self._run("(#a $$int #b $$int)::a 1 |> | #a n -> n | #b n -> n"), Int(1))
+
+    def test_tagger_match_second(self) -> None:
+        self.assertEqual(self._run("(#a $$int #b $$int)::b 2 |> | #a n -> n | #b n -> n"), Int(2))
+
+    def test_tagger_nested_piped(self) -> None:
+        self.assertEqual(self._run("2 |> t::a |> (#b t)::b |> | #b (#a n) -> n . t : #a $$int"), Int(2))
+
+    @unittest.skip("TODO")
+    def test_tagger_nested_composed(self) -> None:
+        self.assertEqual(self._run("2 |> (t::a >> (#b t)::b) |> | #b (#a n) -> n . t : #a $$int"), Int(2))
+
+    def test_tagger_mismatch(self) -> None:
+        self.assertEqual(self._run("t::b 1 . t : #a $$int"), Tag(Var("t"), "b", Int(1)))
+
+    def test_tagger_mismatch_no_arg(self) -> None:
+        self.assertEqual(self._run("t::b . t : #a $$int"), Tagger(Var("t"), "b"))
+
+    @unittest.skip("TODO")
+    def test_tagger_no_arg(self) -> None:
+        self.assertEqual(self._run("t::a . t : #a $$int"), Tagger(Tags({"a": Var("$$int")}), "a"))
+
+    def test_tagger_match_function_arg(self) -> None:
+        self.assertEqual(self._run("(#a $$int)::a 1 |> | #a n -> n"), Int(1))
+
+    def test_tagger_match_function_hole(self) -> None:
+        self.assertEqual(self._run("(#a ())::a () |> | #a () -> 123"), Int(123))
+
+    def test_tagger_match_function_hole_mismatch(self) -> None:
+        with self.assertRaisesRegex(MatchError, "no matching cases"):
+            self._run("(#a $$int)::a 1 |> | #a () -> 123")
+
+    def test_tagger_match_function_application(self) -> None:
+        self.assertEqual(self._run("f ((#a $$int)::a 456) . f = | #a n -> n"), Int(456))
+
+    def test_tagger_assign_value_to_type(self) -> None:
+        # TODO: This should fail!
+        self.assertEqual(self._run("t . t : #a 789"), Tags(value={"a": Int(value=789)}))
+
+    def test_tagger_mismatch_tag_name(self) -> None:
+        with self.assertRaisesRegex(MatchError, "no matching cases"):
+            self._run("(#a ())::a 1 |> | #b n -> n")
+
+    def test_tagger_equality(self) -> None:
+        self.assertEqual(self._run("(#a $$int)::a 1 == (#a $$int)::a 1"), make_bool(True))
+
+    def test_tagger_inequality(self) -> None:
+        self.assertEqual(self._run("(#a $$int)::a 1 == (#b $$int)::b 1"), make_bool(False))
+
+    def test_tagger_superset_inequality(self) -> None:
+        self.assertEqual(self._run("(#a $$int)::a 1 == (#a $$int #b $$int)::a 1"), make_bool(False))
+
+    def test_tagger_recursive(self) -> None:
+        self.assertEqual(
+            self._run(
+                # TODO: "sum (t::cons { head = 3, rest = t::cons { head = 4, rest = t::nil () }}) . sum = | #nil () -> 0 | #cons { head = head, rest = rest } -> head + sum rest . t : a => #nil () #cons { head : a, rest : t a }"
+                "sum (t::cons { head = 3, rest = t::cons { head = 4, rest = t::nil () }}) . sum = | #nil () -> 0 | #cons { head = head, rest = rest } -> head + sum rest . t : #nil () #cons {}"
+            ),
+            Int(7),
+        )
+
+    @unittest.skip("TODO")
+    def test_tagger_assign_typed_record_value_to_value(self) -> None:
+        self.assertEqual(self._run("x . x = (#a {})::a { b : $$int = 1 }"), "_")
+
+    @unittest.skip("TODO")
+    def test_type_record(self) -> None:
+        self.assertEqual(
+            self._run("t . t : { x : $$int }"),
+            Record({"x": Var("$$int")}),
+        )
+
+    @unittest.skip("TODO")
+    def test_type_generic_record(self) -> None:
+        self.assertEqual(
+            self._run("t . t : a => { head : a, rest : t a }"),
+            "TODO",
+        )
+
+    @unittest.skip("TODO")
+    def test_type_generic_recursive_record(self) -> None:
+        self.assertEqual(
+            self._run("t::nil () . t : a => #nil () #cons { head : a, rest : t a }"),
+            Tag(Var("t"), "nil", Hole()),
         )
 
 
@@ -3521,8 +3865,8 @@ class ClosureOptimizeTests(unittest.TestCase):
     def test_nativefunction(self) -> None:
         self.assertEqual(free_in(NativeFunction("id", lambda x: x)), set())
 
-    def test_symbol(self) -> None:
-        self.assertEqual(free_in(Symbol("x")), set())
+    def test_tag(self) -> None:
+        self.assertEqual(free_in(Tag(Tags({"x": Hole()}), "x", Hole())), set())
 
     def test_var(self) -> None:
         self.assertEqual(free_in(Var("x")), {"x"})
@@ -3670,7 +4014,7 @@ class PreludeTests(EndToEndTestsBase):
         with self.assertRaises(MatchError):
             self._run(
                 """
-        filter (x -> #no) [1]
+        filter (x -> _::no ()) [1]
         """
             )
 
@@ -3841,7 +4185,7 @@ class PreludeTests(EndToEndTestsBase):
         all (x -> x < 5) [1, 2, 3, 4]
         """
             ),
-            Symbol("true"),
+            Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()),
         )
 
     def test_all_returns_false(self) -> None:
@@ -3851,7 +4195,7 @@ class PreludeTests(EndToEndTestsBase):
         all (x -> x < 5) [2, 4, 6]
         """
             ),
-            Symbol("false"),
+            Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole()),
         )
 
     def test_all_with_empty_list_returns_true(self) -> None:
@@ -3861,7 +4205,7 @@ class PreludeTests(EndToEndTestsBase):
         all (x -> x == 5) []
         """
             ),
-            Symbol("true"),
+            Tag(Var("bool"), "true", Hole()),
         )
 
     def test_all_with_non_bool_raises_type_error(self) -> None:
@@ -3879,7 +4223,7 @@ class PreludeTests(EndToEndTestsBase):
         all (x -> x > 1) [1, "a", "b"]
         """
             ),
-            Symbol("false"),
+            Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole()),
         )
 
     def test_any_returns_true(self) -> None:
@@ -3889,7 +4233,7 @@ class PreludeTests(EndToEndTestsBase):
         any (x -> x < 4) [1, 3, 5]
         """
             ),
-            Symbol("true"),
+            Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()),
         )
 
     def test_any_returns_false(self) -> None:
@@ -3899,7 +4243,7 @@ class PreludeTests(EndToEndTestsBase):
         any (x -> x < 3) [4, 5, 6]
         """
             ),
-            Symbol("false"),
+            Tag(Tags({"true": Hole(), "false": Hole()}), "false", Hole()),
         )
 
     def test_any_with_empty_list_returns_false(self) -> None:
@@ -3909,7 +4253,7 @@ class PreludeTests(EndToEndTestsBase):
         any (x -> x == 5) []
         """
             ),
-            Symbol("false"),
+            Tag(Var("bool"), "false", Hole()),
         )
 
     def test_any_with_non_bool_raises_type_error(self) -> None:
@@ -3927,7 +4271,7 @@ class PreludeTests(EndToEndTestsBase):
         any (x -> x > 1) [2, "a", "b"]
         """
             ),
-            Symbol("true"),
+            Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()),
         )
 
 
@@ -4009,9 +4353,21 @@ class ObjectSerializeTests(unittest.TestCase):
         obj = Var("abc")
         self.assertEqual(obj.serialize(), {"type": "Var", "name": "abc"})
 
-    def test_serialize_symbol(self) -> None:
-        obj = Symbol("true")
-        self.assertEqual(obj.serialize(), {"type": "Symbol", "value": "true"})
+    def test_serialize_hole(self) -> None:
+        obj = Hole()
+        self.assertEqual(obj.serialize(), {"type": "Hole"})
+
+    def test_serialize_tag(self) -> None:
+        obj = Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole())
+        self.assertEqual(
+            obj.serialize(),
+            {
+                "type": "Tag",
+                "of": {"type": "Tags", "value": {"false": {"type": "Hole"}, "true": {"type": "Hole"}}},
+                "name": "true",
+                "value": {"type": "Hole"},
+            },
+        )
 
     def test_serialize_binary_add(self) -> None:
         obj = Binop(BinopKind.ADD, Int(123), Int(456))
@@ -4109,9 +4465,19 @@ class ObjectDeserializeTests(unittest.TestCase):
         msg = {"type": "Var", "name": "abc"}
         self.assertEqual(Object.deserialize(msg), Var("abc"))
 
-    def test_deserialize_symbol(self) -> None:
-        msg = {"type": "Symbol", "value": "abc"}
-        self.assertEqual(Object.deserialize(msg), Symbol("abc"))
+    def test_deserialize_hole(self) -> None:
+        msg = {"type": "Hole"}
+        self.assertEqual(Object.deserialize(msg), Hole())
+
+    @unittest.skip("TODO: Deserialize")
+    def test_deserialize_tag(self) -> None:
+        msg = {
+            "type": "Tag",
+            "of": {"type": "Tags", "value": {"false": {"type": "Hole"}, "true": {"type": "Hole"}}},
+            "name": "abc",
+            "value": {"type": "Hole"},
+        }
+        self.assertEqual(Object.deserialize(msg), Tag(Hole(), "abc", Hole()))
 
     def test_deserialize_binary_add(self) -> None:
         msg = {
@@ -4192,9 +4558,12 @@ class SerializeTests(unittest.TestCase):
         obj = Var("abc")
         self.assertEqual(serialize(obj), b"d4:name3:abc4:type3:Vare")
 
-    def test_serialize_symbol(self) -> None:
-        obj = Symbol("abcd")
-        self.assertEqual(serialize(obj), b"d4:type6:Symbol5:value4:abcde")
+    def test_serialize_tag(self) -> None:
+        obj = Tag(Tags({"abcd": Hole()}), "abcd", Hole())
+        self.assertEqual(
+            serialize(obj),
+            b"d4:name4:abcd2:ofd4:type4:Tags5:valued4:abcdd4:type4:Holeeee4:type3:Tag5:valued4:type4:Holeee",
+        )
 
     def test_serialize_function(self) -> None:
         obj = Function(Var("x"), Binop(BinopKind.ADD, Int(1), Var("x")))
@@ -4303,8 +4672,11 @@ class PrettyPrintTests(unittest.TestCase):
         )
 
     def test_pretty_print_assert(self) -> None:
-        obj = Assert(Int(123), Symbol("true"))
-        self.assertEqual(str(obj), "Assert(value=Int(value=123), cond=Symbol(value='true'))")
+        obj = Assert(Int(123), Tag(Tags({"true": Hole(), "false": Hole()}), "true", Hole()))
+        self.assertEqual(
+            str(obj),
+            "Assert(value=Int(value=123), cond=Tag(of=Tags(value={'true': Hole(), 'false': Hole()}), name='true', value=Hole()))",
+        )
 
     def test_pretty_print_envobject(self) -> None:
         obj = EnvObject({"x": Int(1)})
@@ -4340,9 +4712,17 @@ class PrettyPrintTests(unittest.TestCase):
         obj = Access(Record({"a": Int(4)}), Var("a"))
         self.assertEqual(str(obj), "Access(obj=Record(data={'a': Int(value=4)}), at=Var(name='a'))")
 
-    def test_pretty_print_symbol(self) -> None:
-        obj = Symbol("x")
-        self.assertEqual(str(obj), "#x")
+    def test_pretty_print_tags(self) -> None:
+        obj = Tags({"a": Hole(), "b": Hole()})
+        self.assertEqual(str(obj), "#a () #b ()")
+
+    def test_pretty_print_tagger(self) -> None:
+        obj = Tagger(Tags({"abc": Hole()}), "abc")
+        self.assertEqual(str(obj), "(#abc ())::abc")
+
+    def test_pretty_print_tag(self) -> None:
+        obj = Tag(Tags({"abc": Hole()}), "abc", Hole())
+        self.assertEqual(str(obj), "(#abc ())::abc ()")
 
 
 def fetch(url: Object) -> Object:
@@ -4387,6 +4767,7 @@ STDLIB = {
     "$$jsondecode": NativeFunction("$$jsondecode", jsondecode),
     "$$serialize": NativeFunction("$$serialize", lambda obj: Bytes(serialize(obj))),
     "$$listlength": NativeFunction("$$listlength", listlength),
+    "$$int": Var("$$int"),
 }
 
 
@@ -4401,8 +4782,8 @@ id = x -> x
 
 . filter = f ->
   | [] -> []
-  | [x, ...xs] -> f x |> | #true -> x >+ filter f xs
-                         | #false -> filter f xs
+  | [x, ...xs] -> f x |> | #true () -> x >+ filter f xs
+                         | #false () -> filter f xs
 
 . concat = xs ->
   | [] -> xs
@@ -4427,12 +4808,18 @@ id = x -> x
     | [x, ...xs] -> x >+ take (n - 1) xs
 
 . all = f ->
-  | [] -> #true
+  | [] -> true
   | [x, ...xs] -> f x && all f xs
 
 . any = f ->
-  | [] -> #false
+  | [] -> false
   | [x, ...xs] -> f x || any f xs
+
+. true = bool::true ()
+
+. false = bool::false ()
+
+. bool = #true () #false ()
 """
 
 

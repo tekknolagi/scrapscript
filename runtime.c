@@ -5,6 +5,7 @@
 #include <sys/mman.h>
 #include <string.h>
 #include <stdio.h>
+#include <assert.h>
 
 struct gc_obj {
   union {
@@ -119,6 +120,7 @@ retry:
 enum {
   TAG_CONS = 1,
   TAG_NUM = 3,
+  TAG_LIST = 5,
 };
 
 struct num {
@@ -130,6 +132,12 @@ struct cons {
   struct gc_obj HEAD;
   struct gc_obj *car;
   struct gc_obj *cdr;
+};
+
+struct list {
+  struct gc_obj HEAD;
+  size_t size;
+  struct gc_obj* items[];
 };
 
 size_t heap_object_size(struct gc_obj *obj) {
@@ -174,6 +182,24 @@ struct gc_obj* mkcons(struct gc_heap *heap, struct gc_obj *car, struct gc_obj *c
   obj->car = car;
   obj->cdr = cdr;
   return (struct gc_obj*)obj;
+}
+
+struct gc_obj* mklist(struct gc_heap *heap, int n) {
+  assert(n >= 0);
+  // TODO(max): Return canonical empty list
+  struct list *obj = (struct list*)allocate(heap, sizeof *obj + n * sizeof(struct gc_obj*));
+  obj->HEAD.tag = TAG_LIST;
+  obj->size = n;
+  // Assumes the items will be filled in immediately after calling mklist so
+  // they are not initialized
+  return (struct gc_obj*)obj;
+}
+
+void list_set(struct gc_obj *list, size_t i, struct gc_obj *item) {
+  assert(list->tag == TAG_LIST);
+  struct list *l = (struct list*)list;
+  assert(i < l->size);
+  l->items[i] = item;
 }
 
 struct handles {

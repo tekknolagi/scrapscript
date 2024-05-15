@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from scrapscript import Object, Binop, Int, String, BinopKind, parse, tokenize, Where, Assign, Var, Apply
+from scrapscript import Object, Binop, Int, String, BinopKind, parse, tokenize, Where, Assign, Var, Apply, List
 
 Env = dict[str, str]
 
@@ -55,6 +55,13 @@ class Compiler:
             arg = self.compile(env, exp.arg)
             return self._mktemp(f"{callee}({arg})")
             raise NotImplementedError(f"apply {type(callee)} {callee}")
+        if isinstance(exp, List):
+            num_items = len(exp.items)
+            items = [self.compile(env, item) for item in exp.items]
+            result = self._mktemp(f"mklist(heap, {num_items})")
+            for i, item in enumerate(items):
+                self.code.append(f"list_set({result}, {i}, {item});")
+            return result
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 
 
@@ -66,6 +73,7 @@ print (d*2)
 . a = 1
 . b = 2
 . c = 3
+. l = [1, 2, 3]
 . print = runtime "print"
 """
     )

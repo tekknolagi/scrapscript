@@ -98,6 +98,7 @@ void collect(struct gc_heap *heap) {
 
 static inline struct gc_obj* allocate(struct gc_heap *heap, size_t size) {
 retry:
+  0; // label followed by declaration is C23; this is a workaround
   uintptr_t addr = heap->hp;
   uintptr_t new_hp = align_size(addr + size);
   if (heap->limit < new_hp) {
@@ -176,7 +177,9 @@ struct gc_obj* mkcons(struct gc_heap *heap, struct gc_obj *car, struct gc_obj *c
 }
 
 struct handles {
-  struct gc_obj** stack[10];
+  // TODO(max): Figure out how to make this a flat linked list with whole
+  // chunks popped off at function return
+  struct gc_obj** stack[20];
   size_t stack_pointer;
   struct handles* next;
 };

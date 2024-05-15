@@ -33,9 +33,9 @@ size_t heap_object_size(struct gc_obj *obj);
 size_t trace_heap_object(struct gc_obj *obj, struct gc_heap *heap,
                          void (*visit)(struct gc_obj **field,
                                        struct gc_heap *heap));
-size_t trace_roots(struct gc_heap *heap,
-                   void (*visit)(struct gc_obj **field,
-                                 struct gc_heap *heap));
+void trace_roots(struct gc_heap *heap,
+                 void (*visit)(struct gc_obj **field,
+                               struct gc_heap *heap));
 
 struct gc_heap {
   uintptr_t hp;
@@ -193,9 +193,9 @@ void pop_handles(void* local_handles) {
 #define END_HANDLES() handles = local_handles.next
 #define GC_HANDLE(type, name, val) type name = val; GC_PROTECT(name)
 
-size_t trace_roots(struct gc_heap *heap,
-                   void (*visit)(struct gc_obj **field,
-                                 struct gc_heap *heap)) {
+void trace_roots(struct gc_heap *heap,
+                 void (*visit)(struct gc_obj **field,
+                               struct gc_heap *heap)) {
   for (struct handles *h = handles; h; h = h->next) {
     for (size_t i = 0; i < h->stack_pointer; i++) {
       visit(h->stack[i], heap);

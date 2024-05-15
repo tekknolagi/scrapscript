@@ -90,6 +90,7 @@ def main() -> None:
         print("heap = make_heap(1024);", file=f)
         for line in compiler.code:
             print(line, file=f)
+        print("destroy_heap(heap);", file=f)
         print("}", file=f)
 
 

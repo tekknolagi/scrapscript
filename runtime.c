@@ -64,6 +64,11 @@ static struct gc_heap* make_heap(size_t size) {
   return heap;
 }
 
+void destroy_heap(struct gc_heap *heap) {
+  munmap((void*)heap->to_space, heap->size);
+  free(heap);
+}
+
 struct gc_obj* copy(struct gc_heap *heap, struct gc_obj *obj) {
   size_t size = heap_object_size(obj);
   struct gc_obj *new_obj = (struct gc_obj*)heap->hp;

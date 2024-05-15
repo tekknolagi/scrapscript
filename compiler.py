@@ -69,11 +69,10 @@ program = parse(
     tokenize(
         """
 println l
-. d = a + b + c
+. l = [a, b, c, a + b + c]
 . a = 1
 . b = 2
 . c = 3
-. l = [1, 2, 3]
 . print = runtime "print"
 . println = runtime "println"
 """

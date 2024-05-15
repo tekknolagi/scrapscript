@@ -68,13 +68,14 @@ class Compiler:
 program = parse(
     tokenize(
         """
-print (d*2)
+println l
 . d = a + b + c
 . a = 1
 . b = 2
 . c = 3
 . l = [1, 2, 3]
 . print = runtime "print"
+. println = runtime "println"
 """
     )
 )

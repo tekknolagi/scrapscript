@@ -254,17 +254,17 @@ struct gc_obj* num_mul(struct gc_obj *a, struct gc_obj *b) {
 struct gc_obj* print(struct gc_obj *obj) {
   if (obj->tag == TAG_NUM) {
     struct num *num = (struct num*)obj;
-    fprintf(stdout, "%d", num->value);
+    printf("%d", num->value);
   } else if (obj->tag == TAG_LIST) {
     struct list *list = (struct list*)obj;
-    fprintf(stdout, "[");
+    printf("[");
     for (size_t i = 0; i < list->size; i++) {
       print(list->items[i]);
       if (i + 1 < list->size) {
-        fprintf(stdout, ", ");
+        printf(", ");
       }
     }
-    fprintf(stdout, "]");
+    printf("]");
   } else {
     fprintf(stderr, "unknown tag: %lu\n", obj->tag);
     abort();
@@ -274,6 +274,6 @@ struct gc_obj* print(struct gc_obj *obj) {
 
 struct gc_obj* println(struct gc_obj *obj) {
   print(obj);
-  fprintf(stdout, "\n");
+  printf("\n");
   return obj;
 }

@@ -1,4 +1,5 @@
-from scrapscript import Object, Binop, Int, BinopKind, parse, tokenize, Where, Assign, Var
+from dataclasses import dataclass
+from scrapscript import Object, Binop, Int, String, BinopKind, parse, tokenize, Where, Assign, Var, Apply
 
 Env = dict[str, str]
 
@@ -45,13 +46,35 @@ class Compiler:
             if value is None:
                 raise NameError(f"name '{exp.name}' is not defined")
             return value
+        if isinstance(exp, Apply):
+            if isinstance(exp.func, Var):
+                if exp.func.name == "runtime":
+                    assert isinstance(exp.arg, String)
+                    return exp.arg.value
+            callee = self.compile(env, exp.func)
+            arg = self.compile(env, exp.arg)
+            return self._mktemp(f"{callee}({arg})")
+            raise NotImplementedError(f"apply {type(callee)} {callee}")
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 
 
+program = parse(
+    tokenize(
+        """
+print (d*2)
+. d = a + b + c
+. a = 1
+. b = 2
+. c = 3
+. print = runtime "print"
+"""
+    )
+)
+
+
 def main() -> None:
-    exp = parse(tokenize("d*2 . d = a + b + c . a = 1 . b = 2 . c = 3"))
     compiler = Compiler()
-    compiler.compile({}, exp)
+    compiler.compile({}, program)
     with open("output.c", "w") as f:
         print('#include "runtime.c"\n', file=f)
         print("int main() {", file=f)

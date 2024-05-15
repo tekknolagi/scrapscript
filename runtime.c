@@ -211,18 +211,19 @@ struct gc_obj* num_add(struct gc_obj *a, struct gc_obj *b) {
   return mknum(heap, num_a->value + num_b->value);
 }
 
-// int main() {
-//   HANDLES();
-//   struct gc_heap *heap = make_heap(1024);
-//   GC_HANDLE(struct gc_obj*, num3, mknum(heap, 3));
-//   fprintf(stderr, "num3: %p with size 0x%lx\n", num3, heap_object_size(num3));
-//   GC_HANDLE(struct gc_obj*, num4, mknum(heap, 4));
-//   fprintf(stderr, "num4: %p with size 0x%lx\n", num4, heap_object_size(num4));
-//   GC_HANDLE(struct gc_obj*, obj, mkcons(heap, num3, num4));
-//   fprintf(stderr, "obj: %p with size 0x%lx\n", obj, heap_object_size(obj));
-//   fprintf(stderr, "COLLECTING\n");
-//   collect(heap);
-//   fprintf(stderr, "num3: %p with size 0x%lx\n", num3, heap_object_size(num3));
-//   fprintf(stderr, "num4: %p with size 0x%lx\n", num4, heap_object_size(num4));
-//   return 0;
-// }
+struct gc_obj* num_mul(struct gc_obj *a, struct gc_obj *b) {
+  struct num *num_a = (struct num*)a;
+  struct num *num_b = (struct num*)b;
+  return mknum(heap, num_a->value * num_b->value);
+}
+
+struct gc_obj* print(struct gc_obj *obj) {
+  if (obj->tag == TAG_NUM) {
+    struct num *num = (struct num*)obj;
+    fprintf(stdout, "%d\n", num->value);
+  } else {
+    fprintf(stderr, "unknown tag: %lu\n", obj->tag);
+    abort();
+  }
+  return obj;
+}

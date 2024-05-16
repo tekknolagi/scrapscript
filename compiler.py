@@ -24,9 +24,8 @@ fn_counter = itertools.count()
 
 
 @dataclasses.dataclass
-class Closure:
+class CompiledFunction:
     id: int = dataclasses.field(default=0, init=False, compare=False, hash=False)
-    name: str
     params: list[str]
     fields: list[str] = dataclasses.field(default_factory=list)
     code: list[str] = dataclasses.field(default_factory=list)
@@ -35,16 +34,19 @@ class Closure:
         self.id = next(fn_counter)
         self.code.append("HANDLES();")
 
+    def name(self) -> str:
+        return f"fn_{self.id}"
+
     def decl(self) -> str:
         args = ", ".join(f"struct gc_obj* {arg}" for arg in self.params)
-        return f"struct gc_obj* {self.name}({args})"
+        return f"struct gc_obj* {self.name()}({args})"
 
 
 class Compiler:
-    def __init__(self, main: Closure) -> None:
+    def __init__(self, main: CompiledFunction) -> None:
         self.gensym_counter: int = 0
-        self.functions: list[Closure] = [main]
-        self.function: Closure = main
+        self.functions: list[CompiledFunction] = [main]
+        self.function: CompiledFunction = main
 
     def gensym(self) -> str:
         self.gensym_counter += 1
@@ -92,7 +94,7 @@ class Compiler:
                     return exp.arg.value
             callee = self.compile(env, exp.func)
             arg = self.compile(env, exp.arg)
-            return self._mktemp(f"{callee}({arg})")
+            return self._mktemp(f"((struct closure*){callee})->fn({arg})")
             raise NotImplementedError(f"apply {type(callee)} {callee}")
         if isinstance(exp, List):
             num_items = len(exp.items)
@@ -102,17 +104,19 @@ class Compiler:
                 self._emit(f"list_set({result}, {i}, {item});")
             return result
         if isinstance(exp, Function):
-            fields = free_in(exp)
-            assert not fields
-            name = self.gensym()
+            fields = sorted(free_in(exp))
             assert isinstance(exp.arg, Var)
-            closure = Closure(name, params=[exp.arg.name], fields=sorted(fields))
-            self.functions.append(closure)
+            fn = CompiledFunction(params=[exp.arg.name], fields=fields)
+            self.functions.append(fn)
             cur = self.function
-            self.function = closure
+            self.function = fn
             val = self.compile({exp.arg.name: exp.arg.name}, exp.body)
-            closure.code.append(f"return {val};")
+            fn.code.append(f"return {val};")
             self.function = cur
+
+            name = self._mktemp(f"mkclosure(heap, {fn.name()}, {len(fields)})")
+            for i, field in enumerate(fields):
+                self._emit(f"closure_set({name}, {i}, {env[field]});")
             return name
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 
@@ -122,19 +126,24 @@ program = parse(
         """
 println l
 . l = [inc a, b, c, a + b + c]
+. inc = x -> x + 1
 . a = 1
 . b = 2
 . c = 3
 . print = runtime "print"
-. println = runtime "println"
-. inc = x -> x + 1
+. println = runtime "builtin_println"
 """
     )
 )
 
+BUILTINS = [
+    "print",
+    "println",
+]
+
 
 def main() -> None:
-    main = Closure("scrap_main", params=[])
+    main = CompiledFunction(params=[])
     compiler = Compiler(main)
     result = compiler.compile({}, program)
     main.code.append(f"return {result};")
@@ -143,6 +152,8 @@ def main() -> None:
         # Declare all functions
         for function in compiler.functions:
             print(function.decl() + ";", file=f)
+        for builtin in BUILTINS:
+            print(f"struct closure* builtin_{builtin} = NULL;", file=f)
         for function in compiler.functions:
             print(f"{function.decl()} {{", file=f)
             for line in function.code:
@@ -150,7 +161,11 @@ def main() -> None:
             print("}", file=f)
         print("int main() {", file=f)
         print("heap = make_heap(1024);", file=f)
-        print("scrap_main();", file=f)
+        print("HANDLES();", file=f)
+        for builtin in BUILTINS:
+            print(f"builtin_{builtin} = (struct closure*)mkclosure(heap, {builtin}, 0);", file=f)
+            print(f"GC_PROTECT(builtin_{builtin});", file=f)
+        print(f"{main.name()}();", file=f)
         print("destroy_heap(heap);", file=f)
         print("}", file=f)
 

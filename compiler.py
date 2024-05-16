@@ -42,6 +42,10 @@ class CompiledFunction:
         return f"struct gc_obj* {self.name()}({args})"
 
 
+# TODO(max): Only pass around handles, not raw pointers; arguments might be
+# moved at any time by collection
+
+
 class Compiler:
     def __init__(self, main: CompiledFunction) -> None:
         self.gensym_counter: int = 0

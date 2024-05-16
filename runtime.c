@@ -151,6 +151,8 @@ size_t heap_object_size(struct gc_obj *obj) {
     return sizeof(struct num);
   case TAG_CONS:
     return sizeof(struct cons);
+  case TAG_LIST:
+    return sizeof(struct list) + ((struct list*)obj)->size * sizeof(struct gc_obj*);
   default:
     fprintf(stderr, "unknown tag: %lu\n", obj->tag);
     abort();
@@ -166,6 +168,11 @@ size_t trace_heap_object(struct gc_obj *obj, struct gc_heap *heap,
   case TAG_CONS:
     visit(&((struct cons*)obj)->car, heap);
     visit(&((struct cons*)obj)->cdr, heap);
+    break;
+  case TAG_LIST:
+    for (size_t i = 0; i < ((struct list*)obj)->size; i++) {
+      visit(&((struct list*)obj)->items[i], heap);
+    }
     break;
   default:
     fprintf(stderr, "unknown tag: %lu\n", obj->tag);
@@ -189,12 +196,12 @@ struct gc_obj* mkcons(struct gc_heap *heap, struct gc_obj *car, struct gc_obj *c
   return (struct gc_obj*)obj;
 }
 
-struct gc_obj* mklist(struct gc_heap *heap, int n) {
-  assert(n >= 0);
+struct gc_obj* mklist(struct gc_heap *heap, size_t size) {
+  assert(size >= 0);
   // TODO(max): Return canonical empty list
-  struct list *obj = (struct list*)allocate(heap, sizeof *obj + n * sizeof(struct gc_obj*));
+  struct list *obj = (struct list*)allocate(heap, sizeof *obj + size * sizeof(struct gc_obj*));
   obj->HEAD.tag = TAG_LIST;
-  obj->size = n;
+  obj->size = size;
   // Assumes the items will be filled in immediately after calling mklist so
   // they are not initialized
   return (struct gc_obj*)obj;

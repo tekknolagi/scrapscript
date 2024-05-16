@@ -126,6 +126,7 @@ enum {
   TAG_CONS = 1,
   TAG_NUM = 3,
   TAG_LIST = 5,
+  TAG_CLOSURE = 7,
 };
 
 struct num {
@@ -145,6 +146,15 @@ struct list {
   struct gc_obj* items[];
 };
 
+// TODO(max): Figure out if there is a way to do a PyObject_HEAD version of
+// this where each closure actually has its own struct with named members
+struct closure {
+  struct gc_obj HEAD;
+  struct gc_obj* (*fn)(struct gc_obj*);
+  size_t size;
+  struct gc_obj* env[];
+};
+
 size_t heap_object_size(struct gc_obj *obj) {
   switch(obj->tag) {
   case TAG_NUM:
@@ -153,6 +163,8 @@ size_t heap_object_size(struct gc_obj *obj) {
     return sizeof(struct cons);
   case TAG_LIST:
     return sizeof(struct list) + ((struct list*)obj)->size * sizeof(struct gc_obj*);
+  case TAG_CLOSURE:
+    return sizeof(struct closure) + ((struct closure*)obj)->size * sizeof(struct gc_obj*);
   default:
     fprintf(stderr, "unknown tag: %lu\n", obj->tag);
     abort();
@@ -172,6 +184,11 @@ size_t trace_heap_object(struct gc_obj *obj, struct gc_heap *heap,
   case TAG_LIST:
     for (size_t i = 0; i < ((struct list*)obj)->size; i++) {
       visit(&((struct list*)obj)->items[i], heap);
+    }
+    break;
+  case TAG_CLOSURE:
+    for (size_t i = 0; i < ((struct closure*)obj)->size; i++) {
+      visit(&((struct closure*)obj)->env[i], heap);
     }
     break;
   default:
@@ -212,6 +229,30 @@ void list_set(struct gc_obj *list, size_t i, struct gc_obj *item) {
   struct list *l = (struct list*)list;
   assert(i < l->size);
   l->items[i] = item;
+}
+
+struct gc_obj* mkclosure(struct gc_heap* heap, struct gc_obj* (*fn)(struct gc_obj*), size_t size) {
+  struct closure *obj = (struct closure*)allocate(heap, sizeof *obj + size * sizeof(struct gc_obj*));
+  obj->HEAD.tag = TAG_CLOSURE;
+  obj->fn = fn;
+  obj->size = size;
+  // Assumes the items will be filled in immediately after calling mklist so
+  // they are not initialized
+  return (struct gc_obj*)obj;
+}
+
+void closure_set(struct gc_obj *closure, size_t i, struct gc_obj *item) {
+  assert(closure->tag == TAG_CLOSURE);
+  struct closure *c = (struct closure*)closure;
+  assert(i < c->size);
+  c->env[i] = item;
+}
+
+struct gc_obj* closure_get(struct gc_obj *closure, size_t i) {
+  assert(closure->tag == TAG_CLOSURE);
+  struct closure *c = (struct closure*)closure;
+  assert(i < c->size);
+  return c->env[i];
 }
 
 struct handles {

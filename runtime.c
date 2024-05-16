@@ -102,12 +102,16 @@ void collect(struct gc_heap *heap) {
   }
 }
 
-static inline struct gc_obj* allocate(struct gc_heap *heap, size_t size) {
+#define LIKELY(x) __builtin_expect(!!(x), 1)
+#define UNLIKELY(x) __builtin_expect(!!(x), 0)
+#define ALLOCATOR __attribute__((__malloc__))
+
+static inline ALLOCATOR struct gc_obj* allocate(struct gc_heap *heap, size_t size) {
 retry:
   0; // label followed by declaration is C23; this is a workaround
   uintptr_t addr = heap->hp;
   uintptr_t new_hp = align_size(addr + size);
-  if (heap->limit < new_hp) {
+  if (UNLIKELY(heap->limit < new_hp)) {
     collect(heap);
     if (heap->limit - heap->hp < size) {
       fprintf(stderr, "out of memory\n");

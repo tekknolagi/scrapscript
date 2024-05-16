@@ -103,6 +103,7 @@ class Compiler:
             return result
         if isinstance(exp, Function):
             fields = free_in(exp)
+            assert not fields
             name = self.gensym()
             assert isinstance(exp.arg, Var)
             closure = Closure(name, params=[exp.arg.name], fields=sorted(fields))

@@ -23,7 +23,6 @@ struct gc_obj* forwarded(struct gc_obj *obj) {
   return (struct gc_obj*)obj->tag;
 }
 void forward(struct gc_obj *from, struct gc_obj *to) {
-  fprintf(stderr, "forward: %p -> %p\n", from, to);
   assert(!is_forwarded(from));
   assert((((uintptr_t)to) & NOT_FORWARDED_BIT) == 0);
   from->tag = (uintptr_t)to;

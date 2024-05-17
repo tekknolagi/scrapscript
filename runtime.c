@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <assert.h>
+#include <stdbool.h>
 
 const int kPointerSize = sizeof(void*);
 
@@ -220,6 +221,10 @@ struct gc_obj* mknum(struct gc_heap *heap, int value) {
   obj->HEAD.tag = TAG_NUM;
   obj->value = value;
   return (struct gc_obj*)obj;
+}
+
+bool is_num(struct gc_obj* obj) {
+  return obj->tag == TAG_NUM;
 }
 
 struct gc_obj* mklist(struct gc_heap *heap, size_t size) {

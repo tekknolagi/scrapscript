@@ -8,6 +8,8 @@ from scrapscript import (
     Function,
     Int,
     List,
+    MatchCase,
+    MatchFunction,
     Object,
     String,
     Var,
@@ -74,6 +76,22 @@ class Compiler:
         value = self.compile(env, exp.value)
         return {**env, exp.name.name: value}
 
+    def make_closure(self, env: Env, fn: CompiledFunction) -> str:
+        name = self._mktemp(f"mkclosure(heap, {fn.name()}, {len(fn.fields)})")
+        for i, field in enumerate(fn.fields):
+            self._emit(f"closure_set({name}, {i}, {env[field]});")
+        self._debug("collect(heap);")
+        return name
+
+    def compile_case(self, env: Env, exp: MatchCase, arg: str) -> None:
+        # Only called from inside MatchFunction; has explicit early return
+        if not isinstance(exp.pattern, Int):
+            raise NotImplementedError("pattern {type(exp.pattern)}")
+        self._emit(f"if (is_num({arg}) && ((struct num*){arg})->value == {exp.pattern.value}) {{")
+        result = self.compile(env, exp.body)
+        self._emit(f"return {result};")
+        self._emit("}")
+
     def compile(self, env: Env, exp: Object) -> str:
         if isinstance(exp, Int):
             # TODO(max): Bignum
@@ -129,12 +147,24 @@ class Compiler:
             val = self.compile(funcenv, exp.body)
             fn.code.append(f"return {val};")
             self.function = cur
-
-            name = self._mktemp(f"mkclosure(heap, {fn.name()}, {len(fields)})")
+            return self.make_closure(env, fn)
+        if isinstance(exp, MatchFunction):
+            fields = sorted(free_in(exp))
+            arg = self.gensym()
+            fn = CompiledFunction(params=["this", arg], fields=fields)
+            self.functions.append(fn)
+            cur = self.function
+            self.function = fn
+            funcenv = {arg: arg}
             for i, field in enumerate(fields):
-                self._emit(f"closure_set({name}, {i}, {env[field]});")
-            self._debug("collect(heap);")
-            return name
+                funcenv[field] = self._mktemp(f"closure_get(this, {i})")
+            for case in exp.cases:
+                self.compile_case(funcenv, case, arg)
+            # TODO(max): (non-fatal?) exceptions
+            self._emit(r'fprintf(stderr, "no matching cases\n");')
+            self._emit("abort();")
+            self.function = cur
+            return self.make_closure(env, fn)
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 
 
@@ -142,8 +172,13 @@ program = parse(
     tokenize(
         """
 println (mklist 3 4)
-. mklist = x -> y -> [x, y]
+. mklist = x -> y -> [is_even x, is_even y]
 . println = runtime "builtin_println_wrapper"
+. is_even = | 0 -> 1
+            | 1 -> 0
+            | 2 -> 1
+            | 3 -> 0
+            | 4 -> 1
 """
     )
 )

@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <assert.h>
 
+const int kPointerSize = sizeof(void*);
+
 struct gc_obj {
   union {
     uintptr_t tag;
@@ -159,14 +161,18 @@ struct closure {
   struct gc_obj* env[];
 };
 
+size_t variable_size(size_t base, size_t count) {
+  return base + count * kPointerSize;
+}
+
 size_t heap_object_size(struct gc_obj *obj) {
   switch(obj->tag) {
   case TAG_NUM:
     return sizeof(struct num);
   case TAG_LIST:
-    return sizeof(struct list) + ((struct list*)obj)->size * sizeof(struct gc_obj*);
+    return variable_size(sizeof(struct list), ((struct list*)obj)->size);
   case TAG_CLOSURE:
-    return sizeof(struct closure) + ((struct closure*)obj)->size * sizeof(struct gc_obj*);
+    return variable_size(sizeof(struct closure), ((struct closure*)obj)->size);
   default:
     fprintf(stderr, "unknown tag: %lu\n", obj->tag);
     abort();
@@ -206,7 +212,7 @@ struct gc_obj* mknum(struct gc_heap *heap, int value) {
 struct gc_obj* mklist(struct gc_heap *heap, size_t size) {
   assert(size >= 0);
   // TODO(max): Return canonical empty list
-  struct list *obj = (struct list*)allocate(heap, sizeof *obj + size * sizeof(struct gc_obj*));
+  struct list *obj = (struct list*)allocate(heap, variable_size(sizeof *obj, size));
   obj->HEAD.tag = TAG_LIST;
   obj->size = size;
   // Assumes the items will be filled in immediately after calling mklist so
@@ -222,7 +228,7 @@ void list_set(struct gc_obj *list, size_t i, struct gc_obj *item) {
 }
 
 struct gc_obj* mkclosure(struct gc_heap* heap, ClosureFn fn, size_t size) {
-  struct closure *obj = (struct closure*)allocate(heap, sizeof *obj + size * sizeof(struct gc_obj*));
+  struct closure *obj = (struct closure*)allocate(heap, variable_size(sizeof *obj, size));
   obj->HEAD.tag = TAG_CLOSURE;
   obj->fn = fn;
   obj->size = size;

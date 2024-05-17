@@ -107,19 +107,29 @@ void collect(struct gc_heap *heap) {
 #define LIKELY(x) __builtin_expect(!!(x), 1)
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
 #define ALLOCATOR __attribute__((__malloc__))
+#define NEVER_INLINE __attribute__((noinline))
+
+static NEVER_INLINE ALLOCATOR struct gc_obj* allocate_slow_path(
+    struct gc_heap* heap,
+    size_t size
+) {
+  // size is already aligned
+  collect(heap);
+  if (UNLIKELY(heap->limit - heap->hp < size)) {
+    fprintf(stderr, "out of memory\n");
+    abort();
+  }
+  uintptr_t addr = heap->hp;
+  uintptr_t new_hp = align_size(addr + size);
+  heap->hp = new_hp;
+  return (struct gc_obj*)addr;
+}
 
 static inline ALLOCATOR struct gc_obj* allocate(struct gc_heap *heap, size_t size) {
-retry:
-  (void)0; // label followed by declaration is C23; this is a workaround
   uintptr_t addr = heap->hp;
   uintptr_t new_hp = align_size(addr + size);
   if (UNLIKELY(heap->limit < new_hp)) {
-    collect(heap);
-    if (heap->limit - heap->hp < size) {
-      fprintf(stderr, "out of memory\n");
-      abort();
-    }
-    goto retry;
+    return allocate_slow_path(heap, size);
   }
   heap->hp = new_hp;
   return (struct gc_obj*)addr;

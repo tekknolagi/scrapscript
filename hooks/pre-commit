@@ -13,9 +13,15 @@ fi
 # cat always has error code 0
 # ignore deleted files (can't be formatted)
 filenames=$(git diff --cached --name-only --diff-filter=d $against | grep '\.py$' | cat)
-if [ -n "$filenames" ]
+# If changed files include scrapscript.py, run tests
+if echo $filenames | grep scrapscript.py
 then
   ./scrapscript.py test
+fi
+
+# If there are any other changed Python files, make sure they lint
+if [ -n "$filenames" ]
+then
   ruff format --check $filenames
   mypy --strict $filenames
 fi

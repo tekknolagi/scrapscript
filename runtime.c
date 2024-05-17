@@ -125,12 +125,16 @@ retry:
 
 // Application
 
-// All odd becase of the NOT_FORWARDED_BIT
+#define FOREACH_TAG(TAG) \
+  TAG(TAG_CONS) \
+  TAG(TAG_NUM) \
+  TAG(TAG_LIST) \
+  TAG(TAG_CLOSURE)
 enum {
-  TAG_CONS = 1,
-  TAG_NUM = 3,
-  TAG_LIST = 5,
-  TAG_CLOSURE = 7,
+// All odd becase of the NOT_FORWARDED_BIT
+#define ENUM_TAG(TAG) TAG = __COUNTER__ * 2 + 1,
+  FOREACH_TAG(ENUM_TAG)
+#undef ENUM_TAG
 };
 
 struct num {

@@ -314,6 +314,12 @@ struct gc_obj* num_add(struct gc_obj *a, struct gc_obj *b) {
   return mknum(heap, num_value(a)+num_value(b));
 }
 
+struct gc_obj* num_sub(struct gc_obj *a, struct gc_obj *b) {
+  assert(is_num(a));
+  assert(is_num(b));
+  return mknum(heap, num_value(a)-num_value(b));
+}
+
 struct gc_obj* num_mul(struct gc_obj *a, struct gc_obj *b) {
   assert(is_num(a));
   assert(is_num(b));

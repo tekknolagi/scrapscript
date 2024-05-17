@@ -106,6 +106,9 @@ class Compiler:
             if exp.op == BinopKind.MUL:
                 self._debug("collect(heap);")
                 return self._mktemp(f"num_mul({left}, {right})")
+            if exp.op == BinopKind.SUB:
+                self._debug("collect(heap);")
+                return self._mktemp(f"num_sub({left}, {right})")
             raise NotImplementedError(f"binop {exp.op}")
         if isinstance(exp, Where):
             assert isinstance(exp.binding, Assign)

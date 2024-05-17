@@ -87,7 +87,7 @@ class Compiler:
         # Only called from inside MatchFunction; has explicit early return
         if not isinstance(exp.pattern, Int):
             raise NotImplementedError("pattern {type(exp.pattern)}")
-        self._emit(f"if (is_num({arg}) && ((struct num*){arg})->value == {exp.pattern.value}) {{")
+        self._emit(f"if (is_num({arg}) && num_value({arg}) == {exp.pattern.value}) {{")
         result = self.compile(env, exp.body)
         self._emit(f"return {result};")
         self._emit("}")

@@ -98,7 +98,7 @@ class Compiler:
                     return exp.arg.value
             callee = self.compile(env, exp.func)
             arg = self.compile(env, exp.arg)
-            return self._mktemp(f"((struct closure*){callee})->fn({arg})")
+            return self._mktemp(f"((struct closure*){callee})->fn((struct gc_obj*){callee}, {arg})")
             raise NotImplementedError(f"apply {type(callee)} {callee}")
         if isinstance(exp, List):
             num_items = len(exp.items)
@@ -110,11 +110,14 @@ class Compiler:
         if isinstance(exp, Function):
             fields = sorted(free_in(exp))
             assert isinstance(exp.arg, Var)
-            fn = CompiledFunction(params=[exp.arg.name], fields=fields)
+            fn = CompiledFunction(params=["this", exp.arg.name], fields=fields)
             self.functions.append(fn)
             cur = self.function
             self.function = fn
-            val = self.compile({exp.arg.name: exp.arg.name}, exp.body)
+            funcenv = {exp.arg.name: exp.arg.name}
+            for i, field in enumerate(fields):
+                funcenv[field] = f"closure_get(this, {i})"
+            val = self.compile(funcenv, exp.body)
             fn.code.append(f"return {val};")
             self.function = cur
 
@@ -129,20 +132,21 @@ program = parse(
     tokenize(
         """
 println l
-. l = [inc a, b, c, a + b + c]
+. l = [inc a, nextb 100, c, a + b + c]
+. nextb = _ -> b + 1
 . inc = x -> x + 1
 . a = 1
 . b = 2
 . c = 3
-. print = runtime "print"
-. println = runtime "builtin_println"
+. print = runtime "builtin_print_wrapper"
+. println = runtime "builtin_println_wrapper"
 """
     )
 )
 
 BUILTINS = [
-    "print",
-    "println",
+    "print_wrapper",
+    "println_wrapper",
 ]
 
 

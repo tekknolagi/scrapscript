@@ -150,11 +150,14 @@ struct list {
   struct gc_obj* items[];
 };
 
+
+typedef struct gc_obj* (*ClosureFn)(struct gc_obj*, struct gc_obj*);
+
 // TODO(max): Figure out if there is a way to do a PyObject_HEAD version of
 // this where each closure actually has its own struct with named members
 struct closure {
   struct gc_obj HEAD;
-  struct gc_obj* (*fn)(struct gc_obj*);
+  ClosureFn fn;
   size_t size;
   struct gc_obj* env[];
 };
@@ -235,7 +238,7 @@ void list_set(struct gc_obj *list, size_t i, struct gc_obj *item) {
   l->items[i] = item;
 }
 
-struct gc_obj* mkclosure(struct gc_heap* heap, struct gc_obj* (*fn)(struct gc_obj*), size_t size) {
+struct gc_obj* mkclosure(struct gc_heap* heap, ClosureFn fn, size_t size) {
   struct closure *obj = (struct closure*)allocate(heap, sizeof *obj + size * sizeof(struct gc_obj*));
   obj->HEAD.tag = TAG_CLOSURE;
   obj->fn = fn;
@@ -324,8 +327,16 @@ struct gc_obj* print(struct gc_obj *obj) {
   return obj;
 }
 
+struct gc_obj* print_wrapper(struct gc_obj* this, struct gc_obj* obj) {
+  return print(obj);
+}
+
 struct gc_obj* println(struct gc_obj *obj) {
   print(obj);
   printf("\n");
   return obj;
+}
+
+struct gc_obj* println_wrapper(struct gc_obj* this, struct gc_obj* obj) {
+  return println(obj);
 }

@@ -126,7 +126,6 @@ retry:
 // Application
 
 #define FOREACH_TAG(TAG) \
-  TAG(TAG_CONS) \
   TAG(TAG_NUM) \
   TAG(TAG_LIST) \
   TAG(TAG_CLOSURE)
@@ -140,12 +139,6 @@ enum {
 struct num {
   struct gc_obj HEAD;
   int value;
-};
-
-struct cons {
-  struct gc_obj HEAD;
-  struct gc_obj *car;
-  struct gc_obj *cdr;
 };
 
 struct list {
@@ -170,8 +163,6 @@ size_t heap_object_size(struct gc_obj *obj) {
   switch(obj->tag) {
   case TAG_NUM:
     return sizeof(struct num);
-  case TAG_CONS:
-    return sizeof(struct cons);
   case TAG_LIST:
     return sizeof(struct list) + ((struct list*)obj)->size * sizeof(struct gc_obj*);
   case TAG_CLOSURE:
@@ -187,10 +178,6 @@ size_t trace_heap_object(struct gc_obj *obj, struct gc_heap *heap,
                                        struct gc_heap *heap)) {
   switch(obj->tag) {
   case TAG_NUM:
-    break;
-  case TAG_CONS:
-    visit(&((struct cons*)obj)->car, heap);
-    visit(&((struct cons*)obj)->cdr, heap);
     break;
   case TAG_LIST:
     for (size_t i = 0; i < ((struct list*)obj)->size; i++) {
@@ -213,14 +200,6 @@ struct gc_obj* mknum(struct gc_heap *heap, int value) {
   struct num *obj = (struct num*)allocate(heap, sizeof *obj);
   obj->HEAD.tag = TAG_NUM;
   obj->value = value;
-  return (struct gc_obj*)obj;
-}
-
-struct gc_obj* mkcons(struct gc_heap *heap, struct gc_obj *car, struct gc_obj *cdr) {
-  struct cons *obj = (struct cons*)allocate(heap, sizeof *obj);
-  obj->HEAD.tag = TAG_CONS;
-  obj->car = car;
-  obj->cdr = cdr;
   return (struct gc_obj*)obj;
 }
 

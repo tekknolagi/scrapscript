@@ -60,11 +60,9 @@ class Compiler:
         self.function.code.append(line)
 
     def _debug(self, line: str) -> None:
-        self.function.code.append(
-            f"""#ifndef NDEBUG
-{line}
-#endif"""
-        )
+        self._emit("#ifndef NDEBUG")
+        self._emit(line)
+        self._emit("#endif")
 
     def _mktemp(self, exp: str) -> str:
         temp = self.gensym()

@@ -59,6 +59,13 @@ class Compiler:
     def _emit(self, line: str) -> None:
         self.function.code.append(line)
 
+    def _debug(self, line: str) -> None:
+        self.function.code.append(
+            f"""#ifndef NDEBUG
+{line}
+#endif"""
+        )
+
     def _mktemp(self, exp: str) -> str:
         temp = self.gensym()
         self._emit(f"GC_HANDLE(struct gc_obj*, {temp}, {exp});")
@@ -72,13 +79,16 @@ class Compiler:
     def compile(self, env: Env, exp: Object) -> str:
         if isinstance(exp, Int):
             # TODO(max): Bignum
+            self._debug("collect(heap);")
             return self._mktemp(f"mknum(heap, {exp.value})")
         if isinstance(exp, Binop):
             left = self.compile(env, exp.left)
             right = self.compile(env, exp.right)
             if exp.op == BinopKind.ADD:
+                self._debug("collect(heap);")
                 return self._mktemp(f"num_add({left}, {right})")
             if exp.op == BinopKind.MUL:
+                self._debug("collect(heap);")
                 return self._mktemp(f"num_mul({left}, {right})")
             raise NotImplementedError(f"binop {exp.op}")
         if isinstance(exp, Where):
@@ -106,6 +116,7 @@ class Compiler:
             result = self._mktemp(f"mklist(heap, {num_items})")
             for i, item in enumerate(items):
                 self._emit(f"list_set({result}, {i}, {item});")
+            self._debug("collect(heap);")
             return result
         if isinstance(exp, Function):
             fields = sorted(free_in(exp))
@@ -124,6 +135,7 @@ class Compiler:
             name = self._mktemp(f"mkclosure(heap, {fn.name()}, {len(fields)})")
             for i, field in enumerate(fields):
                 self._emit(f"closure_set({name}, {i}, {env[field]});")
+            self._debug("collect(heap);")
             return name
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 

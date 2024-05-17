@@ -9,6 +9,8 @@
 #include <stdbool.h>
 
 const int kPointerSize = sizeof(void*);
+typedef intptr_t word;
+typedef uintptr_t uword;
 
 struct gc_obj {
   uintptr_t tag; // low bit is 0 if forwarding ptr
@@ -154,7 +156,7 @@ enum {
 
 struct num {
   struct gc_obj HEAD;
-  int value;
+  word value;
 };
 
 struct list {
@@ -225,6 +227,11 @@ struct gc_obj* mknum(struct gc_heap *heap, int value) {
 
 bool is_num(struct gc_obj* obj) {
   return obj->tag == TAG_NUM;
+}
+
+word num_value(struct gc_obj* obj) {
+  assert(is_num(obj));
+  return ((struct num*)obj)->value;
 }
 
 struct gc_obj* mklist(struct gc_heap *heap, size_t size) {
@@ -302,21 +309,20 @@ void trace_roots(struct gc_heap *heap,
 static struct gc_heap *heap = NULL;
 
 struct gc_obj* num_add(struct gc_obj *a, struct gc_obj *b) {
-  struct num *num_a = (struct num*)a;
-  struct num *num_b = (struct num*)b;
-  return mknum(heap, num_a->value + num_b->value);
+  assert(is_num(a));
+  assert(is_num(b));
+  return mknum(heap, num_value(a)+num_value(b));
 }
 
 struct gc_obj* num_mul(struct gc_obj *a, struct gc_obj *b) {
-  struct num *num_a = (struct num*)a;
-  struct num *num_b = (struct num*)b;
-  return mknum(heap, num_a->value * num_b->value);
+  assert(is_num(a));
+  assert(is_num(b));
+  return mknum(heap, num_value(a)*num_value(b));
 }
 
 struct gc_obj* print(struct gc_obj *obj) {
   if (obj->tag == TAG_NUM) {
-    struct num *num = (struct num*)obj;
-    printf("%d", num->value);
+    printf("%ld", num_value(obj));
   } else if (obj->tag == TAG_LIST) {
     struct list *list = (struct list*)obj;
     printf("[");

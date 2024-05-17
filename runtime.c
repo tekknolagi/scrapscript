@@ -10,10 +10,7 @@
 const int kPointerSize = sizeof(void*);
 
 struct gc_obj {
-  union {
-    uintptr_t tag;
-    struct gc_obj *forwarded; // for GC
-  };
+  uintptr_t tag; // low bit is 0 if forwarding ptr
   uintptr_t payload[0];
 };
 
@@ -21,12 +18,13 @@ static const uintptr_t NOT_FORWARDED_BIT = 1;
 int is_forwarded(struct gc_obj *obj) {
   return (obj->tag & NOT_FORWARDED_BIT) == 0;
 }
-void* forwarded(struct gc_obj *obj) { 
-  return obj->forwarded;
+struct gc_obj* forwarded(struct gc_obj *obj) {
+  assert(is_forwarded(obj));
+  return (struct gc_obj*)obj->tag;
 }
 void forward(struct gc_obj *from, struct gc_obj *to) {
   fprintf(stderr, "forward: %p -> %p\n", from, to);
-  from->forwarded = to;
+  from->tag = (uintptr_t)to;
 }
 
 struct gc_heap;

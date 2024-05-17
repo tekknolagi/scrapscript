@@ -132,14 +132,8 @@ class Compiler:
 program = parse(
     tokenize(
         """
-println l
-. l = [inc a, nextb 100, c, a + b + c]
-. nextb = _ -> b + 1
-. inc = x -> x + 1
-. a = 1
-. b = 2
-. c = 3
-. print = runtime "builtin_print_wrapper"
+println (mklist 3 4)
+. mklist = x -> y -> [x, y]
 . println = runtime "builtin_println_wrapper"
 """
     )

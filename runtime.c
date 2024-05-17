@@ -101,6 +101,10 @@ void collect(struct gc_heap *heap) {
     struct gc_obj *obj = (struct gc_obj*)scan;
     scan += align_size(trace_heap_object(obj, heap, visit_field));
   }
+#ifndef NDEBUG
+  // Zero out the rest of the heap for debugging
+  memset((void*)scan, 0, heap->limit - scan);
+#endif
 }
 
 #define LIKELY(x) __builtin_expect(!!(x), 1)

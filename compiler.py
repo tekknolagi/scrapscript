@@ -116,8 +116,7 @@ class Compiler:
             self.function = fn
             funcenv = {exp.arg.name: exp.arg.name}
             for i, field in enumerate(fields):
-                rooted_field = self._mktemp(f"closure_get(this, {i})")
-                funcenv[field] = rooted_field
+                funcenv[field] = self._mktemp(f"closure_get(this, {i})")
             val = self.compile(funcenv, exp.body)
             fn.code.append(f"return {val};")
             self.function = cur

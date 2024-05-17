@@ -108,7 +108,7 @@ void collect(struct gc_heap *heap) {
 
 static inline ALLOCATOR struct gc_obj* allocate(struct gc_heap *heap, size_t size) {
 retry:
-  0; // label followed by declaration is C23; this is a workaround
+  (void)0; // label followed by declaration is C23; this is a workaround
   uintptr_t addr = heap->hp;
   uintptr_t new_hp = align_size(addr + size);
   if (UNLIKELY(heap->limit < new_hp)) {

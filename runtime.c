@@ -245,6 +245,15 @@ struct gc_obj* mklist(struct gc_heap *heap, size_t size) {
   return (struct gc_obj*)obj;
 }
 
+bool is_list(struct gc_obj* obj) {
+  return obj->tag == TAG_LIST;
+}
+
+size_t list_size(struct gc_obj* obj) {
+  assert(is_list(obj));
+  return ((struct list*)obj)->size;
+}
+
 void list_set(struct gc_obj *list, size_t i, struct gc_obj *item) {
   assert(list->tag == TAG_LIST);
   struct list *l = (struct list*)list;

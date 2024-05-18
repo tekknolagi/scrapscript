@@ -37,6 +37,9 @@ class CompiledFunction:
     def __post_init__(self) -> None:
         self.id = next(fn_counter)
         self.code.append("HANDLES();")
+        for param in self.params:
+            # The parameters are raw pointers and must be updated on GC
+            self.code.append(f"GC_PROTECT({param});")
         if self.name is None:
             self.name = f"fn_{self.id}"
 

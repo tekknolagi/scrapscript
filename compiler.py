@@ -141,12 +141,18 @@ class Compiler:
 
     def compile_case(self, env: Env, exp: MatchCase, arg: str) -> None:
         # Only called from inside MatchFunction; has explicit early return
-        if not isinstance(exp.pattern, Int):
-            raise NotImplementedError("pattern {type(exp.pattern)}")
-        self._emit(f"if (is_num({arg}) && num_value({arg}) == {exp.pattern.value}) {{")
-        result = self.compile(env, exp.body)
-        self._emit(f"return {result};")
-        self._emit("}")
+        if isinstance(exp.pattern, Int):
+            self._emit(f"if (is_num({arg}) && num_value({arg}) == {exp.pattern.value}) {{")
+            result = self.compile(env, exp.body)
+            self._emit(f"return {result};")
+            self._emit("}")
+            return
+        if isinstance(exp.pattern, Var):
+            new_env = {**env, exp.pattern.name: arg}
+            result = self.compile(new_env, exp.body)
+            self._emit(f"return {result};")
+            return
+        raise NotImplementedError(f"pattern {type(exp.pattern)}")
 
     def compile(self, env: Env, exp: Object) -> str:
         if isinstance(exp, Int):

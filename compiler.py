@@ -18,6 +18,7 @@ from scrapscript import (
     parse,
     tokenize,
 )
+from typing import Optional
 
 Env = dict[str, str]
 
@@ -31,17 +32,17 @@ class CompiledFunction:
     params: list[str]
     fields: list[str] = dataclasses.field(default_factory=list)
     code: list[str] = dataclasses.field(default_factory=list)
+    name: Optional[str] = None
 
     def __post_init__(self) -> None:
         self.id = next(fn_counter)
         self.code.append("HANDLES();")
-
-    def name(self) -> str:
-        return f"fn_{self.id}"
+        if self.name is None:
+            self.name = f"fn_{self.id}"
 
     def decl(self) -> str:
         args = ", ".join(f"struct gc_obj* {arg}" for arg in self.params)
-        return f"struct gc_obj* {self.name()}({args})"
+        return f"struct gc_obj* {self.name}({args})"
 
 
 # TODO(max): Only pass around handles, not raw pointers; arguments might be
@@ -66,18 +67,73 @@ class Compiler:
         self._emit(line)
         self._emit("#endif")
 
+    def _handle(self, name: str, exp: str) -> str:
+        self._emit(f"GC_HANDLE(struct gc_obj*, {name}, {exp});")
+        return name
+
     def _mktemp(self, exp: str) -> str:
         temp = self.gensym()
-        self._emit(f"GC_HANDLE(struct gc_obj*, {temp}, {exp});")
-        return temp
+        return self._handle(temp, exp)
 
     def compile_assign(self, env: Env, exp: Assign) -> Env:
         assert isinstance(exp.name, Var)
+        name = exp.name.name
+        if isinstance(exp.value, Function):
+            # Named function
+            value = self.compile_function(env, exp.value, name)
+            return {**env, name: value}
+        if isinstance(exp.value, MatchFunction):
+            # Named match function
+            value = self.compile_match_function(env, exp.value, name)
+            return {**env, name: value}
         value = self.compile(env, exp.value)
-        return {**env, exp.name.name: value}
+        return {**env, name: value}
+
+    def make_compiled_function(self, env: Env, arg: str, exp: Object, name: Optional[str]) -> CompiledFunction:
+        assert isinstance(exp, (Function, MatchFunction))
+        free = free_in(exp)
+        if name is not None and name in free:
+            free.remove(name)
+        fields = sorted(free)
+        return CompiledFunction(params=["this", arg], fields=fields)
+
+    def compile_function_env(self, fn: CompiledFunction, name: Optional[str]) -> Env:
+        result = {param: param for param in fn.params}
+        if name is not None:
+            result[name] = "this"
+        for i, field in enumerate(fn.fields):
+            result[field] = self._mktemp(f"closure_get(this, {i})")
+        return result
+
+    def compile_function(self, env: Env, exp: Function, name: Optional[str]) -> str:
+        assert isinstance(exp.arg, Var)
+        fn = self.make_compiled_function(env, exp.arg.name, exp, name)
+        self.functions.append(fn)
+        cur = self.function
+        self.function = fn
+        funcenv = self.compile_function_env(fn, name)
+        val = self.compile(funcenv, exp.body)
+        fn.code.append(f"return {val};")
+        self.function = cur
+        return self.make_closure(env, fn)
+
+    def compile_match_function(self, env: Env, exp: MatchFunction, name: Optional[str]) -> str:
+        arg = self.gensym()
+        fn = self.make_compiled_function(env, arg, exp, name)
+        self.functions.append(fn)
+        cur = self.function
+        self.function = fn
+        funcenv = self.compile_function_env(fn, name)
+        for case in exp.cases:
+            self.compile_case(funcenv, case, arg)
+        # TODO(max): (non-fatal?) exceptions
+        self._emit(r'fprintf(stderr, "no matching cases\n");')
+        self._emit("abort();")
+        self.function = cur
+        return self.make_closure(env, fn)
 
     def make_closure(self, env: Env, fn: CompiledFunction) -> str:
-        name = self._mktemp(f"mkclosure(heap, {fn.name()}, {len(fn.fields)})")
+        name = self._mktemp(f"mkclosure(heap, {fn.name}, {len(fn.fields)})")
         for i, field in enumerate(fn.fields):
             self._emit(f"closure_set({name}, {i}, {env[field]});")
         self._debug("collect(heap);")
@@ -138,36 +194,11 @@ class Compiler:
             self._debug("collect(heap);")
             return result
         if isinstance(exp, Function):
-            fields = sorted(free_in(exp))
-            assert isinstance(exp.arg, Var)
-            fn = CompiledFunction(params=["this", exp.arg.name], fields=fields)
-            self.functions.append(fn)
-            cur = self.function
-            self.function = fn
-            funcenv = {exp.arg.name: exp.arg.name}
-            for i, field in enumerate(fields):
-                funcenv[field] = self._mktemp(f"closure_get(this, {i})")
-            val = self.compile(funcenv, exp.body)
-            fn.code.append(f"return {val};")
-            self.function = cur
-            return self.make_closure(env, fn)
+            # Anonymous function
+            return self.compile_function(env, exp, name=None)
         if isinstance(exp, MatchFunction):
-            fields = sorted(free_in(exp))
-            arg = self.gensym()
-            fn = CompiledFunction(params=["this", arg], fields=fields)
-            self.functions.append(fn)
-            cur = self.function
-            self.function = fn
-            funcenv = {arg: arg}
-            for i, field in enumerate(fields):
-                funcenv[field] = self._mktemp(f"closure_get(this, {i})")
-            for case in exp.cases:
-                self.compile_case(funcenv, case, arg)
-            # TODO(max): (non-fatal?) exceptions
-            self._emit(r'fprintf(stderr, "no matching cases\n");')
-            self._emit("abort();")
-            self.function = cur
-            return self.make_closure(env, fn)
+            # Anonymous match function
+            return self.compile_match_function(env, exp, name=None)
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 
 
@@ -193,6 +224,7 @@ BUILTINS = [
 
 
 def main() -> None:
+    # TODO(max): name
     main = CompiledFunction(params=[])
     compiler = Compiler(main)
     result = compiler.compile({}, program)
@@ -215,7 +247,7 @@ def main() -> None:
         for builtin in BUILTINS:
             print(f"builtin_{builtin} = (struct closure*)mkclosure(heap, {builtin}, 0);", file=f)
             print(f"GC_PROTECT(builtin_{builtin});", file=f)
-        print(f"{main.name()}();", file=f)
+        print(f"{main.name}();", file=f)
         print("destroy_heap(heap);", file=f)
         print("}", file=f)
 

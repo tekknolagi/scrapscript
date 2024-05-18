@@ -212,13 +212,11 @@ program = parse(
     tokenize(
         """
 println (makelist 3 4)
--- . makelist = x -> y -> [x, y]
 . makelist = x -> y -> [is_even x, is_even y]
-. println = runtime "builtin_println_wrapper"
 . is_even = | 0 -> 1
             | 1 -> 0
             | n -> is_even (n-2)
-. rec = x -> rec x
+. println = runtime "builtin_println_wrapper"
 """
     )
 )

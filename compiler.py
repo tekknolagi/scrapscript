@@ -211,8 +211,8 @@ class Compiler:
 program = parse(
     tokenize(
         """
-println (makelist 3 4)
-. makelist = x -> y -> [is_even x, is_even y]
+println (mklist 3 4)
+. mklist = x -> y -> [is_even x, is_even y]
 . is_even = | 0 -> 1
             | 1 -> 0
             | n -> is_even (n-2)

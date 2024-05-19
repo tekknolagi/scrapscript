@@ -1,3 +1,4 @@
+import argparse
 import dataclasses
 import itertools
 from scrapscript import (
@@ -216,21 +217,6 @@ class Compiler:
 # The const heap will never be scanned
 # The const heap can be serialized to disk and mmap'd
 
-program = parse(
-    tokenize(
-        """
-println (mklist 3 4 5)
-. mklist = x -> y -> z -> [fact x, fact y, fact z]
-. is_even = | 0 -> 1
-            | 1 -> 0
-            | n -> is_even (n-2)
-. fact = | 0 -> 1
-         | n -> n * fact (n-1)
-. println = runtime "builtin_println_wrapper"
-"""
-    )
-)
-
 BUILTINS = [
     "print_wrapper",
     "println_wrapper",
@@ -238,11 +224,21 @@ BUILTINS = [
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(prog="scrapscript")
+    parser.add_argument("file")
+    parser.add_argument("-o", "--output", default="output.c")
+    parser.add_argument("--format", action="store_true")
+    args = parser.parse_args()
+
+    with open(args.file, "r") as f:
+        source = f.read()
+    program = parse(tokenize(source))
+
     main = CompiledFunction(params=[], name="scrap_main")
     compiler = Compiler(main)
     result = compiler.compile({}, program)
     main.code.append(f"return {result};")
-    with open("output.c", "w") as f:
+    with open(args.output, "w") as f:
         print('#include "runtime.c"\n', file=f)
         # Declare all functions
         for function in compiler.functions:
@@ -263,6 +259,11 @@ def main() -> None:
         print(f"{main.name}();", file=f)
         print("destroy_heap(heap);", file=f)
         print("}", file=f)
+
+    if args.format:
+        import subprocess
+
+        subprocess.run(["clang-format-15", "-i", args.output])
 
 
 if __name__ == "__main__":

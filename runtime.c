@@ -372,16 +372,8 @@ struct gc_obj* print(struct gc_obj *obj) {
   return obj;
 }
 
-struct gc_obj* print_wrapper(struct gc_obj* this, struct gc_obj* obj) {
-  return print(obj);
-}
-
 struct gc_obj* println(struct gc_obj *obj) {
   print(obj);
   printf("\n");
   return obj;
-}
-
-struct gc_obj* println_wrapper(struct gc_obj* this, struct gc_obj* obj) {
-  return println(obj);
 }

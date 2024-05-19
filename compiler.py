@@ -228,6 +228,8 @@ def main() -> None:
     parser.add_argument("file")
     parser.add_argument("-o", "--output", default="output.c")
     parser.add_argument("--format", action="store_true")
+    parser.add_argument("--compile", action="store_true")
+    parser.add_argument("--run", action="store_true")
     args = parser.parse_args()
 
     with open(args.file, "r") as f:
@@ -264,6 +266,20 @@ def main() -> None:
         import subprocess
 
         subprocess.run(["clang-format-15", "-i", args.output])
+
+    if args.compile:
+        import os
+        import shlex
+        import subprocess
+
+        cc = os.environ.get("CC", "clang")
+        cflags = os.environ.get("CFLAGS", "-O0 -ggdb -DNDEBUG")
+        subprocess.run([cc, "-o", "a.out", *shlex.split(cflags), args.output])
+
+    if args.run:
+        import subprocess
+
+        subprocess.run(["./a.out"])
 
 
 if __name__ == "__main__":

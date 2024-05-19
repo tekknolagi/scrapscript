@@ -252,7 +252,7 @@ def main() -> None:
         for function in compiler.functions:
             print(function.decl() + ";", file=f)
         for builtin in BUILTINS:
-            print(f"struct closure* builtin_{builtin} = NULL;", file=f)
+            print(f"struct gc_obj* builtin_{builtin} = NULL;", file=f)
         for function in compiler.functions:
             print(f"{function.decl()} {{", file=f)
             for line in function.code:
@@ -262,7 +262,7 @@ def main() -> None:
         print("heap = make_heap(1024);", file=f)
         print("HANDLES();", file=f)
         for builtin in BUILTINS:
-            print(f"builtin_{builtin} = (struct closure*)mkclosure(heap, builtin_{builtin}_wrapper, 0);", file=f)
+            print(f"builtin_{builtin} = mkclosure(heap, builtin_{builtin}_wrapper, 0);", file=f)
             print(f"GC_PROTECT(builtin_{builtin});", file=f)
         print(f"{main.name}();", file=f)
         print("destroy_heap(heap);", file=f)

@@ -126,7 +126,7 @@ class Compiler:
         self.function = fn
         funcenv = self.compile_function_env(fn, name)
         for case in exp.cases:
-            self.compile_case(funcenv, case, arg)
+            self.compile_case(funcenv, arg, case.pattern, case.body)
         # TODO(max): (non-fatal?) exceptions
         self._emit(r'fprintf(stderr, "no matching cases\n");')
         self._emit("abort();")
@@ -140,20 +140,20 @@ class Compiler:
         self._debug("collect(heap);")
         return name
 
-    def compile_case(self, env: Env, exp: MatchCase, arg: str) -> None:
+    def compile_case(self, env: Env, arg: str, pattern: Object, body: Object) -> None:
         # Only called from inside MatchFunction; has explicit early return
-        if isinstance(exp.pattern, Int):
-            self._emit(f"if (is_num({arg}) && num_value({arg}) == {exp.pattern.value}) {{")
-            result = self.compile(env, exp.body)
+        if isinstance(pattern, Int):
+            self._emit(f"if (is_num({arg}) && num_value({arg}) == {pattern.value}) {{")
+            result = self.compile(env, body)
             self._emit(f"return {result};")
             self._emit("}")
             return
-        if isinstance(exp.pattern, Var):
-            new_env = {**env, exp.pattern.name: arg}
-            result = self.compile(new_env, exp.body)
+        if isinstance(pattern, Var):
+            new_env = {**env, pattern.name: arg}
+            result = self.compile(new_env, body)
             self._emit(f"return {result};")
             return
-        raise NotImplementedError(f"pattern {type(exp.pattern)}")
+        raise NotImplementedError(f"pattern {type(pattern)}")
 
     def compile(self, env: Env, exp: Object) -> str:
         if isinstance(exp, Int):

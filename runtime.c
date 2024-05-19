@@ -275,6 +275,11 @@ bool is_closure(struct gc_obj* obj) {
   return obj->tag == TAG_CLOSURE;
 }
 
+ClosureFn closure_fn(struct gc_obj* obj) {
+  assert(is_closure(obj));
+  return ((struct closure*)obj)->fn;
+}
+
 void closure_set(struct gc_obj *closure, size_t i, struct gc_obj *item) {
   assert(closure->tag == TAG_CLOSURE);
   struct closure *c = (struct closure*)closure;

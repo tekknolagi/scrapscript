@@ -193,8 +193,9 @@ class Compiler:
                     return f"builtin_{exp.arg.value}"
             callee = self.compile(env, exp.func)
             arg = self.compile(env, exp.arg)
-            self._debug(f"assert(is_closure((struct gc_obj*){callee}));")
-            return self._mktemp(f"((struct closure*){callee})->fn((struct gc_obj*){callee}, {arg})")
+            fn = self.gensym()
+            self._emit(f"ClosureFn {fn} = closure_fn({callee});")
+            return self._mktemp(f"(*{fn})((struct gc_obj*){callee}, {arg})")
             raise NotImplementedError(f"apply {type(callee)} {callee}")
         if isinstance(exp, List):
             num_items = len(exp.items)

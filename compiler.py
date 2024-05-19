@@ -233,8 +233,7 @@ BUILTINS = [
 
 
 def main() -> None:
-    # TODO(max): name
-    main = CompiledFunction(params=[])
+    main = CompiledFunction(params=[], name="scrap_main")
     compiler = Compiler(main)
     result = compiler.compile({}, program)
     main.code.append(f"return {result};")

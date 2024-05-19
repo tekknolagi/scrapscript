@@ -271,6 +271,10 @@ struct gc_obj* mkclosure(struct gc_heap* heap, ClosureFn fn, size_t size) {
   return (struct gc_obj*)obj;
 }
 
+bool is_closure(struct gc_obj* obj) {
+  return obj->tag == TAG_CLOSURE;
+}
+
 void closure_set(struct gc_obj *closure, size_t i, struct gc_obj *item) {
   assert(closure->tag == TAG_CLOSURE);
   struct closure *c = (struct closure*)closure;

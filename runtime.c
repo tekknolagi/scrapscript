@@ -338,6 +338,20 @@ struct gc_obj* num_mul(struct gc_obj *a, struct gc_obj *b) {
   return mknum(heap, num_value(a)*num_value(b));
 }
 
+struct gc_obj* list_append(struct gc_obj *list_obj, struct gc_obj *item) {
+  assert(is_list(list_obj));
+  struct list *list = (struct list*)list_obj;
+  HANDLES();
+  GC_PROTECT(list);
+  GC_PROTECT(item);
+  struct gc_obj *result = mklist(heap, list->size + 1);
+  for (size_t i = 0; i < list->size; i++) {
+    list_set(result, i, list->items[i]);
+  }
+  list_set(result, list->size, item);
+  return result;
+}
+
 struct gc_obj* print(struct gc_obj *obj) {
   if (obj->tag == TAG_NUM) {
     printf("%ld", num_value(obj));

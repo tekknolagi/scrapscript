@@ -268,7 +268,7 @@ def main() -> None:
     if args.format:
         import subprocess
 
-        subprocess.run(["clang-format-15", "-i", args.output])
+        subprocess.run(["clang-format-15", "-i", args.output], check=True)
 
     if args.compile:
         import os
@@ -277,12 +277,12 @@ def main() -> None:
 
         cc = os.environ.get("CC", "clang")
         cflags = os.environ.get("CFLAGS", "-O0 -ggdb -DNDEBUG")
-        subprocess.run([cc, "-o", "a.out", *shlex.split(cflags), args.output])
+        subprocess.run([cc, "-o", "a.out", *shlex.split(cflags), args.output], check=True)
 
     if args.run:
         import subprocess
 
-        subprocess.run(["./a.out"])
+        subprocess.run(["./a.out"], check=True)
 
 
 if __name__ == "__main__":

@@ -72,6 +72,7 @@ class Compiler:
         self._emit("#endif")
 
     def _handle(self, name: str, exp: str) -> str:
+        # TODO(max): Liveness analysis to avoid unnecessary handles
         self._emit(f"GC_HANDLE(struct gc_obj*, {name}, {exp});")
         return name
 

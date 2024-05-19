@@ -214,11 +214,13 @@ class Compiler:
 program = parse(
     tokenize(
         """
-println (mklist 3 4)
-. mklist = x -> y -> [is_even x, is_even y]
+println (mklist 3 4 5)
+. mklist = x -> y -> z -> [fact x, fact y, fact z]
 . is_even = | 0 -> 1
             | 1 -> 0
             | n -> is_even (n-2)
+. fact = | 0 -> 1
+         | n -> n * fact (n-1)
 . println = runtime "builtin_println_wrapper"
 """
     )

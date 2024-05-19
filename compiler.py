@@ -190,7 +190,7 @@ class Compiler:
             if isinstance(exp.func, Var):
                 if exp.func.name == "runtime":
                     assert isinstance(exp.arg, String)
-                    return exp.arg.value
+                    return f"builtin_{exp.arg.value}"
             callee = self.compile(env, exp.func)
             arg = self.compile(env, exp.arg)
             return self._mktemp(f"((struct closure*){callee})->fn((struct gc_obj*){callee}, {arg})")

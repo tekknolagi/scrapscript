@@ -240,6 +240,12 @@ def main() -> None:
     compiler = Compiler(main)
     result = compiler.compile({}, program)
     main.code.append(f"return {result};")
+
+    for builtin in BUILTINS:
+        fn = CompiledFunction(params=["this", "arg"], name=f"builtin_{builtin}_wrapper")
+        fn.code.append(f"return {builtin}(arg);")
+        compiler.functions.append(fn)
+
     with open(args.output, "w") as f:
         print('#include "runtime.c"\n', file=f)
         # Declare all functions
@@ -247,9 +253,6 @@ def main() -> None:
             print(function.decl() + ";", file=f)
         for builtin in BUILTINS:
             print(f"struct closure* builtin_{builtin} = NULL;", file=f)
-            print(f"struct gc_obj* builtin_{builtin}_wrapper(struct gc_obj* this, struct gc_obj* arg) {{", file=f)
-            print(f"return {builtin}(arg);", file=f)
-            print("}", file=f)
         for function in compiler.functions:
             print(f"{function.decl()} {{", file=f)
             for line in function.code:

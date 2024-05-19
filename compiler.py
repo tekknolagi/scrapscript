@@ -211,6 +211,11 @@ class Compiler:
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 
 
+# TODO(max): Emit constants into the const heap
+# The const heap must only point within the const heap
+# The const heap will never be scanned
+# The const heap can be serialized to disk and mmap'd
+
 program = parse(
     tokenize(
         """

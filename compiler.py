@@ -69,7 +69,7 @@ class Compiler:
 
     def _handle(self, name: str, exp: str) -> str:
         # TODO(max): Liveness analysis to avoid unnecessary handles
-        self._emit(f"GC_HANDLE(struct gc_obj*, {name}, {exp});")
+        self._emit(f"OBJECT_HANDLE({name}, {exp});")
         return name
 
     def _mktemp(self, exp: str) -> str:
@@ -247,6 +247,7 @@ def main() -> None:
 
     with open(args.output, "w") as f:
         print('#include "runtime.c"\n', file=f)
+        print(f"#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct gc_obj*, name, exp)", file=f)
         # Declare all functions
         for function in compiler.functions:
             print(function.decl() + ";", file=f)

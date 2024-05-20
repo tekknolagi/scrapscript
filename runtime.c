@@ -146,7 +146,9 @@ static inline ALLOCATOR struct gc_obj* allocate(struct gc_heap *heap, size_t siz
 #define FOREACH_TAG(TAG) \
   TAG(TAG_NUM) \
   TAG(TAG_LIST) \
-  TAG(TAG_CLOSURE)
+  TAG(TAG_CLOSURE) \
+  TAG(TAG_RECORD)
+
 enum {
 // All odd becase of the NOT_FORWARDED_BIT
 #define ENUM_TAG(TAG) TAG = __COUNTER__ * 2 + 1,
@@ -165,6 +167,16 @@ struct list {
   struct gc_obj* items[];
 };
 
+struct record_field {
+  size_t key;
+  struct gc_obj* value;
+};
+
+struct record {
+  struct gc_obj HEAD;
+  size_t size;
+  struct record_field fields[];
+};
 
 typedef struct gc_obj* (*ClosureFn)(struct gc_obj*, struct gc_obj*);
 
@@ -294,6 +306,38 @@ struct gc_obj* closure_get(struct gc_obj *closure, size_t i) {
   return c->env[i];
 }
 
+struct gc_obj* mkrecord(struct gc_heap* heap, size_t size) {
+  // size is the number of fields, each of which has an index and a value
+  // (object)
+  struct record *obj = (struct record*)allocate(heap, sizeof *obj + size * sizeof(struct record_field));
+  obj->HEAD.tag = TAG_RECORD;
+  obj->size = size;
+  // Assumes the items will be filled in immediately after calling mklist so
+  // they are not initialized
+  return (struct gc_obj*)obj;
+}
+
+void record_set(struct gc_obj *record, size_t index, size_t key, struct gc_obj *value) {
+  assert(record->tag == TAG_RECORD);
+  struct record *r = (struct record*)record;
+  assert(index < r->size);
+  r->fields[index].key = key;
+  r->fields[index].value = value;
+}
+
+struct gc_obj* record_get(struct gc_obj *record, size_t key) {
+  assert(record->tag == TAG_RECORD);
+  struct record *r = (struct record*)record;
+  struct record_field *fields = r->fields;
+  for (size_t i = 0; i < r->size; i++) {
+    struct record_field field = fields[i];
+    if (field.key == key) {
+      return field.value;
+    }
+  }
+  return NULL;
+}
+
 struct handles {
   // TODO(max): Figure out how to make this a flat linked list with whole
   // chunks popped off at function return
@@ -361,6 +405,8 @@ struct gc_obj* list_append(struct gc_obj *list_obj, struct gc_obj *item) {
   return result;
 }
 
+const char* record_keys[];
+
 struct gc_obj* print(struct gc_obj *obj) {
   if (obj->tag == TAG_NUM) {
     printf("%ld", num_value(obj));
@@ -374,6 +420,17 @@ struct gc_obj* print(struct gc_obj *obj) {
       }
     }
     printf("]");
+  } else if (obj->tag == TAG_RECORD) {
+    struct record *record = (struct record*)obj;
+    printf("{");
+    for (size_t i = 0; i < record->size; i++) {
+      printf("%s = ", record_keys[record->fields[i].key]);
+      print(record->fields[i].value);
+      if (i + 1 < record->size) {
+        printf(", ");
+      }
+    }
+    printf("}");
   } else {
     fprintf(stderr, "unknown tag: %lu\n", obj->tag);
     abort();

@@ -12,6 +12,7 @@ from scrapscript import (
     MatchCase,
     MatchFunction,
     Object,
+    Record,
     String,
     Var,
     Where,
@@ -54,6 +55,14 @@ class Compiler:
         self.gensym_counter: int = 0
         self.functions: list[CompiledFunction] = [main]
         self.function: CompiledFunction = main
+        self.record_keys: dict[str, int] = {}
+
+    def record_key(self, key: str) -> int:
+        result = self.record_keys.get(key)
+        if result is not None:
+            return result
+        result = self.record_keys[key] = len(self.record_keys)
+        return result
 
     def gensym(self) -> str:
         self.gensym_counter += 1
@@ -202,6 +211,18 @@ class Compiler:
                 self._emit(f"list_set({result}, {i}, {item});")
             self._debug("collect(heap);")
             return result
+        if isinstance(exp, Record):
+            values: dict[str, str] = {}
+            for key, value_exp in exp.data.items():
+                values[key] = self.compile(env, value_exp)
+            result = self._mktemp(f"mkrecord(heap, {len(values)})")
+            # TODO(max): Globally unique record field names so we can have easy
+            # equality checks
+            for i, (key, value) in enumerate(values.items()):
+                key_idx = self.record_key(key)
+                self._emit(f"record_set({result}, /*index=*/{i}, /*key=*/{key_idx}, /*value=*/{value});")
+            self._debug("collect(heap);")
+            return result
         if isinstance(exp, Function):
             # Anonymous function
             return self.compile_function(env, exp, name=None)
@@ -249,6 +270,10 @@ def main() -> None:
         print('#include "runtime.c"\n', file=f)
         print(f"#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct gc_obj*, name, exp)", file=f)
         # Declare all functions
+        print("const char* record_keys[] = {", file=f)
+        for key in compiler.record_keys:
+            print(f'"{key}",', file=f)
+        print("};", file=f)
         for function in compiler.functions:
             print(function.decl() + ";", file=f)
         for builtin in BUILTINS:

@@ -167,17 +167,6 @@ struct list {
   struct gc_obj* items[];
 };
 
-struct record_field {
-  size_t key;
-  struct gc_obj* value;
-};
-
-struct record {
-  struct gc_obj HEAD;
-  size_t size;
-  struct record_field fields[];
-};
-
 typedef struct gc_obj* (*ClosureFn)(struct gc_obj*, struct gc_obj*);
 
 // TODO(max): Figure out if there is a way to do a PyObject_HEAD version of
@@ -187,6 +176,17 @@ struct closure {
   ClosureFn fn;
   size_t size;
   struct gc_obj* env[];
+};
+
+struct record_field {
+  size_t key;
+  struct gc_obj* value;
+};
+
+struct record {
+  struct gc_obj HEAD;
+  size_t size;
+  struct record_field fields[];
 };
 
 size_t variable_size(size_t base, size_t count) {

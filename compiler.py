@@ -2,6 +2,7 @@ import argparse
 import dataclasses
 import itertools
 from scrapscript import (
+    Access,
     Apply,
     Assign,
     Binop,
@@ -80,6 +81,14 @@ class Compiler:
         # TODO(max): Liveness analysis to avoid unnecessary handles
         self._emit(f"OBJECT_HANDLE({name}, {exp});")
         return name
+
+    def _guard(self, cond: str, msg: Optional[str] = None) -> None:
+        if msg is None:
+            msg = f"assertion {cond!s} failed"
+        self._emit(f"if (!({cond})) {{")
+        self._emit(f'fprintf(stderr, "{msg}\\n");')
+        self._emit("abort();")
+        self._emit("}")
 
     def _mktemp(self, exp: str) -> str:
         temp = self.gensym()
@@ -223,6 +232,15 @@ class Compiler:
                 self._emit(f"record_set({result}, /*index=*/{i}, /*key=*/{key_idx}, /*value=*/{value});")
             self._debug("collect(heap);")
             return result
+        if isinstance(exp, Access):
+            assert isinstance(exp.at, Var), f"only Var access is supported, got {type(exp.at)}"
+            record = self.compile(env, exp.obj)
+            key_idx = self.record_key(exp.at.name)
+            # Check if the record is a record
+            self._guard(f"is_record({record})", "not a record")
+            value = self._mktemp(f"record_get({record}, {key_idx})")
+            self._guard(f"{value} != NULL", f"missing key {exp.at.name!s}")
+            return value
         if isinstance(exp, Function):
             # Anonymous function
             return self.compile_function(env, exp, name=None)

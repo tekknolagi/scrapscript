@@ -317,8 +317,12 @@ struct gc_obj* mkrecord(struct gc_heap* heap, size_t size) {
   return (struct gc_obj*)obj;
 }
 
+bool is_record(struct gc_obj* obj) {
+  return obj->tag == TAG_RECORD;
+}
+
 void record_set(struct gc_obj *record, size_t index, size_t key, struct gc_obj *value) {
-  assert(record->tag == TAG_RECORD);
+  assert(is_record(record));
   struct record *r = (struct record*)record;
   assert(index < r->size);
   r->fields[index].key = key;
@@ -326,7 +330,7 @@ void record_set(struct gc_obj *record, size_t index, size_t key, struct gc_obj *
 }
 
 struct gc_obj* record_get(struct gc_obj *record, size_t key) {
-  assert(record->tag == TAG_RECORD);
+  assert(is_record(record));
   struct record *r = (struct record*)record;
   struct record_field *fields = r->fields;
   for (size_t i = 0; i < r->size; i++) {

@@ -232,8 +232,6 @@ class Compiler:
             for key, value_exp in exp.data.items():
                 values[key] = self.compile(env, value_exp)
             result = self._mktemp(f"mkrecord(heap, {len(values)})")
-            # TODO(max): Globally unique record field names so we can have easy
-            # equality checks
             for i, (key, value) in enumerate(values.items()):
                 key_idx = self.record_key(key)
                 self._emit(f"record_set({result}, /*index=*/{i}, /*key=*/{key_idx}, /*value=*/{value});")

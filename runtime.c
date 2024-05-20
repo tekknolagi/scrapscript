@@ -266,8 +266,15 @@ size_t list_size(struct gc_obj* obj) {
   return ((struct list*)obj)->size;
 }
 
+struct gc_obj* list_get(struct gc_obj *list, size_t i) {
+  assert(is_list(list));
+  struct list *l = (struct list*)list;
+  assert(i < l->size);
+  return l->items[i];
+}
+
 void list_set(struct gc_obj *list, size_t i, struct gc_obj *item) {
-  assert(list->tag == TAG_LIST);
+  assert(is_list(list));
   struct list *l = (struct list*)list;
   assert(i < l->size);
   l->items[i] = item;

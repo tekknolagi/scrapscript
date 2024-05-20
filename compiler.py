@@ -323,7 +323,7 @@ def main() -> None:
         import subprocess
 
         cc = os.environ.get("CC", "clang")
-        cflags = os.environ.get("CFLAGS", "-O0 -ggdb -DNDEBUG")
+        cflags = os.environ.get("CFLAGS", "-O0 -ggdb")
         subprocess.run([cc, "-o", "a.out", *shlex.split(cflags), args.output], check=True)
 
     if args.run:

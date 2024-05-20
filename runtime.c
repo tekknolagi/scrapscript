@@ -193,6 +193,10 @@ size_t variable_size(size_t base, size_t count) {
   return base + count * kPointerSize;
 }
 
+size_t record_size(size_t count) {
+  return sizeof(struct record) + count * sizeof(struct record_field);
+}
+
 size_t heap_object_size(struct gc_obj *obj) {
   switch(obj->tag) {
   case TAG_NUM:
@@ -201,6 +205,8 @@ size_t heap_object_size(struct gc_obj *obj) {
     return variable_size(sizeof(struct list), ((struct list*)obj)->size);
   case TAG_CLOSURE:
     return variable_size(sizeof(struct closure), ((struct closure*)obj)->size);
+  case TAG_RECORD:
+    return record_size(((struct record*)obj)->size);
   default:
     fprintf(stderr, "unknown tag: %lu\n", obj->tag);
     abort();
@@ -221,6 +227,11 @@ size_t trace_heap_object(struct gc_obj *obj, struct gc_heap *heap,
   case TAG_CLOSURE:
     for (size_t i = 0; i < ((struct closure*)obj)->size; i++) {
       visit(&((struct closure*)obj)->env[i], heap);
+    }
+    break;
+  case TAG_RECORD:
+    for (size_t i = 0; i < ((struct record*)obj)->size; i++) {
+      visit(&((struct record*)obj)->fields[i].value, heap);
     }
     break;
   default:
@@ -316,7 +327,7 @@ struct gc_obj* closure_get(struct gc_obj *closure, size_t i) {
 struct gc_obj* mkrecord(struct gc_heap* heap, size_t size) {
   // size is the number of fields, each of which has an index and a value
   // (object)
-  struct record *obj = (struct record*)allocate(heap, sizeof *obj + size * sizeof(struct record_field));
+  struct record *obj = (struct record*)allocate(heap, record_size(size));
   obj->HEAD.tag = TAG_RECORD;
   obj->size = size;
   // Assumes the items will be filled in immediately after calling mklist so

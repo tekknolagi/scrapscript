@@ -183,12 +183,18 @@ class Compiler:
             right = self.compile(env, exp.right)
             if exp.op == BinopKind.ADD:
                 self._debug("collect(heap);")
+                self._guard(f"is_num({left})")
+                self._guard(f"is_num({right})")
                 return self._mktemp(f"num_add({left}, {right})")
             if exp.op == BinopKind.MUL:
                 self._debug("collect(heap);")
+                self._guard(f"is_num({left})")
+                self._guard(f"is_num({right})")
                 return self._mktemp(f"num_mul({left}, {right})")
             if exp.op == BinopKind.SUB:
                 self._debug("collect(heap);")
+                self._guard(f"is_num({left})")
+                self._guard(f"is_num({right})")
                 return self._mktemp(f"num_sub({left}, {right})")
             raise NotImplementedError(f"binop {exp.op}")
         if isinstance(exp, Where):
@@ -209,6 +215,7 @@ class Compiler:
             callee = self.compile(env, exp.func)
             arg = self.compile(env, exp.arg)
             fn = self.gensym()
+            self._guard(f"is_closure({callee})", "attempting to call a non-closure")
             self._emit(f"ClosureFn {fn} = closure_fn({callee});")
             return self._mktemp(f"(*{fn})((struct gc_obj*){callee}, {arg})")
             raise NotImplementedError(f"apply {type(callee)} {callee}")

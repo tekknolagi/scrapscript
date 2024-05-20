@@ -307,7 +307,8 @@ def main() -> None:
         for builtin in BUILTINS:
             print(f"builtin_{builtin} = mkclosure(heap, builtin_{builtin}_wrapper, 0);", file=f)
             print(f"GC_PROTECT(builtin_{builtin});", file=f)
-        print(f"{main.name}();", file=f)
+        print(f"struct gc_obj* result = {main.name}();", file=f)
+        print("println(result);", file=f)
         print("destroy_heap(heap);", file=f)
         print("}", file=f)
 

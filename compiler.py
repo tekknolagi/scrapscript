@@ -147,10 +147,6 @@ class Compiler:
             return {pattern.name: arg}
         if isinstance(pattern, List):
             self._emit(f"if (!is_list({arg})) {{ goto {fallthrough}; }}")
-            # If you have [x, y, ...others] then the length should be at least
-            # 2 but the spread can be empty.
-            # []
-            # [...xs]
             use_spread = sum(isinstance(item, Spread) for item in pattern.items)
             if use_spread:
                 assert use_spread == 1
@@ -181,8 +177,6 @@ class Compiler:
         cur = self.function
         self.function = fn
         funcenv = self.compile_function_env(fn, name)
-        # TODO(max, chris): Compile exp.cases, where each case has a pattern
-        # and a body!
         for i, case in enumerate(exp.cases):
             self._emit(f"// case {i}")
             fallthrough = self.gensym()
@@ -190,14 +184,6 @@ class Compiler:
             case_result = self.compile({**funcenv, **env_updates}, case.body)
             self._emit(f"return {case_result};")
             self._emit(f"{fallthrough}:;")
-
-        # obj mymatchfn(obj arg) {
-        # | 5 -> 6
-        # | [] -> 3
-        # | [1] -> 2
-        # | [x, [y, z]] -> 4
-        # }
-
         # TODO(max): (non-fatal?) exceptions
         self._emit(r'fprintf(stderr, "no matching cases\n");')
         self._emit("abort();")

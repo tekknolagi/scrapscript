@@ -317,8 +317,11 @@ def main() -> None:
         fn.code.append(f"return {builtin}(arg);")
         compiler.functions.append(fn)
 
+    with open("runtime.c", "r") as f:
+        runtime = f.read()
+
     with open(args.output, "w") as f:
-        print('#include "runtime.c"\n', file=f)
+        print(runtime, file=f)
         print(f"#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct gc_obj*, name, exp)", file=f)
         # Declare all functions
         print("const char* record_keys[] = {", file=f)

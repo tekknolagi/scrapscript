@@ -413,6 +413,28 @@ struct gc_obj* num_mul(struct gc_obj *a, struct gc_obj *b) {
   return mknum(heap, num_value(a)*num_value(b));
 }
 
+struct gc_obj* list_cons(struct gc_obj* item, struct gc_obj* list) {
+  assert(is_list(list));
+  struct list *l = (struct list*)list;
+  struct gc_obj* result = mklist(heap, l->size + 1);
+  ((struct list*)result)->items[0] = item;
+  for (size_t i = 0; i < l->size; i++) {
+    ((struct list*)result)->items[i+1] = l->items[i];
+  }
+  return result;
+}
+
+struct gc_obj* list_rest(struct gc_obj* list) {
+  assert(is_list(list));
+  assert(list_size(list) > 0);
+  struct list *l = (struct list*)list;
+  struct gc_obj* result = mklist(heap, l->size - 1);
+  for (size_t i = 0; i < l->size - 1; i++) {
+    ((struct list*)result)->items[i] = l->items[i + 1];
+  }
+  return result;
+}
+
 struct gc_obj* list_append(struct gc_obj *list_obj, struct gc_obj *item) {
   assert(is_list(list_obj));
   struct list *list = (struct list*)list_obj;

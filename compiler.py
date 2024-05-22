@@ -146,12 +146,29 @@ class Compiler:
         if isinstance(pattern, Var):
             return {pattern.name: arg}
         if isinstance(pattern, List):
-            uses_spread = any(isinstance(item, Spread) for item in pattern.items)
-            assert not uses_spread
             self._emit(f"if (!is_list({arg})) {{ goto {fallthrough}; }}")
-            self._emit(f"if (list_size({arg}) != {len(pattern.items)}) {{ goto {fallthrough}; }}")
+            # If you have [x, y, ...others] then the length should be at least
+            # 2 but the spread can be empty.
+            # []
+            # [...xs]
+            use_spread = sum(isinstance(item, Spread) for item in pattern.items)
+            if use_spread:
+                assert use_spread == 1
+                # check min # of list elements
+                num_real_patterns = len(pattern.items) - 1
+                self._emit(f"if (list_size({arg}) < {num_real_patterns}) {{ goto {fallthrough}; }}")
+            else:
+                # check exact # of list elements
+                self._emit(f"if (list_size({arg}) != {len(pattern.items)}) {{ goto {fallthrough}; }}")
             updates = {}
             for i, pattern_item in enumerate(pattern.items):
+                if isinstance(pattern_item, Spread):
+                    if pattern_item.name:
+                        # TODO(max): Use cons cells for list or find a way to
+                        # make stack-allocated lightweight views
+                        list_rest = self._mktemp(f"list_rest({arg})")
+                        updates[pattern_item.name] = list_rest
+                    break
                 list_item = self._mktemp(f"list_get({arg}, {i})")
                 updates.update(self.try_match(env, list_item, pattern_item, fallthrough))
             return updates
@@ -169,8 +186,8 @@ class Compiler:
         for i, case in enumerate(exp.cases):
             self._emit(f"// case {i}")
             fallthrough = self.gensym()
-            env_updates = self.try_match(env, arg, case.pattern, fallthrough)
-            case_result = self.compile({**env, **env_updates}, case.body)
+            env_updates = self.try_match(funcenv, arg, case.pattern, fallthrough)
+            case_result = self.compile({**funcenv, **env_updates}, case.body)
             self._emit(f"return {case_result};")
             self._emit(f"{fallthrough}:;")
 
@@ -217,6 +234,9 @@ class Compiler:
                 self._guard(f"is_num({left})")
                 self._guard(f"is_num({right})")
                 return self._mktemp(f"num_sub({left}, {right})")
+            if exp.op == BinopKind.LIST_CONS:
+                self._debug("collect(heap);")
+                return self._mktemp(f"list_cons({left}, {right})")
             raise NotImplementedError(f"binop {exp.op}")
         if isinstance(exp, Where):
             assert isinstance(exp.binding, Assign)

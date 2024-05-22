@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import argparse
 import dataclasses
 import itertools
 import os
@@ -304,6 +303,8 @@ def env_get_split(key: str, default: Optional[list[str]] = None) -> list[str]:
 
 
 def main() -> None:
+    import argparse
+
     parser = argparse.ArgumentParser(prog="scrapscript")
     parser.add_argument("file")
     parser.add_argument("-o", "--output", default="output.c")

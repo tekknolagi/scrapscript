@@ -15,6 +15,7 @@ from scrapscript import (
     MatchFunction,
     Object,
     Record,
+    Spread,
     String,
     Var,
     Where,
@@ -137,6 +138,26 @@ class Compiler:
         self.function = cur
         return self.make_closure(env, fn)
 
+    def try_match(self, env: Env, arg: str, pattern: Object, fallthrough: str) -> None:
+        if isinstance(pattern, Int):
+            self._emit(f"if (!is_num({arg})) {{ goto {fallthrough}; }}")
+            self._emit(f"if (!num_equals({arg}, {pattern.value})) {{ goto {fallthrough}; }}")
+            # self._emit(f"if (is_num({arg}) && num_equals({arg}, {pattern.value})) {{")
+            # self._emit(f"}} else {{ goto {fallthrough}; }}")
+            return
+        if isinstance(pattern, List):
+            uses_spread = any(isinstance(item, Spread) for item in pattern.items)
+            assert not uses_spread
+            self._emit(f"if (!is_list({arg})) {{ goto {fallthrough}; }}")
+            self._emit(f"if (!list_length({arg}) == {len(pattern.items)}) {{ goto {fallthrough}; }}")
+            for i, pattern_item in enumerate(pattern.items):
+                list_item = self._mktemp(f"list_getitem({arg}, {i})")
+                self.try_match(env, list_item, pattern_item, fallthrough)
+            # self._emit(f"}} else {{ goto {fallthrough}; }}")
+            # self._emit(f"}} else {{ goto {fallthrough}; }}")
+            return
+        raise NotImplementedError("try_match", pattern)
+
     def compile_match_function(self, env: Env, exp: MatchFunction, name: Optional[str]) -> str:
         arg = self.gensym()
         fn = self.make_compiled_function(env, arg, exp, name)
@@ -144,8 +165,21 @@ class Compiler:
         cur = self.function
         self.function = fn
         funcenv = self.compile_function_env(fn, name)
-        for case in exp.cases:
-            self.compile_case(funcenv, arg, case.pattern, case.body)
+        # TODO(max, chris): Compile exp.cases, where each case has a pattern
+        # and a body!
+        for i, case in enumerate(exp.cases):
+            self._emit(f"// case {i}")
+            fallthrough = self.gensym()
+            self.try_match(env, arg, case.pattern, fallthrough)
+            self._emit(f"{fallthrough}:;")
+
+        # obj mymatchfn(obj arg) {
+        # | 5 -> 6
+        # | [] -> 3
+        # | [1] -> 2
+        # | [x, [y, z]] -> 4
+        # }
+
         # TODO(max): (non-fatal?) exceptions
         self._emit(r'fprintf(stderr, "no matching cases\n");')
         self._emit("abort();")
@@ -158,21 +192,6 @@ class Compiler:
             self._emit(f"closure_set({name}, {i}, {env[field]});")
         self._debug("collect(heap);")
         return name
-
-    def compile_case(self, env: Env, arg: str, pattern: Object, body: Object) -> None:
-        # Only called from inside MatchFunction; has explicit early return
-        if isinstance(pattern, Int):
-            self._emit(f"if (is_num({arg}) && num_value({arg}) == {pattern.value}) {{")
-            result = self.compile(env, body)
-            self._emit(f"return {result};")
-            self._emit("}")
-            return
-        if isinstance(pattern, Var):
-            new_env = {**env, pattern.name: arg}
-            result = self.compile(new_env, body)
-            self._emit(f"return {result};")
-            return
-        raise NotImplementedError(f"pattern {type(pattern)}")
 
     def compile(self, env: Env, exp: Object) -> str:
         if isinstance(exp, Int):

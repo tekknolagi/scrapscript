@@ -420,8 +420,6 @@ void trace_roots(struct gc_heap *heap, VisitFn visit) {
 static struct gc_heap *heap = NULL;
 
 struct object* num_add(struct object *a, struct object *b) {
-  assert(is_num(a));
-  assert(is_num(b));
   // NB: doesn't use pointers after allocating
   return mknum(heap, num_value(a)+num_value(b));
 }

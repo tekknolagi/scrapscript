@@ -2,6 +2,8 @@
 import argparse
 import dataclasses
 import itertools
+import os
+import shlex
 from scrapscript import (
     Access,
     Apply,
@@ -291,6 +293,15 @@ BUILTINS = [
 ]
 
 
+def env_get_split(key: str, default: Optional[list[str]] = None) -> list[str]:
+    cflags = os.environ.get(key)
+    if cflags:
+        return shlex.split(cflags)
+    if default:
+        return default
+    return []
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="scrapscript")
     parser.add_argument("file")
@@ -351,21 +362,20 @@ def main() -> None:
         subprocess.run(["clang-format-15", "-i", args.output], check=True)
 
     if args.compile:
-        import os
-        import shlex
         import subprocess
 
         cc = os.environ.get("CC", "clang")
+        default_cflags = ["-Wall", "-Wextra", "-fno-strict-aliasing"]
         if args.debug:
-            default_cflags = "-O0 -ggdb"
+            default_cflags += ["-O0", "-ggdb"]
         else:
-            default_cflags = "-O2 -DNDEBUG"
+            default_cflags += ["-O2", "-DNDEBUG"]
             if "cosmo" not in cc:
                 # cosmocc does not support LTO
-                default_cflags += " -flto"
-        cflags = os.environ.get("CFLAGS", "-Wall -Wextra -fno-strict-aliasing " + default_cflags)
-        ldflags = os.environ.get("LDFLAGS", "")
-        subprocess.run([cc, "-o", "a.out", *shlex.split(cflags), args.output, ldflags], check=True)
+                default_cflags.append("-flto")
+        cflags = env_get_split("CFLAGS", default_cflags)
+        ldflags = env_get_split("LDFLAGS")
+        subprocess.run([cc, "-o", "a.out", *cflags, args.output, *ldflags], check=True)
 
     if args.run:
         import subprocess

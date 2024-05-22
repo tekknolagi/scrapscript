@@ -138,24 +138,23 @@ class Compiler:
         self.function = cur
         return self.make_closure(env, fn)
 
-    def try_match(self, env: Env, arg: str, pattern: Object, fallthrough: str) -> None:
+    def try_match(self, env: Env, arg: str, pattern: Object, fallthrough: str) -> Env:
         if isinstance(pattern, Int):
             self._emit(f"if (!is_num({arg})) {{ goto {fallthrough}; }}")
             self._emit(f"if (!num_equals({arg}, {pattern.value})) {{ goto {fallthrough}; }}")
-            # self._emit(f"if (is_num({arg}) && num_equals({arg}, {pattern.value})) {{")
-            # self._emit(f"}} else {{ goto {fallthrough}; }}")
-            return
+            return {}
+        if isinstance(pattern, Var):
+            return {pattern.name: arg}
         if isinstance(pattern, List):
             uses_spread = any(isinstance(item, Spread) for item in pattern.items)
             assert not uses_spread
             self._emit(f"if (!is_list({arg})) {{ goto {fallthrough}; }}")
             self._emit(f"if (!list_length({arg}) == {len(pattern.items)}) {{ goto {fallthrough}; }}")
+            updates = {}
             for i, pattern_item in enumerate(pattern.items):
                 list_item = self._mktemp(f"list_getitem({arg}, {i})")
-                self.try_match(env, list_item, pattern_item, fallthrough)
-            # self._emit(f"}} else {{ goto {fallthrough}; }}")
-            # self._emit(f"}} else {{ goto {fallthrough}; }}")
-            return
+                updates.update(self.try_match(env, list_item, pattern_item, fallthrough))
+            return updates
         raise NotImplementedError("try_match", pattern)
 
     def compile_match_function(self, env: Env, exp: MatchFunction, name: Optional[str]) -> str:
@@ -170,7 +169,9 @@ class Compiler:
         for i, case in enumerate(exp.cases):
             self._emit(f"// case {i}")
             fallthrough = self.gensym()
-            self.try_match(env, arg, case.pattern, fallthrough)
+            env_updates = self.try_match(env, arg, case.pattern, fallthrough)
+            case_result = self.compile({**env, **env_updates}, case.body)
+            self._emit(f"return {case_result};")
             self._emit(f"{fallthrough}:;")
 
         # obj mymatchfn(obj arg) {

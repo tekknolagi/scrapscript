@@ -47,8 +47,8 @@ class CompiledFunction:
             self.code.append(f"GC_PROTECT({param});")
 
     def decl(self) -> str:
-        args = ", ".join(f"struct gc_obj* {arg}" for arg in self.params)
-        return f"struct gc_obj* {self.name}({args})"
+        args = ", ".join(f"struct object* {arg}" for arg in self.params)
+        return f"struct object* {self.name}({args})"
 
 
 class Compiler:
@@ -202,7 +202,7 @@ class Compiler:
     def compile(self, env: Env, exp: Object) -> str:
         if isinstance(exp, Int):
             # TODO(max): Bignum
-            self._debug("collect(heap);")
+            # self._debug("collect(heap);")
             return self._mktemp(f"mknum(heap, {exp.value})")
         if isinstance(exp, Binop):
             left = self.compile(env, exp.left)
@@ -243,11 +243,7 @@ class Compiler:
                     return f"builtin_{exp.arg.value}"
             callee = self.compile(env, exp.func)
             arg = self.compile(env, exp.arg)
-            fn = self.gensym()
-            self._guard(f"is_closure({callee})", "attempting to call a non-closure")
-            self._emit(f"ClosureFn {fn} = closure_fn({callee});")
-            return self._mktemp(f"(*{fn})((struct gc_obj*){callee}, {arg})")
-            raise NotImplementedError(f"apply {type(callee)} {callee}")
+            return self._mktemp(f"closure_call({callee}, {arg})")
         if isinstance(exp, List):
             num_items = len(exp.items)
             items = [self.compile(env, item) for item in exp.items]
@@ -321,12 +317,9 @@ def main() -> None:
         fn.code.append(f"return {builtin}(arg);")
         compiler.functions.append(fn)
 
-    with open("runtime.c", "r") as f:
-        runtime = f.read()
-
     with open(args.output, "w") as f:
-        print(runtime, file=f)
-        print(f"#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct gc_obj*, name, exp)", file=f)
+        print('#include "runtime.c"', file=f)
+        print(f"#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct object*, name, exp)", file=f)
         # Declare all functions
         print("const char* record_keys[] = {", file=f)
         for key in compiler.record_keys:
@@ -335,7 +328,7 @@ def main() -> None:
         for function in compiler.functions:
             print(function.decl() + ";", file=f)
         for builtin in BUILTINS:
-            print(f"struct gc_obj* builtin_{builtin} = NULL;", file=f)
+            print(f"struct object* builtin_{builtin} = NULL;", file=f)
         for function in compiler.functions:
             print(f"{function.decl()} {{", file=f)
             for line in function.code:
@@ -347,7 +340,7 @@ def main() -> None:
         for builtin in BUILTINS:
             print(f"builtin_{builtin} = mkclosure(heap, builtin_{builtin}_wrapper, 0);", file=f)
             print(f"GC_PROTECT(builtin_{builtin});", file=f)
-        print(f"struct gc_obj* result = {main.name}();", file=f)
+        print(f"struct object* result = {main.name}();", file=f)
         print("println(result);", file=f)
         print("destroy_heap(heap);", file=f)
         print("}", file=f)
@@ -367,7 +360,7 @@ def main() -> None:
             default_cflags = "-O0 -ggdb"
         else:
             default_cflags = "-O2 -flto -DNDEBUG"
-        cflags = os.environ.get("CFLAGS", "-Wall -Wextra " + default_cflags)
+        cflags = os.environ.get("CFLAGS", "-Wall -Wextra -fno-strict-aliasing " + default_cflags)
         subprocess.run([cc, "-o", "a.out", *shlex.split(cflags), args.output], check=True)
 
     if args.run:

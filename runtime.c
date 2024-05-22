@@ -453,32 +453,32 @@ struct gc_obj* list_append(struct gc_obj *list_obj, struct gc_obj *item) {
 
 const char* record_keys[];
 
-struct gc_obj* print(struct gc_obj *obj) {
+struct gc_obj *print(struct gc_obj *obj) {
   if (obj->tag == TAG_NUM) {
     printf("%ld", num_value(obj));
   } else if (obj->tag == TAG_LIST) {
-    struct list *list = (struct list*)obj;
-    printf("[");
+    struct list *list = (struct list *)obj;
+    putchar('[');
     for (size_t i = 0; i < list->size; i++) {
       print(list->items[i]);
       if (i + 1 < list->size) {
-        printf(", ");
+        fputs(", ", stdout);
       }
     }
-    printf("]");
+    putchar(']');
   } else if (obj->tag == TAG_RECORD) {
-    struct record *record = (struct record*)obj;
-    printf("{");
+    struct record *record = (struct record *)obj;
+    putchar('{');
     for (size_t i = 0; i < record->size; i++) {
       printf("%s = ", record_keys[record->fields[i].key]);
       print(record->fields[i].value);
       if (i + 1 < record->size) {
-        printf(", ");
+        fputs(", ", stdout);
       }
     }
-    printf("}");
+    putchar('}');
   } else if (obj->tag == TAG_CLOSURE) {
-    printf("<closure>");
+    fputs("<closure>", stdout);
   } else {
     fprintf(stderr, "unknown tag: %lu\n", obj->tag);
     abort();
@@ -486,8 +486,8 @@ struct gc_obj* print(struct gc_obj *obj) {
   return obj;
 }
 
-struct gc_obj* println(struct gc_obj *obj) {
+struct gc_obj *println(struct gc_obj *obj) {
   print(obj);
-  printf("\n");
+  putchar('\n');
   return obj;
 }

@@ -53,6 +53,30 @@ docker run -i -t ghcr.io/tekknolagi/scrapscript:trunk apply "1 + 2"
 docker run -i -t ghcr.io/tekknolagi/scrapscript:trunk repl
 ```
 
+The experimental compiler:
+
+### Normal ELF
+
+```bash
+./compiler.py some.scrap  # produces output.c
+./compiler.py some.scrap --compile  # produces a.out
+```
+
+### Cosmopolitan
+
+```bash
+CC=~/Downloads/cosmos/bin/cosmocc ./compiler.py some.scrap  --compile # produces a.out
+```
+
+### Wasm
+
+```bash
+CC=/opt/wasi-sdk/bin/clang \
+CFLAGS=-D_WASI_EMULATED_MMAN \
+LDFLAGS=-lwasi-emulated-mman \
+./compiler.py some.scrap --compile  # produces a.out
+```
+
 ## Running Tests
 
 ```bash

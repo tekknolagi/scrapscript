@@ -360,10 +360,12 @@ struct gc_obj* record_get(struct gc_obj *record, size_t key) {
   return NULL;
 }
 
+#define MAX_HANDLES 20
+
 struct handles {
   // TODO(max): Figure out how to make this a flat linked list with whole
   // chunks popped off at function return
-  struct gc_obj** stack[20];
+  struct gc_obj** stack[MAX_HANDLES];
   size_t stack_pointer;
   struct handles* next;
 };
@@ -376,7 +378,7 @@ void pop_handles(void* local_handles) {
 }
 
 #define HANDLES() struct handles local_handles __attribute__((__cleanup__(pop_handles))) = { .next = handles }; handles = &local_handles
-#define GC_PROTECT(x) local_handles.stack[local_handles.stack_pointer++] = (struct gc_obj**)(&x)
+#define GC_PROTECT(x) assert(local_handles.stack_pointer < MAX_HANDLES); local_handles.stack[local_handles.stack_pointer++] = (struct gc_obj**)(&x)
 #define END_HANDLES() handles = local_handles.next
 #define GC_HANDLE(type, name, val) type name = val; GC_PROTECT(name)
 

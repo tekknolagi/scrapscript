@@ -34,10 +34,10 @@ fn_counter = itertools.count()
 @dataclasses.dataclass
 class CompiledFunction:
     id: int = dataclasses.field(default=0, init=False, compare=False, hash=False)
+    name: str
     params: list[str]
     fields: list[str] = dataclasses.field(default_factory=list)
     code: list[str] = dataclasses.field(default_factory=list)
-    name: Optional[str] = None
 
     def __post_init__(self) -> None:
         self.id = next(fn_counter)
@@ -45,8 +45,6 @@ class CompiledFunction:
         for param in self.params:
             # The parameters are raw pointers and must be updated on GC
             self.code.append(f"GC_PROTECT({param});")
-        if self.name is None:
-            self.name = f"fn_{self.id}"
 
     def decl(self) -> str:
         args = ", ".join(f"struct gc_obj* {arg}" for arg in self.params)
@@ -67,9 +65,9 @@ class Compiler:
         result = self.record_keys[key] = len(self.record_keys)
         return result
 
-    def gensym(self) -> str:
+    def gensym(self, stem: str = "tmp") -> str:
         self.gensym_counter += 1
-        return f"tmp_{self.gensym_counter-1}"
+        return f"{stem}_{self.gensym_counter-1}"
 
     def _emit(self, line: str) -> None:
         self.function.code.append(line)
@@ -116,7 +114,8 @@ class Compiler:
         if name is not None and name in free:
             free.remove(name)
         fields = sorted(free)
-        return CompiledFunction(params=["this", arg], fields=fields)
+        fn_name = self.gensym(name if name else "fn")  # must be globally unique
+        return CompiledFunction(fn_name, params=["this", arg], fields=fields)
 
     def compile_function_env(self, fn: CompiledFunction, name: Optional[str]) -> Env:
         result = {param: param for param in fn.params}
@@ -307,13 +306,13 @@ def main() -> None:
         source = f.read()
     program = parse(tokenize(source))
 
-    main = CompiledFunction(params=[], name="scrap_main")
+    main = CompiledFunction("scrap_main", params=[])
     compiler = Compiler(main)
     result = compiler.compile({}, program)
     main.code.append(f"return {result};")
 
     for builtin in BUILTINS:
-        fn = CompiledFunction(params=["this", "arg"], name=f"builtin_{builtin}_wrapper")
+        fn = CompiledFunction(f"builtin_{builtin}_wrapper", params=["this", "arg"])
         fn.code.append(f"return {builtin}(arg);")
         compiler.functions.append(fn)
 

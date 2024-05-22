@@ -2,6 +2,9 @@
 import dataclasses
 import itertools
 import os
+
+from typing import Optional
+
 from scrapscript import (
     Access,
     Apply,
@@ -11,7 +14,6 @@ from scrapscript import (
     Function,
     Int,
     List,
-    MatchCase,
     MatchFunction,
     Object,
     Record,
@@ -23,7 +25,6 @@ from scrapscript import (
     parse,
     tokenize,
 )
-from typing import Optional
 
 Env = dict[str, str]
 
@@ -52,10 +53,10 @@ class CompiledFunction:
 
 
 class Compiler:
-    def __init__(self, main: CompiledFunction) -> None:
+    def __init__(self, main_fn: CompiledFunction) -> None:
         self.gensym_counter: int = 0
-        self.functions: list[CompiledFunction] = [main]
-        self.function: CompiledFunction = main
+        self.functions: list[CompiledFunction] = [main_fn]
+        self.function: CompiledFunction = main_fn
         self.record_keys: dict[str, int] = {}
         self.debug: bool = False
 
@@ -111,7 +112,7 @@ class Compiler:
         value = self.compile(env, exp.value)
         return {**env, name: value}
 
-    def make_compiled_function(self, env: Env, arg: str, exp: Object, name: Optional[str]) -> CompiledFunction:
+    def make_compiled_function(self, arg: str, exp: Object, name: Optional[str]) -> CompiledFunction:
         assert isinstance(exp, (Function, MatchFunction))
         free = free_in(exp)
         if name is not None and name in free:
@@ -130,7 +131,7 @@ class Compiler:
 
     def compile_function(self, env: Env, exp: Function, name: Optional[str]) -> str:
         assert isinstance(exp.arg, Var)
-        fn = self.make_compiled_function(env, exp.arg.name, exp, name)
+        fn = self.make_compiled_function(exp.arg.name, exp, name)
         self.functions.append(fn)
         cur = self.function
         self.function = fn
@@ -174,7 +175,7 @@ class Compiler:
 
     def compile_match_function(self, env: Env, exp: MatchFunction, name: Optional[str]) -> str:
         arg = self.gensym()
-        fn = self.make_compiled_function(env, arg, exp, name)
+        fn = self.make_compiled_function(arg, exp, name)
         self.functions.append(fn)
         cur = self.function
         self.function = fn
@@ -319,11 +320,11 @@ def main() -> None:
         source = f.read()
     program = parse(tokenize(source))
 
-    main = CompiledFunction("scrap_main", params=[])
-    compiler = Compiler(main)
+    main_fn = CompiledFunction("scrap_main", params=[])
+    compiler = Compiler(main_fn)
     compiler.debug = args.debug
     result = compiler.compile({}, program)
-    main.code.append(f"return {result};")
+    main_fn.code.append(f"return {result};")
 
     for builtin in BUILTINS:
         fn = CompiledFunction(f"builtin_{builtin}_wrapper", params=["this", "arg"])
@@ -332,7 +333,7 @@ def main() -> None:
 
     with open(args.output, "w") as f:
         print('#include "runtime.c"', file=f)
-        print(f"#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct object*, name, exp)", file=f)
+        print("#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct object*, name, exp)", file=f)
         # Declare all functions
         print("const char* record_keys[] = {", file=f)
         for key in compiler.record_keys:
@@ -353,7 +354,7 @@ def main() -> None:
         for builtin in BUILTINS:
             print(f"builtin_{builtin} = mkclosure(heap, builtin_{builtin}_wrapper, 0);", file=f)
             print(f"GC_PROTECT(builtin_{builtin});", file=f)
-        print(f"struct object* result = {main.name}();", file=f)
+        print(f"struct object* result = {main_fn.name}();", file=f)
         print("println(result);", file=f)
         print("destroy_heap(heap);", file=f)
         print("}", file=f)

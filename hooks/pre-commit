@@ -23,5 +23,6 @@ fi
 if [ -n "$filenames" ]
 then
   ruff format --check $filenames
+  ruff check $filenames
   mypy --strict $filenames
 fi

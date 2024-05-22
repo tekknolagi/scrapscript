@@ -359,14 +359,17 @@ def main() -> None:
         if args.debug:
             default_cflags = "-O0 -ggdb"
         else:
-            default_cflags = "-O2 -flto -DNDEBUG"
+            default_cflags = "-O2 -DNDEBUG"
+            if "cosmo" not in cc:
+                # cosmocc does not support LTO
+                default_cflags += " -flto"
         cflags = os.environ.get("CFLAGS", "-Wall -Wextra -fno-strict-aliasing " + default_cflags)
         subprocess.run([cc, "-o", "a.out", *shlex.split(cflags), args.output], check=True)
 
     if args.run:
         import subprocess
 
-        subprocess.run(["./a.out"], check=True)
+        subprocess.run(["sh", "-c", "./a.out"], check=True)
 
 
 if __name__ == "__main__":

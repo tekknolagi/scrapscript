@@ -364,7 +364,8 @@ def main() -> None:
                 # cosmocc does not support LTO
                 default_cflags += " -flto"
         cflags = os.environ.get("CFLAGS", "-Wall -Wextra -fno-strict-aliasing " + default_cflags)
-        subprocess.run([cc, "-o", "a.out", *shlex.split(cflags), args.output], check=True)
+        ldflags = os.environ.get("LDFLAGS", "")
+        subprocess.run([cc, "-o", "a.out", *shlex.split(cflags), args.output, ldflags], check=True)
 
     if args.run:
         import subprocess

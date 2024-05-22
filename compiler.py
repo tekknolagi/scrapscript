@@ -57,6 +57,7 @@ class Compiler:
         self.functions: list[CompiledFunction] = [main]
         self.function: CompiledFunction = main
         self.record_keys: dict[str, int] = {}
+        self.debug: bool = False
 
     def record_key(self, key: str) -> int:
         result = self.record_keys.get(key)
@@ -73,6 +74,8 @@ class Compiler:
         self.function.code.append(line)
 
     def _debug(self, line: str) -> None:
+        if not self.debug:
+            return
         self._emit("#ifndef NDEBUG")
         self._emit(line)
         self._emit("#endif")
@@ -300,6 +303,7 @@ def main() -> None:
     parser.add_argument("--compile", action="store_true")
     parser.add_argument("--memory", type=int, default=1024)
     parser.add_argument("--run", action="store_true")
+    parser.add_argument("--debug", action="store_true", default=False)
     args = parser.parse_args()
 
     with open(args.file, "r") as f:
@@ -308,6 +312,7 @@ def main() -> None:
 
     main = CompiledFunction("scrap_main", params=[])
     compiler = Compiler(main)
+    compiler.debug = args.debug
     result = compiler.compile({}, program)
     main.code.append(f"return {result};")
 
@@ -358,7 +363,11 @@ def main() -> None:
         import subprocess
 
         cc = os.environ.get("CC", "clang")
-        cflags = os.environ.get("CFLAGS", "-O0 -ggdb")
+        if args.debug:
+            default_cflags = "-O0 -ggdb"
+        else:
+            default_cflags = "-O2 -flto -DNDEBUG"
+        cflags = os.environ.get("CFLAGS", "-Wall -Wextra " + default_cflags)
         subprocess.run([cc, "-o", "a.out", *shlex.split(cflags), args.output], check=True)
 
     if args.run:

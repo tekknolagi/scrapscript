@@ -3,7 +3,6 @@ import argparse
 import dataclasses
 import itertools
 import os
-import shlex
 from scrapscript import (
     Access,
     Apply,
@@ -294,6 +293,8 @@ BUILTINS = [
 
 
 def env_get_split(key: str, default: Optional[list[str]] = None) -> list[str]:
+    import shlex
+
     cflags = os.environ.get(key)
     if cflags:
         return shlex.split(cflags)

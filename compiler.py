@@ -299,6 +299,7 @@ def main() -> None:
     parser.add_argument("-o", "--output", default="output.c")
     parser.add_argument("--format", action="store_true")
     parser.add_argument("--compile", action="store_true")
+    parser.add_argument("--memory", type=int, default=1024)
     parser.add_argument("--run", action="store_true")
     args = parser.parse_args()
 
@@ -334,7 +335,7 @@ def main() -> None:
                 print(line, file=f)
             print("}", file=f)
         print("int main() {", file=f)
-        print("heap = make_heap(1024);", file=f)
+        print(f"heap = make_heap({args.memory});", file=f)
         print("HANDLES();", file=f)
         for builtin in BUILTINS:
             print(f"builtin_{builtin} = mkclosure(heap, builtin_{builtin}_wrapper, 0);", file=f)

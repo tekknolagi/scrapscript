@@ -453,6 +453,8 @@ struct gc_obj* print(struct gc_obj *obj) {
       }
     }
     printf("}");
+  } else if (obj->tag == TAG_CLOSURE) {
+    printf("<closure>");
   } else {
     fprintf(stderr, "unknown tag: %lu\n", obj->tag);
     abort();

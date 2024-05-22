@@ -141,7 +141,7 @@ class Compiler:
     def try_match(self, env: Env, arg: str, pattern: Object, fallthrough: str) -> Env:
         if isinstance(pattern, Int):
             self._emit(f"if (!is_num({arg})) {{ goto {fallthrough}; }}")
-            self._emit(f"if (!num_equals({arg}, {pattern.value})) {{ goto {fallthrough}; }}")
+            self._emit(f"if (num_value({arg}) != {pattern.value}) {{ goto {fallthrough}; }}")
             return {}
         if isinstance(pattern, Var):
             return {pattern.name: arg}
@@ -149,10 +149,10 @@ class Compiler:
             uses_spread = any(isinstance(item, Spread) for item in pattern.items)
             assert not uses_spread
             self._emit(f"if (!is_list({arg})) {{ goto {fallthrough}; }}")
-            self._emit(f"if (!list_length({arg}) == {len(pattern.items)}) {{ goto {fallthrough}; }}")
+            self._emit(f"if (list_size({arg}) != {len(pattern.items)}) {{ goto {fallthrough}; }}")
             updates = {}
             for i, pattern_item in enumerate(pattern.items):
-                list_item = self._mktemp(f"list_getitem({arg}, {i})")
+                list_item = self._mktemp(f"list_get({arg}, {i})")
                 updates.update(self.try_match(env, list_item, pattern_item, fallthrough))
             return updates
         raise NotImplementedError("try_match", pattern)

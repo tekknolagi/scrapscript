@@ -17,7 +17,6 @@ RUN rm Lib/webrepl.py
 RUN cp bin/python bin/scrapscript.com
 COPY style.css Lib
 COPY repl.html Lib
-COPY pyscript ./Lib/
 RUN printf "-m\nwebrepl\n..." > .args
 RUN sh bin/zip -A -r bin/scrapscript.com Lib .args
 RUN bin/ape.elf bin/assimilate bin/scrapscript.com

@@ -69,8 +69,6 @@ jobs:
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
-    - name: Try a little hello world
-      run: docker run ${{ steps.meta.outputs.tags }} apply "1 + 2"
   deploy:
     runs-on: ubuntu-latest
     if: |

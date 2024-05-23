@@ -13,7 +13,6 @@ COPY webrepl.py Lib
 RUN bin/ape.elf bin/python -m compileall Lib
 RUN mv Lib/__pycache__/scrapscript*.pyc Lib/scrapscript.pyc
 RUN mv Lib/__pycache__/webrepl*.pyc Lib/webrepl.pyc
-RUN rm Lib/scrapscript.py
 RUN rm Lib/webrepl.py
 RUN cp bin/python bin/scrapscript.com
 COPY style.css Lib

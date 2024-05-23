@@ -23,6 +23,8 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
         logger.debug("QUERY %s", query)
         if parsed_path.path == "/repl":
             return self.do_repl()
+        if parsed_path.path == "/scrapscript.py":
+            return self.do_scrapscript_py()
         if parsed_path.path == "/eval":
             try:
                 return self.do_eval(query)
@@ -46,6 +48,14 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-type", "text/html")
         self.end_headers()
         with open(os.path.join(ASSET_DIR, "repl.html"), "rb") as f:
+            self.wfile.write(f.read())
+        return
+
+    def do_scrapscript_py(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        with open(os.path.join(ASSET_DIR, "scrapscript.py"), "rb") as f:
             self.wfile.write(f.read())
         return
 

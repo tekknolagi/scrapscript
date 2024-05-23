@@ -25,7 +25,7 @@ jobs:
         uses: superfly/fly-pr-review-apps@1.2.0
         with:
           name: scrapscript-pr-${{ github.event.number }}
-          region: ewr
+          regions: ewr
           org: personal
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_DEPLOY_TOKEN }}

@@ -46,6 +46,9 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
     def do_repl(self) -> None:
         self.send_response(200)
         self.send_header("Content-type", "text/html")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
         self.end_headers()
         with open(os.path.join(ASSET_DIR, "repl.html"), "rb") as f:
             self.wfile.write(f.read())

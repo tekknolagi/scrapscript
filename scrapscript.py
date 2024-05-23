@@ -4412,6 +4412,10 @@ class ScrapRepl(code.InteractiveConsole):
             tokens = tokenize(source)
             logger.debug("Tokens: %s", tokens)
             ast = parse(tokens)
+            if isinstance(ast, MatchFunction) and not source.endswith("\n"):
+                # User might be in the middle of typing a multi-line match...
+                # wait for them to hit Enter once after the last case
+                return True
             logger.debug("AST: %s", ast)
             result = eval_exp(self.env, ast)
             assert isinstance(self.env, dict)  # for .update()/__setitem__

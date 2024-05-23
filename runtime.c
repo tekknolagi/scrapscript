@@ -439,7 +439,7 @@ struct object* list_cons(struct object* item, struct object* list) {
   GC_PROTECT(item);
   GC_PROTECT(list);
   size_t size = list_size(list);
-  struct object* result = mklist(heap, size + 1);
+  GC_HANDLE(struct object*, result, mklist(heap, size + 1));
   list_set(result, 0, item);
   for (size_t i = 0; i < size; i++) {
     list_set(result, i + 1, list_get(list, i));
@@ -448,9 +448,10 @@ struct object* list_cons(struct object* item, struct object* list) {
 }
 
 struct object* list_rest(struct object* list) {
+  HANDLES();
   assert(list_size(list) > 0);
   size_t new_size = list_size(list) - 1;
-  struct object* result = mklist(heap, new_size);
+  GC_HANDLE(struct object*, result, mklist(heap, new_size));
   for (size_t i = 0; i < new_size; i++) {
     list_set(result, i, list_get(list, i + 1));
   }
@@ -462,7 +463,7 @@ struct object* list_append(struct object *list, struct object *item) {
   GC_PROTECT(list);
   GC_PROTECT(item);
   size_t size = list_size(list);
-  struct object *result = mklist(heap, size + 1);
+  GC_HANDLE(struct object *, result, mklist(heap, size + 1));
   for (size_t i = 0; i < size; i++) {
     list_set(result, i, list_get(list, i));
   }

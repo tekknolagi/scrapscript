@@ -22,18 +22,9 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
         self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
         super().end_headers()
 
-    def do_GET(self) -> None:
-        parsed_path = urllib.parse.urlsplit(self.path)
-        if parsed_path.path == "/repl":
-            self.send_response(302)  # temporary redirect
-            self.send_header("Location", "/repl.html")
-            self.end_headers()
-            return
-        return super().do_GET()
-
     def send_error(self, code: int, message: str | None = None, explain: str | None = None) -> None:
         if code == 404:
-            self.error_message_format = """try hitting <a href="/repl">/repl</a>"""
+            self.error_message_format = """try hitting <a href="/repl.html">/repl.html</a>"""
         return super().send_error(code, message)
 
 
@@ -57,6 +48,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--fork", action="store_true")
+    parser.add_argument("--assets", type=str, default=".")
     args = parser.parse_args()
     serve(args)
 

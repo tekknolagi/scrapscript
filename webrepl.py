@@ -25,7 +25,10 @@ class ScrapReplServer(http.server.SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed_path = urllib.parse.urlsplit(self.path)
         if parsed_path.path == "/repl":
-            self.path = "/repl.html"
+            self.send_response(302)  # temporary redirect
+            self.send_header("Location", "/repl.html")
+            self.end_headers()
+            return
         return super().do_GET()
 
     def send_error(self, code: int, message: str | None = None, explain: str | None = None) -> None:

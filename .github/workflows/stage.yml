@@ -22,7 +22,7 @@ jobs:
 
       - name: Deploy
         id: deploy
-        uses: superfly/fly-pr-review-apps@1.2.0
+        uses: superfly/fly-pr-review-apps@1.2.1
         with:
           name: scrapscript-pr-${{ github.event.number }}
           region: ewr

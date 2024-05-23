@@ -48,7 +48,6 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--fork", action="store_true")
-    parser.add_argument("--assets", type=str, default=".")
     args = parser.parse_args()
     serve(args)
 

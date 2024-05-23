@@ -27,4 +27,3 @@ FROM scratch as webrepl
 COPY --from=build /cosmo/bin/scrapscript.com .
 EXPOSE 8000
 ENTRYPOINT ["./scrapscript.com"]
-CMD ["--assets", "/zip/Lib"]

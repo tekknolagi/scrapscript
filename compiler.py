@@ -260,7 +260,9 @@ class Compiler:
             result = self._mktemp(f"mkrecord(heap, {len(values)})")
             for i, (key, value) in enumerate(values.items()):
                 key_idx = self.record_key(key)
-                self._emit(f"record_set({result}, /*index=*/{i}, /*key=*/{key_idx}, /*value=*/{value});")
+                self._emit(
+                    f"record_set({result}, /*index=*/{i}, (struct record_field){{.key={key_idx}, .value={value}}});"
+                )
             self._debug("collect(heap);")
             return result
         if isinstance(exp, Access):

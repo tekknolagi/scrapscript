@@ -368,11 +368,10 @@ struct object* mkrecord(struct gc_heap* heap, size_t size) {
   return result;
 }
 
-void record_set(struct object *record, size_t index, size_t key, struct object *value) {
+void record_set(struct object *record, size_t index, struct record_field field) {
   struct record *r = as_record(record);
   assert(index < r->size);
-  r->fields[index].key = key;
-  r->fields[index].value = value;
+  r->fields[index] = field;
 }
 
 struct object* record_get(struct object *record, size_t key) {

@@ -10,7 +10,6 @@ RUN sh bin/zip -A --delete bin/python "Lib/site-packages/*"
 RUN mkdir Lib
 COPY scrapscript.py Lib
 COPY webrepl.py Lib
-RUN echo "-m\nscrapscript\n..." > .args
 RUN bin/ape.elf bin/python -m compileall Lib
 RUN mv Lib/__pycache__/scrapscript*.pyc Lib/scrapscript.pyc
 RUN mv Lib/__pycache__/webrepl*.pyc Lib/webrepl.pyc
@@ -19,18 +18,12 @@ RUN rm Lib/webrepl.py
 RUN cp bin/python bin/scrapscript.com
 COPY style.css Lib
 COPY repl.html Lib
+RUN printf "-m\nwebrepl\n..." > .args
 RUN sh bin/zip -A -r bin/scrapscript.com Lib .args
 RUN bin/ape.elf bin/assimilate bin/scrapscript.com
 
 # Set up the container
-FROM scratch as scrapscript
-COPY --from=build /cosmo/bin/scrapscript.com .
-EXPOSE 8000
-ENTRYPOINT ["./scrapscript.com"]
-CMD ["repl"]
-
 FROM scratch as webrepl
 COPY --from=build /cosmo/bin/scrapscript.com .
 EXPOSE 8000
 ENTRYPOINT ["./scrapscript.com"]
-CMD ["repl"]

@@ -21,35 +21,67 @@ struct gc_obj {
 // immediate integer
 struct object {};
 
-static const uword kSmallIntMask = (uword)1ULL;
-static const uword kSmallIntBits = 1;
-static const uword kSmallIntTag = (uword)0ULL;   // 0b....0
+// Up to the five least significant bits are used to tag the object's layout.
+// The three low bits make up a primary tag, used to differentiate gc_obj
+// from immediate objects. All even tags map to SmallInt, which is
+// optimized by checking only the lowest bit for parity.
+static const uword kSmallIntTagBits = 1;
+static const uword kPrimaryTagBits = 3;
+static const uword kImmediateTagBits = 5;
+static const uword kSmallIntTagMask = (1 << kSmallIntTagBits) - 1;
+static const uword kPrimaryTagMask = (1 << kPrimaryTagBits) - 1;
+static const uword kImmediateTagMask = (1 << kImmediateTagBits) - 1;
 
-static const uword kImmediateMask = (uword)3ULL;
-static const uword kImmediateTag = (uword)3ULL;  // 0b...11
-static const uword kImmediateBits = 2;
+const int kWordSize = sizeof(word);
+static const word kMaxSmallStringLength = kWordSize - 1;
+const int kBitsPerByte = 8;
 
-static const uword kHeapObjectMask = (uword)3ULL;
-static const uword kHeapObjectTag = (uword)1ULL; // 0b...01
+static const uword kSmallIntTag = 0;         // 0b****0
+static const uword kHeapObjectTag = 1;       // 0b**001
+static const uword kEmptyListTag = 5;        // 0b00101
+static const uword kSmallStringTag = 13;     // 0b01101
 
-static const uword kEmptyList = ((uword)0ULL << kImmediateBits) | kImmediateTag;
-
-bool is_small_int(struct object* obj) { return (((uword)obj) & kSmallIntMask) == kSmallIntTag; }
+bool is_small_int(struct object* obj) {
+  return (((uword)obj) & kSmallIntTagMask) == kSmallIntTag;
+}
 bool is_immediate_not_small_int(struct object* obj) {
-  return (((uword)obj) & kImmediateMask) == kImmediateTag;
+  return (((uword)obj) & (kPrimaryTagMask & ~kSmallIntTagMask)) != 0;
 }
-bool is_immediate(struct object* obj) {
-  return is_small_int(obj) || is_immediate_not_small_int(obj);
+bool is_heap_object(struct object* obj) {
+  return (((uword)obj) & kPrimaryTagMask) == kHeapObjectTag;
 }
-struct object* empty_list() { return (struct object*)kEmptyList; }
+struct object* empty_list() { return (struct object*)kEmptyListTag; }
 bool is_empty_list(struct object* obj) { return obj == empty_list(); }
-bool is_heap_object(struct object* obj) { return (((uword)obj) & kHeapObjectMask) == kHeapObjectTag; }
-uword as_immediate(struct object* obj) {
-  assert(is_immediate(obj));
-  return ((uword)obj) >> kImmediateBits;
+bool is_small_string(struct object* obj) {
+  return (((uword)obj) & kImmediateTagMask) == kSmallStringTag;
+}
+word small_string_length(struct object* obj) {
+  assert(is_small_string(obj));
+  return (((uword)obj) >> kImmediateTagBits) & kMaxSmallStringLength;
+}
+struct object* mksmallstring(const char* data, word length) {
+  assert(length >= 0);
+  assert(length <= kMaxSmallStringLength);
+  uword result = 0;
+  for (word i = length - 1; i >= 0; i--) {
+    result = (result << kBitsPerByte) | data[i];
+  }
+  struct object* result_obj =
+    (struct object*)((result << kBitsPerByte) | (length << kImmediateTagBits) | kSmallStringTag);
+  assert(!is_heap_object(result_obj));
+  assert(is_small_string(result_obj));
+  assert(small_string_length(result_obj) == length);
+  return result_obj;
+}
+char small_string_at(struct object* obj, word index) {
+  assert(is_small_string(obj));
+  assert(index >= 0);
+  assert(index < small_string_length(obj));
+  // +1 for (length | tag) byte
+  return ((uword)obj >> ((index+1) * kBitsPerByte)) & 0xFF;
 }
 struct gc_obj* as_heap_object(struct object* obj) {
-  assert(!is_immediate(obj));
+  assert(is_heap_object(obj));
   assert(kHeapObjectTag == 1);
   return (struct gc_obj*)((uword)obj - 1);
 }
@@ -129,7 +161,7 @@ struct object* heap_tag(uintptr_t addr) {
 }
 
 void visit_field(struct object **pointer, struct gc_heap *heap) {
-  if (is_immediate(*pointer)) {
+  if (!is_heap_object(*pointer)) {
     return;
   }
   struct gc_obj *from = as_heap_object(*pointer);
@@ -225,7 +257,7 @@ struct record {
   struct record_field fields[];
 };
 
-struct string {
+struct heap_string {
   struct gc_obj HEAD;
   size_t size;
   char data[];
@@ -239,8 +271,8 @@ size_t record_size(size_t count) {
   return sizeof(struct record) + count * sizeof(struct record_field);
 }
 
-size_t string_size(size_t count) {
-  return sizeof(struct string) + count;
+size_t heap_string_size(size_t count) {
+  return sizeof(struct heap_string) + count;
 }
 
 size_t heap_object_size(struct gc_obj *obj) {
@@ -252,7 +284,7 @@ size_t heap_object_size(struct gc_obj *obj) {
   case TAG_RECORD:
     return record_size(((struct record*)obj)->size);
   case TAG_STRING:
-    return string_size(((struct string*)obj)->size);
+    return heap_string_size(((struct heap_string*)obj)->size);
   default:
     fprintf(stderr, "unknown tag: %lu\n", obj->tag);
     abort();
@@ -284,10 +316,19 @@ size_t trace_heap_object(struct gc_obj *obj, struct gc_heap *heap, VisitFn visit
   return heap_object_size(obj);
 }
 
-struct object* mknum(struct gc_heap *heap, int value) {
+const int kBitsPerPointer = kBitsPerByte * kWordSize;
+static const word kSmallIntBits = kBitsPerPointer - kSmallIntTagBits;
+static const word kSmallIntMinValue = -(((word)1) << (kSmallIntBits - 1));
+static const word kSmallIntMaxValue = (((word)1) << (kSmallIntBits - 1)) - 1;
+
+bool smallint_is_valid(word value) {
+    return (value >= kSmallIntMinValue) && (value <= kSmallIntMaxValue);
+}
+
+struct object* mknum(struct gc_heap *heap, word value) {
   (void)heap;
-  // TODO(max): Check if it fits in 63 bits
-  return (struct object*)(((uword)value << kSmallIntBits));
+  assert(smallint_is_valid(value));
+  return (struct object*)(((uword)value << kSmallIntTagBits));
 }
 
 bool is_num(struct object* obj) {
@@ -300,10 +341,10 @@ word num_value(struct object* obj) {
 }
 
 bool is_list(struct object* obj) {
-  if (is_immediate(obj)) {
-    return is_empty_list(obj);
+  if (is_empty_list(obj)) {
+    return true;
   }
-  return as_heap_object(obj)->tag == TAG_LIST;
+  return is_heap_object(obj) && as_heap_object(obj)->tag == TAG_LIST;
 }
 
 struct list* as_list(struct object* obj) {
@@ -330,10 +371,7 @@ struct object* mklist(struct gc_heap *heap) {
 }
 
 bool is_closure(struct object* obj) {
-  if (is_immediate(obj)) {
-    return false;
-  }
-  return as_heap_object(obj)->tag == TAG_CLOSURE;
+  return is_heap_object(obj) && as_heap_object(obj)->tag == TAG_CLOSURE;
 }
 
 struct closure* as_closure(struct object* obj) {
@@ -373,10 +411,7 @@ struct object* closure_call(struct object *closure, struct object *arg) {
 }
 
 bool is_record(struct object* obj) {
-  if (is_immediate(obj)) {
-    return false;
-  }
-  return as_heap_object(obj)->tag == TAG_RECORD;
+  return is_heap_object(obj) && as_heap_object(obj)->tag == TAG_RECORD;
 }
 
 struct record* as_record(struct object* obj) {
@@ -413,25 +448,41 @@ struct object* record_get(struct object *record, size_t key) {
   return NULL;
 }
 
+bool is_string(struct object* obj) {
+  if (is_small_string(obj)) {
+    return true;
+  }
+  return is_heap_object(obj) && as_heap_object(obj)->tag == TAG_STRING;
+}
+
+struct heap_string* as_heap_string(struct object* obj) {
+  assert(is_string(obj));
+  return (struct heap_string*)as_heap_object(obj);
+}
+
 struct object* mkstring(struct gc_heap* heap, const char *data, size_t size) {
-  struct object *result = allocate(heap, string_size(size));
+  if (size < kMaxSmallStringLength) {
+    return mksmallstring(data, size);
+  }
+  struct object *result = allocate(heap, heap_string_size(size));
   as_heap_object(result)->tag = TAG_STRING;
-  struct string *s = (struct string*)as_heap_object(result);
-  s->size = size;
-  memcpy(s->data, data, size);
+  as_heap_string(result)->size = size;
+  memcpy(as_heap_string(result)->data, data, size);
   return result;
 }
 
-bool is_string(struct object* obj) {
-  if (is_immediate(obj)) {
-    return false;
+word string_length(struct object* obj) {
+  if (is_small_string(obj)) {
+    return small_string_length(obj);
   }
-  return as_heap_object(obj)->tag == TAG_STRING;
+  return as_heap_string(obj)->size;
 }
 
-struct string* as_string(struct object* obj) {
-  assert(is_string(obj));
-  return (struct string*)as_heap_object(obj);
+char string_at(struct object* obj, word index) {
+  if (is_small_string(obj)) {
+    return small_string_at(obj, index);
+  }
+  return as_heap_string(obj)->data[index];
 }
 
 #define MAX_HANDLES 20
@@ -525,10 +576,13 @@ struct object *print(struct object *obj) {
   } else if (is_closure(obj)) {
     fputs("<closure>", stdout);
   } else if (is_string(obj)) {
-    struct string *s = as_string(obj);
-    printf("\"%.*s\"", (int)s->size, s->data);
+    putchar('"');
+    for (word i = 0; i < string_length(obj); i++) {
+      putchar(string_at(obj, i));
+    }
+    putchar('"');
   } else {
-    assert(!is_immediate(obj));
+    assert(is_heap_object(obj));
     fprintf(stderr, "unknown tag: %lu\n", as_heap_object(obj)->tag);
     abort();
   }

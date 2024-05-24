@@ -208,9 +208,10 @@ class Compiler:
     def compile(self, env: Env, exp: Object) -> str:
         if isinstance(exp, Int):
             # TODO(max): Bignum
-            # self._debug("collect(heap);")
+            self._debug("collect(heap);")
             return self._mktemp(f"mknum(heap, {exp.value})")
         if isinstance(exp, String):
+            self._debug("collect(heap);")
             string_repr = json.dumps(exp.value)
             return self._mktemp(f"mkstring(heap, {string_repr}, {len(exp.value)});")
         if isinstance(exp, Binop):

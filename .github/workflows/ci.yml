@@ -32,7 +32,7 @@ jobs:
   run_unit_tests:
     strategy:
       matrix:
-        PYTHON: [python3.8, python3.9, python3.10, python3.11, python3.12]
+        PYTHON: [python3.8, python3.9, python3.10, python3.11, python3.12, python3.13]
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3

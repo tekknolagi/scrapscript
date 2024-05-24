@@ -460,18 +460,24 @@ struct heap_string* as_heap_string(struct object* obj) {
   return (struct heap_string*)as_heap_object(obj);
 }
 
+struct object* mkstring_uninit_private(struct gc_heap* heap, size_t size) {
+  assert(size > kMaxSmallStringLength);  // can't fill in small string later
+  struct object *result = allocate(heap, heap_string_size(size));
+  as_heap_object(result)->tag = TAG_STRING;
+  as_heap_string(result)->size = size;
+  return result;
+}
+
 struct object* mkstring(struct gc_heap* heap, const char *data, size_t size) {
   if (size < kMaxSmallStringLength) {
     return mksmallstring(data, size);
   }
-  struct object *result = allocate(heap, heap_string_size(size));
-  as_heap_object(result)->tag = TAG_STRING;
-  as_heap_string(result)->size = size;
+  struct object *result = mkstring_uninit_private(heap, size);
   memcpy(as_heap_string(result)->data, data, size);
   return result;
 }
 
-word string_length(struct object* obj) {
+uword string_length(struct object* obj) {
   if (is_small_string(obj)) {
     return small_string_length(obj);
   }
@@ -546,6 +552,38 @@ struct object* list_append(struct object *list, struct object *item) {
   abort();
 }
 
+struct object* string_concat(struct object *a, struct object *b) {
+  uword a_size = string_length(a);
+  if (a_size == 0) {
+    return b;
+  }
+  uword b_size = string_length(b);
+  if (b_size == 0) {
+    return a;
+  }
+  if (a_size + b_size < kMaxSmallStringLength) {
+    char data[kMaxSmallStringLength];
+    for (uword i = 0; i < a_size; i++) {
+      data[i] = string_at(a, i);
+    }
+    for (uword i = 0; i < b_size; i++) {
+      data[a_size + i] = string_at(b, i);
+    }
+    return mksmallstring(data, a_size + b_size);
+  }
+  HANDLES();
+  GC_PROTECT(a);
+  GC_PROTECT(b);
+  struct object *result = mkstring_uninit_private(heap, a_size + b_size);
+  for (size_t i = 0; i < a_size; i++) {
+    as_heap_string(result)->data[i] = string_at(a, i);
+  }
+  for (size_t i = 0; i < b_size; i++) {
+    as_heap_string(result)->data[a_size + i] = string_at(b, i);
+  }
+  return result;
+}
+
 const char* record_keys[];
 
 struct object *print(struct object *obj) {
@@ -577,7 +615,7 @@ struct object *print(struct object *obj) {
     fputs("<closure>", stdout);
   } else if (is_string(obj)) {
     putchar('"');
-    for (word i = 0; i < string_length(obj); i++) {
+    for (uword i = 0; i < string_length(obj); i++) {
       putchar(string_at(obj, i));
     }
     putchar('"');

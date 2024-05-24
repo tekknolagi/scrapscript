@@ -227,6 +227,11 @@ class Compiler:
             if exp.op == BinopKind.LIST_CONS:
                 self._debug("collect(heap);")
                 return self._mktemp(f"list_cons({left}, {right})")
+            if exp.op == BinopKind.STRING_CONCAT:
+                self._debug("collect(heap);")
+                self._guard(f"is_string({left})")
+                self._guard(f"is_string({right})")
+                return self._mktemp(f"string_concat({left}, {right})")
             raise NotImplementedError(f"binop {exp.op}")
         if isinstance(exp, Where):
             assert isinstance(exp.binding, Assign)

@@ -600,6 +600,19 @@ struct object* string_concat(struct object *a, struct object *b) {
   return heap_string_concat(a, b);
 }
 
+bool string_equal_cstr_len(struct object *string, const char *cstr, uword len) {
+  assert(is_string(string));
+  if (string_length(string) != len) {
+    return false;
+  }
+  for (uword i = 0; i < len; i++) {
+    if (string_at(string, i) != cstr[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 const char* record_keys[];
 
 struct object *print(struct object *obj) {

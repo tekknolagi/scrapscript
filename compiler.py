@@ -147,6 +147,13 @@ class Compiler:
             self._emit(f"if (!is_num({arg})) {{ goto {fallthrough}; }}")
             self._emit(f"if (num_value({arg}) != {pattern.value}) {{ goto {fallthrough}; }}")
             return {}
+        if isinstance(pattern, String):
+            self._emit(f"if (!is_string({arg})) {{ goto {fallthrough}; }}")
+            value = pattern.value
+            self._emit(
+                f"if (!string_equal_cstr_len({arg}, {json.dumps(value)}, {len(value)})) {{ goto {fallthrough}; }}"
+            )
+            return {}
         if isinstance(pattern, Var):
             return {pattern.name: arg}
         if isinstance(pattern, List):

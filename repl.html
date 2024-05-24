@@ -85,10 +85,6 @@ function renderHistory() {
 function loadFromLocalStorage() {
     history.length = 0;
     output.innerHTML = "";
-    const hist = window.localStorage.getItem('history');
-    if (hist !== null) {
-        history.push(...JSON.parse(hist));
-    }
     renderHistory();
 }
 
@@ -129,7 +125,6 @@ async function submitInput() {
         history.push([input.value, result]);
         input.value = "";
         document.monad = monad;
-        window.localStorage.setItem('history', JSON.stringify(history));
     } else {
         const msg = await response.text();
         updateHistory(input.value, msg);

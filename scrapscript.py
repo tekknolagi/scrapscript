@@ -938,6 +938,7 @@ class NativeFunction(Object):
 class Closure(Object):
     env: Env
     func: Union[Function, MatchFunction]
+    name: Optional[str] = None
 
     def serialize(self) -> Dict[str, object]:
         return self._serialize(env=serialize_env(self.env), func=self.func.serialize())
@@ -955,8 +956,11 @@ class Closure(Object):
         return Closure(env, func)
 
     def __str__(self) -> str:
-        # TODO: Better pretty printing for Closure
-        return self.__repr__()
+        object_id = id(self)
+        object_address = hex(object_id)
+        if self.name is not None:
+            return f"<Closure {self.name} at {object_address}>"
+        return f"<Closure at {object_address}>"
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -1208,7 +1212,7 @@ def free_in(exp: Object) -> Set[str]:
 def improve_closure(closure: Closure) -> Closure:
     freevars = free_in(closure.func)
     env = {boundvar: value for boundvar, value in closure.env.items() if boundvar in freevars}
-    return Closure(env, closure.func)
+    return Closure(env, closure.func, name=closure.name)
 
 
 def eval_exp(env: Env, exp: Object) -> Object:
@@ -1243,6 +1247,10 @@ def eval_exp(env: Env, exp: Object) -> Object:
             # captured environment with a binding to themselves.
             assert isinstance(value.env, dict)
             value.env[exp.name.name] = value
+            # If creating a Closure with an Assign we can specify a name for the
+            # Closure, which may be useful for debugging.
+            print("Setting closure with name ", exp.name.name)
+            value = Closure(value.env, value.func, name=exp.name.name)
             # We still improve_closure here even though we also did it on
             # Closure creation because the Closure might not need a binding for
             # itself (it might not be recursive).

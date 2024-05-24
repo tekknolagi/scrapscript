@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import dataclasses
+import io
 import itertools
 import json
 import os
@@ -319,6 +320,51 @@ def env_get_split(key: str, default: Optional[list[str]] = None) -> list[str]:
     return []
 
 
+def compile_to_string(source: str, memory: int, debug: bool) -> str:
+    program = parse(tokenize(source))
+
+    main_fn = CompiledFunction("scrap_main", params=[])
+    compiler = Compiler(main_fn)
+    compiler.debug = debug
+    result = compiler.compile({}, program)
+    main_fn.code.append(f"return {result};")
+
+    builtins = [builtin for builtin in BUILTINS if builtin in compiler.used_runtime_functions]
+    for builtin in builtins:
+        fn = CompiledFunction(f"builtin_{builtin}_wrapper", params=["this", "arg"])
+        fn.code.append(f"return {builtin}(arg);")
+        compiler.functions.append(fn)
+
+    f = io.StringIO()
+    print('#include "runtime.c"', file=f)
+    print("#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct object*, name, exp)", file=f)
+    # Declare all functions
+    print("const char* record_keys[] = {", file=f)
+    for key in compiler.record_keys:
+        print(f'"{key}",', file=f)
+    print("};", file=f)
+    for function in compiler.functions:
+        print(function.decl() + ";", file=f)
+    for builtin in builtins:
+        print(f"struct object* builtin_{builtin} = NULL;", file=f)
+    for function in compiler.functions:
+        print(f"{function.decl()} {{", file=f)
+        for line in function.code:
+            print(line, file=f)
+        print("}", file=f)
+    print("int main() {", file=f)
+    print(f"heap = make_heap({memory});", file=f)
+    print("HANDLES();", file=f)
+    for builtin in builtins:
+        print(f"builtin_{builtin} = mkclosure(heap, builtin_{builtin}_wrapper, 0);", file=f)
+        print(f"GC_PROTECT(builtin_{builtin});", file=f)
+    print(f"struct object* result = {main_fn.name}();", file=f)
+    print("println(result);", file=f)
+    print("destroy_heap(heap);", file=f)
+    print("}", file=f)
+    return f.getvalue()
+
+
 def main() -> None:
     import argparse
 
@@ -334,47 +380,11 @@ def main() -> None:
 
     with open(args.file, "r") as f:
         source = f.read()
-    program = parse(tokenize(source))
 
-    main_fn = CompiledFunction("scrap_main", params=[])
-    compiler = Compiler(main_fn)
-    compiler.debug = args.debug
-    result = compiler.compile({}, program)
-    main_fn.code.append(f"return {result};")
-
-    builtins = [builtin for builtin in BUILTINS if builtin in compiler.used_runtime_functions]
-    for builtin in builtins:
-        fn = CompiledFunction(f"builtin_{builtin}_wrapper", params=["this", "arg"])
-        fn.code.append(f"return {builtin}(arg);")
-        compiler.functions.append(fn)
+    c_program = compile_to_string(source, args.memory, args.debug)
 
     with open(args.output, "w") as f:
-        print('#include "runtime.c"', file=f)
-        print("#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct object*, name, exp)", file=f)
-        # Declare all functions
-        print("const char* record_keys[] = {", file=f)
-        for key in compiler.record_keys:
-            print(f'"{key}",', file=f)
-        print("};", file=f)
-        for function in compiler.functions:
-            print(function.decl() + ";", file=f)
-        for builtin in builtins:
-            print(f"struct object* builtin_{builtin} = NULL;", file=f)
-        for function in compiler.functions:
-            print(f"{function.decl()} {{", file=f)
-            for line in function.code:
-                print(line, file=f)
-            print("}", file=f)
-        print("int main() {", file=f)
-        print(f"heap = make_heap({args.memory});", file=f)
-        print("HANDLES();", file=f)
-        for builtin in builtins:
-            print(f"builtin_{builtin} = mkclosure(heap, builtin_{builtin}_wrapper, 0);", file=f)
-            print(f"GC_PROTECT(builtin_{builtin});", file=f)
-        print(f"struct object* result = {main_fn.name}();", file=f)
-        print("println(result);", file=f)
-        print("destroy_heap(heap);", file=f)
-        print("}", file=f)
+        f.write(c_program)
 
     if args.format:
         import subprocess

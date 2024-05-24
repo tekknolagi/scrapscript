@@ -1,0 +1,12 @@
+BasedOnStyle: Google
+AlignEscapedNewlinesLeft: false
+DerivePointerAlignment: false
+PointerAlignment: Left
+IncludeBlocks: Regroup
+IncludeCategories:
+  # C system headers
+  - Regex:           '^<.*\.h?>'
+    Priority:        1
+  # Scrapscript headers
+  - Regex:           '.*'
+    Priority:        2

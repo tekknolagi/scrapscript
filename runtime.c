@@ -1,12 +1,12 @@
-#include <stdint.h>
-#include <stddef.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/mman.h>
-#include <string.h>
-#include <stdio.h>
 #include <assert.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 #define ALWAYS_INLINE inline __attribute__((always_inline))
 #define NEVER_INLINE __attribute__((noinline))
@@ -16,7 +16,7 @@ typedef intptr_t word;
 typedef uintptr_t uword;
 
 struct gc_obj {
-  uintptr_t tag; // low bit is 0 if forwarding ptr
+  uintptr_t tag;  // low bit is 0 if forwarding ptr
   uintptr_t payload[0];
 };
 
@@ -39,10 +39,10 @@ const int kWordSize = sizeof(word);
 static const word kMaxSmallStringLength = kWordSize - 1;
 const int kBitsPerByte = 8;
 
-static const uword kSmallIntTag = 0;         // 0b****0
-static const uword kHeapObjectTag = 1;       // 0b**001
-static const uword kEmptyListTag = 5;        // 0b00101
-static const uword kSmallStringTag = 13;     // 0b01101
+static const uword kSmallIntTag = 0;      // 0b****0
+static const uword kHeapObjectTag = 1;    // 0b**001
+static const uword kEmptyListTag = 5;     // 0b00101
+static const uword kSmallStringTag = 13;  // 0b01101
 
 bool is_small_int(struct object* obj) {
   return (((uword)obj) & kSmallIntTagMask) == kSmallIntTag;
@@ -62,7 +62,8 @@ static ALWAYS_INLINE uword small_string_length(struct object* obj) {
   assert(is_small_string(obj));
   return (((uword)obj) >> kImmediateTagBits) & kMaxSmallStringLength;
 }
-static ALWAYS_INLINE struct object* mksmallstring(const char* data, uword length) {
+static ALWAYS_INLINE struct object* mksmallstring(const char* data,
+                                                  uword length) {
   assert(length >= 0);
   assert(length <= kMaxSmallStringLength);
   uword result = 0;
@@ -70,7 +71,8 @@ static ALWAYS_INLINE struct object* mksmallstring(const char* data, uword length
     result = (result << kBitsPerByte) | data[i];
   }
   struct object* result_obj =
-    (struct object*)((result << kBitsPerByte) | (length << kImmediateTagBits) | kSmallStringTag);
+      (struct object*)((result << kBitsPerByte) |
+                       (length << kImmediateTagBits) | kSmallStringTag);
   assert(!is_heap_object(result_obj));
   assert(is_small_string(result_obj));
   assert(small_string_length(result_obj) == length);
@@ -81,7 +83,7 @@ static ALWAYS_INLINE char small_string_at(struct object* obj, uword index) {
   assert(index >= 0);
   assert(index < small_string_length(obj));
   // +1 for (length | tag) byte
-  return ((uword)obj >> ((index+1) * kBitsPerByte)) & 0xFF;
+  return ((uword)obj >> ((index + 1) * kBitsPerByte)) & 0xFF;
 }
 struct gc_obj* as_heap_object(struct object* obj) {
   assert(is_heap_object(obj));
@@ -90,14 +92,14 @@ struct gc_obj* as_heap_object(struct object* obj) {
 }
 
 static const uintptr_t NOT_FORWARDED_BIT = 1;
-int is_forwarded(struct gc_obj *obj) {
+int is_forwarded(struct gc_obj* obj) {
   return (obj->tag & NOT_FORWARDED_BIT) == 0;
 }
-struct gc_obj* forwarded(struct gc_obj *obj) {
+struct gc_obj* forwarded(struct gc_obj* obj) {
   assert(is_forwarded(obj));
   return (struct gc_obj*)obj->tag;
 }
-void forward(struct gc_obj *from, struct gc_obj *to) {
+void forward(struct gc_obj* from, struct gc_obj* to) {
   assert(!is_forwarded(from));
   assert((((uintptr_t)to) & NOT_FORWARDED_BIT) == 0);
   from->tag = (uintptr_t)to;
@@ -105,12 +107,13 @@ void forward(struct gc_obj *from, struct gc_obj *to) {
 
 struct gc_heap;
 
-typedef void (*VisitFn)(struct object **, struct gc_heap *);
+typedef void (*VisitFn)(struct object**, struct gc_heap*);
 
 // To implement by the user:
-size_t heap_object_size(struct gc_obj *obj);
-size_t trace_heap_object(struct gc_obj *obj, struct gc_heap *heap, VisitFn visit);
-void trace_roots(struct gc_heap *heap, VisitFn visit);
+size_t heap_object_size(struct gc_obj* obj);
+size_t trace_heap_object(struct gc_obj* obj, struct gc_heap* heap,
+                         VisitFn visit);
+void trace_roots(struct gc_heap* heap, VisitFn visit);
 
 struct gc_heap {
   uintptr_t hp;
@@ -129,30 +132,30 @@ static uintptr_t align_size(uintptr_t size) {
 
 static struct gc_heap* make_heap(size_t size) {
   size = align(size, getpagesize());
-  struct gc_heap *heap = malloc(sizeof(struct gc_heap));
-  void *mem = mmap(NULL, size, PROT_READ|PROT_WRITE,
-                   MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-  heap->to_space = heap->hp = (uintptr_t) mem;
+  struct gc_heap* heap = malloc(sizeof(struct gc_heap));
+  void* mem = mmap(NULL, size, PROT_READ | PROT_WRITE,
+                   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  heap->to_space = heap->hp = (uintptr_t)mem;
   heap->from_space = heap->limit = heap->hp + size / 2;
   heap->size = size;
   return heap;
 }
 
-void destroy_heap(struct gc_heap *heap) {
+void destroy_heap(struct gc_heap* heap) {
   munmap((void*)heap->to_space, heap->size);
   free(heap);
 }
 
-struct gc_obj* copy(struct gc_heap *heap, struct gc_obj *obj) {
+struct gc_obj* copy(struct gc_heap* heap, struct gc_obj* obj) {
   size_t size = heap_object_size(obj);
-  struct gc_obj *new_obj = (struct gc_obj*)heap->hp;
+  struct gc_obj* new_obj = (struct gc_obj*)heap->hp;
   memcpy(new_obj, obj, size);
   forward(obj, new_obj);
   heap->hp += align_size(size);
   return new_obj;
 }
 
-void flip(struct gc_heap *heap) {
+void flip(struct gc_heap* heap) {
   heap->hp = heap->from_space;
   heap->from_space = heap->to_space;
   heap->to_space = heap->hp;
@@ -163,21 +166,21 @@ struct object* heap_tag(uintptr_t addr) {
   return (struct object*)(addr | (uword)1ULL);
 }
 
-void visit_field(struct object **pointer, struct gc_heap *heap) {
+void visit_field(struct object** pointer, struct gc_heap* heap) {
   if (!is_heap_object(*pointer)) {
     return;
   }
-  struct gc_obj *from = as_heap_object(*pointer);
-  struct gc_obj *to = is_forwarded(from) ? forwarded(from) : copy(heap, from);
+  struct gc_obj* from = as_heap_object(*pointer);
+  struct gc_obj* to = is_forwarded(from) ? forwarded(from) : copy(heap, from);
   *pointer = heap_tag((uintptr_t)to);
 }
 
-void collect(struct gc_heap *heap) {
+void collect(struct gc_heap* heap) {
   flip(heap);
   uintptr_t scan = heap->hp;
   trace_roots(heap, visit_field);
-  while(scan < heap->hp) {
-    struct gc_obj *obj = (struct gc_obj*)scan;
+  while (scan < heap->hp) {
+    struct gc_obj* obj = (struct gc_obj*)scan;
     scan += align_size(trace_heap_object(obj, heap, visit_field));
   }
 #ifndef NDEBUG
@@ -191,9 +194,7 @@ void collect(struct gc_heap *heap) {
 #define ALLOCATOR __attribute__((__malloc__))
 
 static NEVER_INLINE ALLOCATOR struct object* allocate_slow_path(
-    struct gc_heap* heap,
-    size_t size
-) {
+    struct gc_heap* heap, size_t size) {
   // size is already aligned
   collect(heap);
   if (UNLIKELY(heap->limit - heap->hp < size)) {
@@ -206,7 +207,8 @@ static NEVER_INLINE ALLOCATOR struct object* allocate_slow_path(
   return heap_tag(addr);
 }
 
-static ALWAYS_INLINE ALLOCATOR struct object* allocate(struct gc_heap *heap, size_t size) {
+static ALWAYS_INLINE ALLOCATOR struct object* allocate(struct gc_heap* heap,
+                                                       size_t size) {
   uintptr_t addr = heap->hp;
   uintptr_t new_hp = align_size(addr + size);
   if (UNLIKELY(heap->limit < new_hp)) {
@@ -218,10 +220,10 @@ static ALWAYS_INLINE ALLOCATOR struct object* allocate(struct gc_heap *heap, siz
 
 // Application
 
-#define FOREACH_TAG(TAG) \
-  TAG(TAG_LIST) \
-  TAG(TAG_CLOSURE) \
-  TAG(TAG_RECORD) \
+#define FOREACH_TAG(TAG)                                                       \
+  TAG(TAG_LIST)                                                                \
+  TAG(TAG_CLOSURE)                                                             \
+  TAG(TAG_RECORD)                                                              \
   TAG(TAG_STRING)
 
 enum {
@@ -277,43 +279,45 @@ size_t heap_string_size(size_t count) {
   return sizeof(struct heap_string) + count;
 }
 
-size_t heap_object_size(struct gc_obj *obj) {
-  switch(obj->tag) {
-  case TAG_LIST:
-    return sizeof(struct list);
-  case TAG_CLOSURE:
-    return variable_size(sizeof(struct closure), ((struct closure*)obj)->size);
-  case TAG_RECORD:
-    return record_size(((struct record*)obj)->size);
-  case TAG_STRING:
-    return heap_string_size(((struct heap_string*)obj)->size);
-  default:
-    fprintf(stderr, "unknown tag: %lu\n", obj->tag);
-    abort();
+size_t heap_object_size(struct gc_obj* obj) {
+  switch (obj->tag) {
+    case TAG_LIST:
+      return sizeof(struct list);
+    case TAG_CLOSURE:
+      return variable_size(sizeof(struct closure),
+                           ((struct closure*)obj)->size);
+    case TAG_RECORD:
+      return record_size(((struct record*)obj)->size);
+    case TAG_STRING:
+      return heap_string_size(((struct heap_string*)obj)->size);
+    default:
+      fprintf(stderr, "unknown tag: %lu\n", obj->tag);
+      abort();
   }
 }
 
-size_t trace_heap_object(struct gc_obj *obj, struct gc_heap *heap, VisitFn visit) {
-  switch(obj->tag) {
-  case TAG_LIST:
-    visit(&((struct list*)obj)->first, heap);
-    visit(&((struct list*)obj)->rest, heap);
-    break;
-  case TAG_CLOSURE:
-    for (size_t i = 0; i < ((struct closure*)obj)->size; i++) {
-      visit(&((struct closure*)obj)->env[i], heap);
-    }
-    break;
-  case TAG_RECORD:
-    for (size_t i = 0; i < ((struct record*)obj)->size; i++) {
-      visit(&((struct record*)obj)->fields[i].value, heap);
-    }
-    break;
-  case TAG_STRING:
-    break;
-  default:
-    fprintf(stderr, "unknown tag: %lu\n", obj->tag);
-    abort();
+size_t trace_heap_object(struct gc_obj* obj, struct gc_heap* heap,
+                         VisitFn visit) {
+  switch (obj->tag) {
+    case TAG_LIST:
+      visit(&((struct list*)obj)->first, heap);
+      visit(&((struct list*)obj)->rest, heap);
+      break;
+    case TAG_CLOSURE:
+      for (size_t i = 0; i < ((struct closure*)obj)->size; i++) {
+        visit(&((struct closure*)obj)->env[i], heap);
+      }
+      break;
+    case TAG_RECORD:
+      for (size_t i = 0; i < ((struct record*)obj)->size; i++) {
+        visit(&((struct record*)obj)->fields[i].value, heap);
+      }
+      break;
+    case TAG_STRING:
+      break;
+    default:
+      fprintf(stderr, "unknown tag: %lu\n", obj->tag);
+      abort();
   }
   return heap_object_size(obj);
 }
@@ -324,18 +328,16 @@ static const word kSmallIntMinValue = -(((word)1) << (kSmallIntBits - 1));
 static const word kSmallIntMaxValue = (((word)1) << (kSmallIntBits - 1)) - 1;
 
 bool smallint_is_valid(word value) {
-    return (value >= kSmallIntMinValue) && (value <= kSmallIntMaxValue);
+  return (value >= kSmallIntMinValue) && (value <= kSmallIntMaxValue);
 }
 
-struct object* mknum(struct gc_heap *heap, word value) {
+struct object* mknum(struct gc_heap* heap, word value) {
   (void)heap;
   assert(smallint_is_valid(value));
   return (struct object*)(((uword)value << kSmallIntTagBits));
 }
 
-bool is_num(struct object* obj) {
-  return is_small_int(obj);
-}
+bool is_num(struct object* obj) { return is_small_int(obj); }
 
 word num_value(struct object* obj) {
   assert(is_num(obj));
@@ -364,7 +366,7 @@ struct object* list_rest(struct object* list) {
   return as_list(list)->rest;
 }
 
-struct object* mklist(struct gc_heap *heap) {
+struct object* mklist(struct gc_heap* heap) {
   struct object* result = allocate(heap, sizeof(struct list));
   as_heap_object(result)->tag = TAG_LIST;
   as_list(result)->first = empty_list();
@@ -382,7 +384,8 @@ struct closure* as_closure(struct object* obj) {
 }
 
 struct object* mkclosure(struct gc_heap* heap, ClosureFn fn, size_t size) {
-  struct object *result = allocate(heap, variable_size(sizeof(struct closure), size));
+  struct object* result =
+      allocate(heap, variable_size(sizeof(struct closure), size));
   as_heap_object(result)->tag = TAG_CLOSURE;
   as_closure(result)->fn = fn;
   as_closure(result)->size = size;
@@ -391,23 +394,21 @@ struct object* mkclosure(struct gc_heap* heap, ClosureFn fn, size_t size) {
   return result;
 }
 
-ClosureFn closure_fn(struct object* obj) {
-  return as_closure(obj)->fn;
-}
+ClosureFn closure_fn(struct object* obj) { return as_closure(obj)->fn; }
 
-void closure_set(struct object *closure, size_t i, struct object *item) {
-  struct closure *c = as_closure(closure);
+void closure_set(struct object* closure, size_t i, struct object* item) {
+  struct closure* c = as_closure(closure);
   assert(i < c->size);
   c->env[i] = item;
 }
 
-struct object* closure_get(struct object *closure, size_t i) {
-  struct closure *c = as_closure(closure);
+struct object* closure_get(struct object* closure, size_t i) {
+  struct closure* c = as_closure(closure);
   assert(i < c->size);
   return c->env[i];
 }
 
-struct object* closure_call(struct object *closure, struct object *arg) {
+struct object* closure_call(struct object* closure, struct object* arg) {
   ClosureFn fn = closure_fn(closure);
   return fn(closure, arg);
 }
@@ -424,7 +425,7 @@ struct record* as_record(struct object* obj) {
 struct object* mkrecord(struct gc_heap* heap, size_t size) {
   // size is the number of fields, each of which has an index and a value
   // (object)
-  struct object *result = allocate(heap, record_size(size));
+  struct object* result = allocate(heap, record_size(size));
   as_heap_object(result)->tag = TAG_RECORD;
   as_record(result)->size = size;
   // Assumes the items will be filled in immediately after calling mkrecord so
@@ -432,15 +433,16 @@ struct object* mkrecord(struct gc_heap* heap, size_t size) {
   return result;
 }
 
-void record_set(struct object *record, size_t index, struct record_field field) {
-  struct record *r = as_record(record);
+void record_set(struct object* record, size_t index,
+                struct record_field field) {
+  struct record* r = as_record(record);
   assert(index < r->size);
   r->fields[index] = field;
 }
 
-struct object* record_get(struct object *record, size_t key) {
-  struct record *r = as_record(record);
-  struct record_field *fields = r->fields;
+struct object* record_get(struct object* record, size_t key) {
+  struct record* r = as_record(record);
+  struct record_field* fields = r->fields;
   for (size_t i = 0; i < r->size; i++) {
     struct record_field field = fields[i];
     if (field.key == key) {
@@ -464,17 +466,17 @@ struct heap_string* as_heap_string(struct object* obj) {
 
 struct object* mkstring_uninit_private(struct gc_heap* heap, size_t size) {
   assert(size > kMaxSmallStringLength);  // can't fill in small string later
-  struct object *result = allocate(heap, heap_string_size(size));
+  struct object* result = allocate(heap, heap_string_size(size));
   as_heap_object(result)->tag = TAG_STRING;
   as_heap_string(result)->size = size;
   return result;
 }
 
-struct object* mkstring(struct gc_heap* heap, const char *data, uword length) {
+struct object* mkstring(struct gc_heap* heap, const char* data, uword length) {
   if (length <= kMaxSmallStringLength) {
     return mksmallstring(data, length);
   }
-  struct object *result = mkstring_uninit_private(heap, length);
+  struct object* result = mkstring_uninit_private(heap, length);
   memcpy(as_heap_string(result)->data, data, length);
   return result;
 }
@@ -510,34 +512,41 @@ void pop_handles(void* local_handles) {
   handles = handles->next;
 }
 
-#define HANDLES() struct handles local_handles __attribute__((__cleanup__(pop_handles))) = { .next = handles }; handles = &local_handles
-#define GC_PROTECT(x) assert(local_handles.stack_pointer < MAX_HANDLES); local_handles.stack[local_handles.stack_pointer++] = (struct object**)(&x)
+#define HANDLES()                                                              \
+  struct handles local_handles                                                 \
+      __attribute__((__cleanup__(pop_handles))) = {.next = handles};           \
+  handles = &local_handles
+#define GC_PROTECT(x)                                                          \
+  assert(local_handles.stack_pointer < MAX_HANDLES);                           \
+  local_handles.stack[local_handles.stack_pointer++] = (struct object**)(&x)
 #define END_HANDLES() handles = local_handles.next
-#define GC_HANDLE(type, name, val) type name = val; GC_PROTECT(name)
+#define GC_HANDLE(type, name, val)                                             \
+  type name = val;                                                             \
+  GC_PROTECT(name)
 
-void trace_roots(struct gc_heap *heap, VisitFn visit) {
-  for (struct handles *h = handles; h; h = h->next) {
+void trace_roots(struct gc_heap* heap, VisitFn visit) {
+  for (struct handles* h = handles; h; h = h->next) {
     for (size_t i = 0; i < h->stack_pointer; i++) {
       visit(h->stack[i], heap);
     }
   }
 }
 
-static struct gc_heap *heap = NULL;
+static struct gc_heap* heap = NULL;
 
-struct object* num_add(struct object *a, struct object *b) {
+struct object* num_add(struct object* a, struct object* b) {
   // NB: doesn't use pointers after allocating
-  return mknum(heap, num_value(a)+num_value(b));
+  return mknum(heap, num_value(a) + num_value(b));
 }
 
-struct object* num_sub(struct object *a, struct object *b) {
+struct object* num_sub(struct object* a, struct object* b) {
   // NB: doesn't use pointers after allocating
-  return mknum(heap, num_value(a)-num_value(b));
+  return mknum(heap, num_value(a) - num_value(b));
 }
 
-struct object* num_mul(struct object *a, struct object *b) {
+struct object* num_mul(struct object* a, struct object* b) {
   // NB: doesn't use pointers after allocating
-  return mknum(heap, num_value(a)*num_value(b));
+  return mknum(heap, num_value(a) * num_value(b));
 }
 
 struct object* list_cons(struct object* item, struct object* list) {
@@ -550,7 +559,7 @@ struct object* list_cons(struct object* item, struct object* list) {
   return result;
 }
 
-struct object* list_append(struct object *list, struct object *item) {
+struct object* list_append(struct object* list, struct object* item) {
   abort();
 }
 
@@ -561,7 +570,7 @@ struct object* heap_string_concat(struct object* a, struct object* b) {
   HANDLES();
   GC_PROTECT(a);
   GC_PROTECT(b);
-  struct object *result = mkstring_uninit_private(heap, a_size + b_size);
+  struct object* result = mkstring_uninit_private(heap, a_size + b_size);
   for (uword i = 0; i < a_size; i++) {
     as_heap_string(result)->data[i] = string_at(a, i);
   }
@@ -571,7 +580,8 @@ struct object* heap_string_concat(struct object* a, struct object* b) {
   return result;
 }
 
-static ALWAYS_INLINE struct object* small_string_concat(struct object *a, struct object *b) {
+static ALWAYS_INLINE struct object* small_string_concat(struct object* a,
+                                                        struct object* b) {
   uword a_size = string_length(a);
   uword b_size = string_length(b);
   assert(a_size + b_size <= kMaxSmallStringLength);
@@ -585,7 +595,7 @@ static ALWAYS_INLINE struct object* small_string_concat(struct object *a, struct
   return mksmallstring(data, a_size + b_size);
 }
 
-struct object* string_concat(struct object *a, struct object *b) {
+struct object* string_concat(struct object* a, struct object* b) {
   uword a_size = string_length(a);
   if (a_size == 0) {
     return b;
@@ -600,7 +610,7 @@ struct object* string_concat(struct object *a, struct object *b) {
   return heap_string_concat(a, b);
 }
 
-bool string_equal_cstr_len(struct object *string, const char *cstr, uword len) {
+bool string_equal_cstr_len(struct object* string, const char* cstr, uword len) {
   assert(is_string(string));
   if (string_length(string) != len) {
     return false;
@@ -615,7 +625,7 @@ bool string_equal_cstr_len(struct object *string, const char *cstr, uword len) {
 
 const char* record_keys[];
 
-struct object *print(struct object *obj) {
+struct object* print(struct object* obj) {
   if (is_num(obj)) {
     printf("%ld", num_value(obj));
   } else if (is_list(obj)) {
@@ -630,7 +640,7 @@ struct object *print(struct object *obj) {
     }
     putchar(']');
   } else if (is_record(obj)) {
-    struct record *record = as_record(obj);
+    struct record* record = as_record(obj);
     putchar('{');
     for (size_t i = 0; i < record->size; i++) {
       printf("%s = ", record_keys[record->fields[i].key]);
@@ -656,7 +666,7 @@ struct object *print(struct object *obj) {
   return obj;
 }
 
-struct object *println(struct object *obj) {
+struct object* println(struct object* obj) {
   print(obj);
   putchar('\n');
   return obj;

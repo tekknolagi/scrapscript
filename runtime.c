@@ -91,9 +91,9 @@ struct gc_obj* as_heap_object(struct object* obj) {
   return (struct gc_obj*)((uword)obj - 1);
 }
 
-static const uintptr_t NOT_FORWARDED_BIT = 1;
+static const uintptr_t kNotForwardedBit = 1ULL;
 int is_forwarded(struct gc_obj* obj) {
-  return (obj->tag & NOT_FORWARDED_BIT) == 0;
+  return (obj->tag & kNotForwardedBit) == 0;
 }
 struct gc_obj* forwarded(struct gc_obj* obj) {
   assert(is_forwarded(obj));
@@ -101,7 +101,7 @@ struct gc_obj* forwarded(struct gc_obj* obj) {
 }
 void forward(struct gc_obj* from, struct gc_obj* to) {
   assert(!is_forwarded(from));
-  assert((((uintptr_t)to) & NOT_FORWARDED_BIT) == 0);
+  assert((((uintptr_t)to) & kNotForwardedBit) == 0);
   from->tag = (uintptr_t)to;
 }
 
@@ -227,7 +227,7 @@ static ALWAYS_INLINE ALLOCATOR struct object* allocate(struct gc_heap* heap,
   TAG(TAG_STRING)
 
 enum {
-// All odd becase of the NOT_FORWARDED_BIT
+// All odd becase of the kNotForwardedBit
 #define ENUM_TAG(TAG) TAG = __COUNTER__ * 2 + 1,
   FOREACH_TAG(ENUM_TAG)
 #undef ENUM_TAG

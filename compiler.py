@@ -187,8 +187,7 @@ class Compiler:
         self.function = fn
         funcenv = self.compile_function_env(fn, name)
         for i, case in enumerate(exp.cases):
-            self._emit(f"// case {i}")
-            fallthrough = self.gensym()
+            fallthrough = f"case_{i+1}" if i < len(exp.cases) - 1 else "no_match"
             env_updates = self.try_match(funcenv, arg, case.pattern, fallthrough)
             case_result = self.compile({**funcenv, **env_updates}, case.body)
             self._emit(f"return {case_result};")

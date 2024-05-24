@@ -4519,7 +4519,8 @@ class ScrapRepl(code.InteractiveConsole):
                 self.env.update(result.env)
             else:
                 self.env["_"] = result
-            print(result)
+            if not isinstance(result, EnvObject):
+                print(result)
         except UnexpectedEOFError:
             # Need to read more text
             return True

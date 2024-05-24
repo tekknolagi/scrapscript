@@ -52,14 +52,14 @@ bool is_heap_object(struct object* obj) {
 }
 struct object* empty_list() { return (struct object*)kEmptyListTag; }
 bool is_empty_list(struct object* obj) { return obj == empty_list(); }
-bool is_small_string(struct object* obj) {
+static inline bool is_small_string(struct object* obj) {
   return (((uword)obj) & kImmediateTagMask) == kSmallStringTag;
 }
-word small_string_length(struct object* obj) {
+static inline uword small_string_length(struct object* obj) {
   assert(is_small_string(obj));
   return (((uword)obj) >> kImmediateTagBits) & kMaxSmallStringLength;
 }
-struct object* mksmallstring(const char* data, word length) {
+static inline struct object* mksmallstring(const char* data, word length) {
   assert(length >= 0);
   assert(length <= kMaxSmallStringLength);
   uword result = 0;
@@ -73,7 +73,7 @@ struct object* mksmallstring(const char* data, word length) {
   assert(small_string_length(result_obj) == length);
   return result_obj;
 }
-char small_string_at(struct object* obj, word index) {
+static inline char small_string_at(struct object* obj, word index) {
   assert(is_small_string(obj));
   assert(index >= 0);
   assert(index < small_string_length(obj));
@@ -477,7 +477,7 @@ struct object* mkstring(struct gc_heap* heap, const char *data, size_t size) {
   return result;
 }
 
-uword string_length(struct object* obj) {
+static inline uword string_length(struct object* obj) {
   if (is_small_string(obj)) {
     return small_string_length(obj);
   }
@@ -552,25 +552,10 @@ struct object* list_append(struct object *list, struct object *item) {
   abort();
 }
 
-struct object* string_concat(struct object *a, struct object *b) {
+struct object* heap_string_concat(struct object* a, struct object* b) {
   uword a_size = string_length(a);
-  if (a_size == 0) {
-    return b;
-  }
   uword b_size = string_length(b);
-  if (b_size == 0) {
-    return a;
-  }
-  if (a_size + b_size < kMaxSmallStringLength) {
-    char data[kMaxSmallStringLength];
-    for (uword i = 0; i < a_size; i++) {
-      data[i] = string_at(a, i);
-    }
-    for (uword i = 0; i < b_size; i++) {
-      data[a_size + i] = string_at(b, i);
-    }
-    return mksmallstring(data, a_size + b_size);
-  }
+  assert(a_size + b_size >= kMaxSmallStringLength);
   HANDLES();
   GC_PROTECT(a);
   GC_PROTECT(b);
@@ -582,6 +567,35 @@ struct object* string_concat(struct object *a, struct object *b) {
     as_heap_string(result)->data[a_size + i] = string_at(b, i);
   }
   return result;
+}
+
+static inline struct object* small_string_concat(struct object *a, struct object *b) {
+  uword a_size = string_length(a);
+  uword b_size = string_length(b);
+  assert(a_size + b_size < kMaxSmallStringLength);
+  char data[kMaxSmallStringLength];
+  for (uword i = 0; i < a_size; i++) {
+    data[i] = small_string_at(a, i);
+  }
+  for (uword i = 0; i < b_size; i++) {
+    data[a_size + i] = small_string_at(b, i);
+  }
+  return mksmallstring(data, a_size + b_size);
+}
+
+struct object* string_concat(struct object *a, struct object *b) {
+  uword a_size = string_length(a);
+  if (a_size == 0) {
+    return b;
+  }
+  uword b_size = string_length(b);
+  if (b_size == 0) {
+    return a;
+  }
+  if (a_size + b_size < kMaxSmallStringLength) {
+    return small_string_concat(a, b);
+  }
+  return heap_string_concat(a, b);
 }
 
 const char* record_keys[];

@@ -956,11 +956,9 @@ class Closure(Object):
         return Closure(env, func)
 
     def __str__(self) -> str:
-        object_id = id(self)
-        object_address = hex(object_id)
         if self.name is not None:
-            return f"<Closure {self.name} at {object_address}>"
-        return f"<Closure at {object_address}>"
+            return f"<Closure {self.name} at {hex(id(self))}>"
+        return f"<Closure at {hex(id(self))}>"
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -1241,16 +1239,15 @@ def eval_exp(env: Env, exp: Object) -> Object:
         assert isinstance(exp.name, Var)
         value = eval_exp(env, exp.value)
         if isinstance(value, Closure):
+            # If creating a Closure with an Assign we can specify a name for the
+            # Closure, which may be useful for debugging.
+            value = Closure(value.env, value.func, name=exp.name.name)
             # We want functions to be able to call themselves without using the
             # Y combinator or similar, so we bind functions (and only
             # functions) using a letrec-like strategy. We augment their
             # captured environment with a binding to themselves.
             assert isinstance(value.env, dict)
             value.env[exp.name.name] = value
-            # If creating a Closure with an Assign we can specify a name for the
-            # Closure, which may be useful for debugging.
-            print("Setting closure with name ", exp.name.name)
-            value = Closure(value.env, value.func, name=exp.name.name)
             # We still improve_closure here even though we also did it on
             # Closure creation because the Closure might not need a binding for
             # itself (it might not be recursive).
@@ -2735,7 +2732,7 @@ class EvalTests(unittest.TestCase):
         assert isinstance(result, EnvObject)
         closure = result.env["a"]
         self.assertIsInstance(closure, Closure)
-        self.assertEqual(closure, Closure({}, Function(Var("x"), Var("x"))))
+        self.assertEqual(closure, Closure({}, Function(Var("x"), Var("x")), "a"))
 
     def test_eval_assign_function_returns_closure_with_function_in_env(self) -> None:
         exp = Assign(Var("a"), Function(Var("x"), Var("a")))
@@ -2743,7 +2740,7 @@ class EvalTests(unittest.TestCase):
         assert isinstance(result, EnvObject)
         closure = result.env["a"]
         self.assertIsInstance(closure, Closure)
-        self.assertEqual(closure, Closure({"a": closure}, Function(Var("x"), Var("a"))))
+        self.assertEqual(closure, Closure({"a": closure}, Function(Var("x"), Var("a")), "a"))
 
     def test_eval_assign_does_not_modify_env(self) -> None:
         exp = Assign(Var("a"), Int(1))
@@ -3392,7 +3389,7 @@ class EndToEndTests(EndToEndTestsBase):
     """,
             {},
         )
-        self.assertEqual(result, Closure({"f": result}, Function(Var("n"), Var("f"))))
+        self.assertEqual(result, Closure({"f": result}, Function(Var("n"), Var("f")), "f"))
 
     def test_function_can_call_itself(self) -> None:
         with self.assertRaises(RecursionError):
@@ -4352,9 +4349,7 @@ class PrettyPrintTests(unittest.TestCase):
 
     def test_pretty_print_closure(self) -> None:
         obj = Closure({"a": Int(123)}, Function(Var("x"), Var("x")))
-        self.assertEqual(
-            str(obj), "Closure(env={'a': Int(value=123)}, func=Function(arg=Var(name='x'), body=Var(name='x')))"
-        )
+        self.assertRegex(str(obj), r"<Closure at 0x[0-9a-f]*>")
 
     def test_pretty_print_record(self) -> None:
         obj = Record({"a": Int(1), "b": Int(2)})

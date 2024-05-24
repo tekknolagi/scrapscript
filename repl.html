@@ -64,9 +64,10 @@ function updateHistory(inp, out) {
     output.scrollTop = output.scrollHeight;
 }
 
-async function sendRequest(env, exp) {
-    const params = env === null ? {exp} : {exp, env};
-    return fetch("/eval?" + new URLSearchParams(params));
+async function sendRequest(exp) {
+    const scrap = document.scrapscript;
+    const [result, monad] = document.monad.bind(scrap.parse(scrap.tokenize(exp)));
+    return {result, monad, ok: true};
 }
 
 let input = document.getElementById("input");
@@ -84,12 +85,7 @@ function renderHistory() {
 function loadFromLocalStorage() {
     history.length = 0;
     output.innerHTML = "";
-    const hist = window.localStorage.getItem('history');
-    if (hist !== null) {
-        history.push(...JSON.parse(hist));
-    }
     renderHistory();
-    document.env = window.localStorage.getItem('env');
 }
 
 function expandInput() {
@@ -122,15 +118,13 @@ function shrinkInput() {
 }
 
 async function submitInput() {
-    const response = await sendRequest(document.env, input.value);
+    const response = await sendRequest(input.value);
     if (response.ok) {
-        const {env, result} = await response.json();
+        const {result, monad} = response;
         updateHistory(input.value, result);
         history.push([input.value, result]);
         input.value = "";
-        document.env = env;
-        window.localStorage.setItem('env', env)
-        window.localStorage.setItem('history', JSON.stringify(history));
+        document.monad = monad;
     } else {
         const msg = await response.text();
         updateHistory(input.value, msg);
@@ -169,6 +163,44 @@ submitButton.addEventListener("click", () => {
     submitInput()
     input.focus();
 });
+</script>
+<script>
+"use strict";
+
+async function main() {
+  // const scrapscript = await fetch('/scrapscript.py');
+  let indexURL = "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/";
+  const urlParams = new URLSearchParams(window.location.search);
+  const buildParam = urlParams.get("build");
+  if (buildParam) {
+    if (["full", "debug", "pyc"].includes(buildParam)) {
+      indexURL = indexURL.replace(
+        "/full/",
+        "/" + urlParams.get("build") + "/",
+      );
+    } else {
+      console.warn(
+        'Invalid URL parameter: build="' +
+          buildParam +
+          '". Using default "full".',
+      );
+    }
+  }
+  const { loadPyodide } = await import(indexURL + "pyodide.mjs");
+  const pyodide = await loadPyodide({
+    stdout: (msg) => console.log(`Pyodide: ${msg}`),
+  });
+  await pyodide.runPythonAsync(`
+      from pyodide.http import pyfetch
+      response = await pyfetch("/scrapscript.py")
+      with open("scrapscript.py", "wb") as f:
+          f.write(await response.bytes())
+  `)
+  const scrapscript = await pyodide.pyimport("scrapscript");
+document.monad = scrapscript.ScrapMonad(scrapscript.boot_env());
+document.scrapscript = scrapscript;
+}
+main();
 </script>
 </main>
 <script data-goatcounter="https://scrapscript.goatcounter.com/count"

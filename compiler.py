@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import dataclasses
 import itertools
+import json
 import os
 
 from typing import Optional
@@ -202,6 +203,9 @@ class Compiler:
             # TODO(max): Bignum
             # self._debug("collect(heap);")
             return self._mktemp(f"mknum(heap, {exp.value})")
+        if isinstance(exp, String):
+            string_repr = json.dumps(exp.value)
+            return self._mktemp(f"mkstring(heap, {string_repr}, {len(exp.value)});")
         if isinstance(exp, Binop):
             left = self.compile(env, exp.left)
             right = self.compile(env, exp.right)

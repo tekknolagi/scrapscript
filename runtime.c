@@ -187,7 +187,8 @@ static inline ALLOCATOR struct object* allocate(struct gc_heap *heap, size_t siz
 #define FOREACH_TAG(TAG) \
   TAG(TAG_LIST) \
   TAG(TAG_CLOSURE) \
-  TAG(TAG_RECORD)
+  TAG(TAG_RECORD) \
+  TAG(TAG_STRING)
 
 enum {
 // All odd becase of the NOT_FORWARDED_BIT
@@ -224,12 +225,22 @@ struct record {
   struct record_field fields[];
 };
 
+struct string {
+  struct gc_obj HEAD;
+  size_t size;
+  char data[];
+};
+
 size_t variable_size(size_t base, size_t count) {
   return base + count * kPointerSize;
 }
 
 size_t record_size(size_t count) {
   return sizeof(struct record) + count * sizeof(struct record_field);
+}
+
+size_t string_size(size_t count) {
+  return sizeof(struct string) + count;
 }
 
 size_t heap_object_size(struct gc_obj *obj) {
@@ -240,6 +251,8 @@ size_t heap_object_size(struct gc_obj *obj) {
     return variable_size(sizeof(struct closure), ((struct closure*)obj)->size);
   case TAG_RECORD:
     return record_size(((struct record*)obj)->size);
+  case TAG_STRING:
+    return string_size(((struct string*)obj)->size);
   default:
     fprintf(stderr, "unknown tag: %lu\n", obj->tag);
     abort();
@@ -261,6 +274,8 @@ size_t trace_heap_object(struct gc_obj *obj, struct gc_heap *heap, VisitFn visit
     for (size_t i = 0; i < ((struct record*)obj)->size; i++) {
       visit(&((struct record*)obj)->fields[i].value, heap);
     }
+    break;
+  case TAG_STRING:
     break;
   default:
     fprintf(stderr, "unknown tag: %lu\n", obj->tag);
@@ -398,6 +413,27 @@ struct object* record_get(struct object *record, size_t key) {
   return NULL;
 }
 
+struct object* mkstring(struct gc_heap* heap, const char *data, size_t size) {
+  struct object *result = allocate(heap, string_size(size));
+  as_heap_object(result)->tag = TAG_STRING;
+  struct string *s = (struct string*)as_heap_object(result);
+  s->size = size;
+  memcpy(s->data, data, size);
+  return result;
+}
+
+bool is_string(struct object* obj) {
+  if (is_immediate(obj)) {
+    return false;
+  }
+  return as_heap_object(obj)->tag == TAG_STRING;
+}
+
+struct string* as_string(struct object* obj) {
+  assert(is_string(obj));
+  return (struct string*)as_heap_object(obj);
+}
+
 #define MAX_HANDLES 20
 
 struct handles {
@@ -488,6 +524,9 @@ struct object *print(struct object *obj) {
     putchar('}');
   } else if (is_closure(obj)) {
     fputs("<closure>", stdout);
+  } else if (is_string(obj)) {
+    struct string *s = as_string(obj);
+    printf("\"%.*s\"", (int)s->size, s->data);
   } else {
     assert(!is_immediate(obj));
     fprintf(stderr, "unknown tag: %lu\n", as_heap_object(obj)->tag);

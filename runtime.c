@@ -8,6 +8,9 @@
 #include <assert.h>
 #include <stdbool.h>
 
+#define ALWAYS_INLINE inline __attribute__((always_inline))
+#define NEVER_INLINE __attribute__((noinline))
+
 const int kPointerSize = sizeof(void*);
 typedef intptr_t word;
 typedef uintptr_t uword;
@@ -52,14 +55,14 @@ bool is_heap_object(struct object* obj) {
 }
 struct object* empty_list() { return (struct object*)kEmptyListTag; }
 bool is_empty_list(struct object* obj) { return obj == empty_list(); }
-static inline bool is_small_string(struct object* obj) {
+static ALWAYS_INLINE bool is_small_string(struct object* obj) {
   return (((uword)obj) & kImmediateTagMask) == kSmallStringTag;
 }
-static inline uword small_string_length(struct object* obj) {
+static ALWAYS_INLINE uword small_string_length(struct object* obj) {
   assert(is_small_string(obj));
   return (((uword)obj) >> kImmediateTagBits) & kMaxSmallStringLength;
 }
-static inline struct object* mksmallstring(const char* data, uword length) {
+static ALWAYS_INLINE struct object* mksmallstring(const char* data, uword length) {
   assert(length >= 0);
   assert(length <= kMaxSmallStringLength);
   uword result = 0;
@@ -73,7 +76,7 @@ static inline struct object* mksmallstring(const char* data, uword length) {
   assert(small_string_length(result_obj) == length);
   return result_obj;
 }
-static inline char small_string_at(struct object* obj, uword index) {
+static ALWAYS_INLINE char small_string_at(struct object* obj, uword index) {
   assert(is_small_string(obj));
   assert(index >= 0);
   assert(index < small_string_length(obj));
@@ -186,7 +189,6 @@ void collect(struct gc_heap *heap) {
 #define LIKELY(x) __builtin_expect(!!(x), 1)
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
 #define ALLOCATOR __attribute__((__malloc__))
-#define NEVER_INLINE __attribute__((noinline))
 
 static NEVER_INLINE ALLOCATOR struct object* allocate_slow_path(
     struct gc_heap* heap,
@@ -204,7 +206,7 @@ static NEVER_INLINE ALLOCATOR struct object* allocate_slow_path(
   return heap_tag(addr);
 }
 
-static inline ALLOCATOR struct object* allocate(struct gc_heap *heap, size_t size) {
+static ALWAYS_INLINE ALLOCATOR struct object* allocate(struct gc_heap *heap, size_t size) {
   uintptr_t addr = heap->hp;
   uintptr_t new_hp = align_size(addr + size);
   if (UNLIKELY(heap->limit < new_hp)) {
@@ -477,7 +479,7 @@ struct object* mkstring(struct gc_heap* heap, const char *data, uword length) {
   return result;
 }
 
-static inline uword string_length(struct object* obj) {
+static ALWAYS_INLINE uword string_length(struct object* obj) {
   if (is_small_string(obj)) {
     return small_string_length(obj);
   }
@@ -569,7 +571,7 @@ struct object* heap_string_concat(struct object* a, struct object* b) {
   return result;
 }
 
-static inline struct object* small_string_concat(struct object *a, struct object *b) {
+static ALWAYS_INLINE struct object* small_string_concat(struct object *a, struct object *b) {
   uword a_size = string_length(a);
   uword b_size = string_length(b);
   assert(a_size + b_size < kMaxSmallStringLength);

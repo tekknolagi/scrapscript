@@ -150,26 +150,23 @@ class Compiler:
             return {pattern.name: arg}
         if isinstance(pattern, List):
             self._emit(f"if (!is_list({arg})) {{ goto {fallthrough}; }}")
-            use_spread = sum(isinstance(item, Spread) for item in pattern.items)
-            if use_spread:
-                assert use_spread == 1
-                # check min # of list elements
-                num_real_patterns = len(pattern.items) - 1
-                self._emit(f"if (list_size({arg}) < {num_real_patterns}) {{ goto {fallthrough}; }}")
-            else:
-                # check exact # of list elements
-                self._emit(f"if (list_size({arg}) != {len(pattern.items)}) {{ goto {fallthrough}; }}")
             updates = {}
+            the_list = arg
+            use_spread = False
             for i, pattern_item in enumerate(pattern.items):
                 if isinstance(pattern_item, Spread):
+                    use_spread = True
                     if pattern_item.name:
-                        # TODO(max): Use cons cells for list or find a way to
-                        # make stack-allocated lightweight views
-                        list_rest = self._mktemp(f"list_rest({arg})")
-                        updates[pattern_item.name] = list_rest
+                        updates[pattern_item.name] = the_list
                     break
-                list_item = self._mktemp(f"list_get({arg}, {i})")
+                # Not enough elements
+                self._emit(f"if (is_empty_list({the_list})) {{ goto {fallthrough}; }}")
+                list_item = self._mktemp(f"list_first({the_list})")
                 updates.update(self.try_match(env, list_item, pattern_item, fallthrough))
+                the_list = self._mktemp(f"list_rest({the_list})")
+            if not use_spread:
+                # Too many elements
+                self._emit(f"if (!is_empty_list({the_list})) {{ goto {fallthrough}; }}")
             return updates
         raise NotImplementedError("try_match", pattern)
 
@@ -246,11 +243,10 @@ class Compiler:
             arg = self.compile(env, exp.arg)
             return self._mktemp(f"closure_call({callee}, {arg})")
         if isinstance(exp, List):
-            num_items = len(exp.items)
             items = [self.compile(env, item) for item in exp.items]
-            result = self._mktemp(f"mklist(heap, {num_items})")
-            for i, item in enumerate(items):
-                self._emit(f"list_set({result}, {i}, {item});")
+            result = self._mktemp("empty_list()")
+            for item in reversed(items):
+                result = self._mktemp(f"list_cons({item}, {result})")
             self._debug("collect(heap);")
             return result
         if isinstance(exp, Record):

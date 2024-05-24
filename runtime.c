@@ -21,16 +21,37 @@ struct gc_obj {
 // immediate integer
 struct object {};
 
-static const uword kImmediateMask = (uword)1ULL;
-static const uword kImmediateBits = 1;
-bool is_immediate(struct object* obj) { return (((uword)obj) & kImmediateMask) == 0; }
+static const uword kSmallIntMask = (uword)1ULL;
+static const uword kSmallIntBits = 1;
+static const uword kSmallIntTag = (uword)0ULL;   // 0b....0
+
+static const uword kImmediateMask = (uword)3ULL;
+static const uword kImmediateTag = (uword)3ULL;  // 0b...11
+static const uword kImmediateBits = 2;
+
+static const uword kHeapObjectMask = (uword)3ULL;
+static const uword kHeapObjectTag = (uword)1ULL; // 0b...01
+
+static const uword kEmptyList = ((uword)0ULL << kImmediateBits) | kImmediateTag;
+
+bool is_small_int(struct object* obj) { return (((uword)obj) & kSmallIntMask) == kSmallIntTag; }
+bool is_immediate_not_small_int(struct object* obj) {
+  return (((uword)obj) & kImmediateMask) == kImmediateTag;
+}
+bool is_immediate(struct object* obj) {
+  return is_small_int(obj) || is_immediate_not_small_int(obj);
+}
+struct object* empty_list() { return (struct object*)kEmptyList; }
+bool is_empty_list(struct object* obj) { return obj == empty_list(); }
+bool is_heap_object(struct object* obj) { return (((uword)obj) & kHeapObjectMask) == kHeapObjectTag; }
 uword as_immediate(struct object* obj) {
   assert(is_immediate(obj));
   return ((uword)obj) >> kImmediateBits;
 }
 struct gc_obj* as_heap_object(struct object* obj) {
   assert(!is_immediate(obj));
-  return (struct gc_obj*)((uword)obj & ~kImmediateMask);
+  assert(kHeapObjectTag == 1);
+  return (struct gc_obj*)((uword)obj - 1);
 }
 
 static const uintptr_t NOT_FORWARDED_BIT = 1;
@@ -177,8 +198,8 @@ enum {
 
 struct list {
   struct gc_obj HEAD;
-  size_t size;
-  struct object* items[];
+  struct object* first;
+  struct object* rest;
 };
 
 typedef struct object* (*ClosureFn)(struct object*, struct object*);
@@ -214,7 +235,7 @@ size_t record_size(size_t count) {
 size_t heap_object_size(struct gc_obj *obj) {
   switch(obj->tag) {
   case TAG_LIST:
-    return variable_size(sizeof(struct list), ((struct list*)obj)->size);
+    return sizeof(struct list);
   case TAG_CLOSURE:
     return variable_size(sizeof(struct closure), ((struct closure*)obj)->size);
   case TAG_RECORD:
@@ -228,9 +249,8 @@ size_t heap_object_size(struct gc_obj *obj) {
 size_t trace_heap_object(struct gc_obj *obj, struct gc_heap *heap, VisitFn visit) {
   switch(obj->tag) {
   case TAG_LIST:
-    for (size_t i = 0; i < ((struct list*)obj)->size; i++) {
-      visit(&((struct list*)obj)->items[i], heap);
-    }
+    visit(&((struct list*)obj)->first, heap);
+    visit(&((struct list*)obj)->rest, heap);
     break;
   case TAG_CLOSURE:
     for (size_t i = 0; i < ((struct closure*)obj)->size; i++) {
@@ -252,11 +272,11 @@ size_t trace_heap_object(struct gc_obj *obj, struct gc_heap *heap, VisitFn visit
 struct object* mknum(struct gc_heap *heap, int value) {
   (void)heap;
   // TODO(max): Check if it fits in 63 bits
-  return (struct object*)(((word)value << kImmediateBits));
+  return (struct object*)(((uword)value << kSmallIntBits));
 }
 
 bool is_num(struct object* obj) {
-  return is_immediate(obj);
+  return is_small_int(obj);
 }
 
 word num_value(struct object* obj) {
@@ -266,7 +286,7 @@ word num_value(struct object* obj) {
 
 bool is_list(struct object* obj) {
   if (is_immediate(obj)) {
-    return false;
+    return is_empty_list(obj);
   }
   return as_heap_object(obj)->tag == TAG_LIST;
 }
@@ -275,31 +295,23 @@ struct list* as_list(struct object* obj) {
   assert(is_list(obj));
   return (struct list*)as_heap_object(obj);
 }
-struct object* mklist(struct gc_heap *heap, size_t size) {
-  assert(size >= 0);
-  // TODO(max): Return canonical empty list
-  struct object* result = allocate(heap, variable_size(sizeof(struct list), size));
+
+struct object* list_first(struct object* obj) {
+  assert(!is_empty_list(obj));
+  return as_list(obj)->first;
+}
+
+struct object* list_rest(struct object* list) {
+  assert(!is_empty_list(list));
+  return as_list(list)->rest;
+}
+
+struct object* mklist(struct gc_heap *heap) {
+  struct object* result = allocate(heap, sizeof(struct list));
   as_heap_object(result)->tag = TAG_LIST;
-  as_list(result)->size = size;
-  // Assumes the items will be filled in immediately after calling mklist so
-  // they are not initialized
+  as_list(result)->first = empty_list();
+  as_list(result)->rest = empty_list();
   return result;
-}
-
-size_t list_size(struct object* obj) {
-  return as_list(obj)->size;
-}
-
-struct object* list_get(struct object *list, size_t i) {
-  assert(is_list(list));
-  assert(i < list_size(list));
-  return as_list(list)->items[i];
-}
-
-void list_set(struct object *list, size_t i, struct object *item) {
-  assert(is_list(list));
-  assert(i < list_size(list));
-  as_list(list)->items[i] = item;
 }
 
 bool is_closure(struct object* obj) {
@@ -319,7 +331,7 @@ struct object* mkclosure(struct gc_heap* heap, ClosureFn fn, size_t size) {
   as_heap_object(result)->tag = TAG_CLOSURE;
   as_closure(result)->fn = fn;
   as_closure(result)->size = size;
-  // Assumes the items will be filled in immediately after calling mklist so
+  // Assumes the items will be filled in immediately after calling mkclosure so
   // they are not initialized
   return result;
 }
@@ -437,37 +449,14 @@ struct object* list_cons(struct object* item, struct object* list) {
   HANDLES();
   GC_PROTECT(item);
   GC_PROTECT(list);
-  size_t size = list_size(list);
-  GC_HANDLE(struct object*, result, mklist(heap, size + 1));
-  list_set(result, 0, item);
-  for (size_t i = 0; i < size; i++) {
-    list_set(result, i + 1, list_get(list, i));
-  }
-  return result;
-}
-
-struct object* list_rest(struct object* list) {
-  HANDLES();
-  assert(list_size(list) > 0);
-  size_t new_size = list_size(list) - 1;
-  GC_HANDLE(struct object*, result, mklist(heap, new_size));
-  for (size_t i = 0; i < new_size; i++) {
-    list_set(result, i, list_get(list, i + 1));
-  }
+  struct object* result = mklist(heap);
+  as_list(result)->first = item;
+  as_list(result)->rest = list;
   return result;
 }
 
 struct object* list_append(struct object *list, struct object *item) {
-  HANDLES();
-  GC_PROTECT(list);
-  GC_PROTECT(item);
-  size_t size = list_size(list);
-  GC_HANDLE(struct object *, result, mklist(heap, size + 1));
-  for (size_t i = 0; i < size; i++) {
-    list_set(result, i, list_get(list, i));
-  }
-  list_set(result, size, item);
-  return result;
+  abort();
 }
 
 const char* record_keys[];
@@ -476,12 +465,13 @@ struct object *print(struct object *obj) {
   if (is_num(obj)) {
     printf("%ld", num_value(obj));
   } else if (is_list(obj)) {
-    size_t size = list_size(obj);
     putchar('[');
-    for (size_t i = 0; i < size; i++) {
-      print(list_get(obj, i));
-      if (i + 1 < size) {
-        fputs(", ", stdout);
+    while (!is_empty_list(obj)) {
+      print(list_first(obj));
+      obj = list_rest(obj);
+      if (!is_empty_list(obj)) {
+        putchar(',');
+        putchar(' ');
       }
     }
     putchar(']');

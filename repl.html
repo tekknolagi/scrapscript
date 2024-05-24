@@ -20,10 +20,6 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/style.css" />
-    <!-- PyScript CSS -->
-    <link rel="stylesheet" href="https://pyscript.net/releases/2024.5.2/core.css">
-    <!-- This script tag bootstraps PyScript -->
-    <script type="module" src="https://pyscript.net/releases/2024.5.2/core.js"></script>
   </head>
   <body>
     <main>
@@ -32,7 +28,43 @@
       out of date language reference.</p>
       <p>This REPL is run completely in the browser using PyScript/Pyodide.</p>
       </div>
-      <script type="py" src="/scrapscript.py" terminal worker></script>
+      <script>
+      "use strict";
+
+      async function main() {
+        // const scrapscript = await fetch('/scrapscript.py');
+        let indexURL = "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/";
+        const urlParams = new URLSearchParams(window.location.search);
+        const buildParam = urlParams.get("build");
+        if (buildParam) {
+          if (["full", "debug", "pyc"].includes(buildParam)) {
+            indexURL = indexURL.replace(
+              "/full/",
+              "/" + urlParams.get("build") + "/",
+            );
+          } else {
+            console.warn(
+              'Invalid URL parameter: build="' +
+                buildParam +
+                '". Using default "full".',
+            );
+          }
+        }
+        const { loadPyodide } = await import(indexURL + "pyodide.mjs");
+        const pyodide = await loadPyodide({
+          stdout: (msg) => console.log(`Pyodide: ${msg}`),
+        });
+        await pyodide.runPythonAsync(`
+            from pyodide.http import pyfetch
+            response = await pyfetch("/scrapscript.py")
+            with open("scrapscript.py", "wb") as f:
+                f.write(await response.bytes())
+        `)
+        const pkg = pyodide.pyimport("scrapscript");
+        console.log(pkg.eval_end_to_end("1+2"));
+      }
+      main();
+      </script>
     </main>
     <script data-goatcounter="https://scrapscript.goatcounter.com/count"
             async src="//gc.zgo.at/count.js"></script>

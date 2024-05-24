@@ -1283,6 +1283,10 @@ def eval_exp(env: Env, exp: Object) -> Object:
     raise NotImplementedError(f"eval_exp not implemented for {exp}")
 
 
+def eval_end_to_end(code: str) -> str:
+    return str(eval_exp(boot_env(), parse(tokenize(code))))
+
+
 def bencode(obj: object) -> bytes:
     assert not isinstance(obj, bool)
     if isinstance(obj, int):

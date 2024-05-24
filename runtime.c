@@ -59,7 +59,7 @@ static inline uword small_string_length(struct object* obj) {
   assert(is_small_string(obj));
   return (((uword)obj) >> kImmediateTagBits) & kMaxSmallStringLength;
 }
-static inline struct object* mksmallstring(const char* data, word length) {
+static inline struct object* mksmallstring(const char* data, uword length) {
   assert(length >= 0);
   assert(length <= kMaxSmallStringLength);
   uword result = 0;
@@ -73,7 +73,7 @@ static inline struct object* mksmallstring(const char* data, word length) {
   assert(small_string_length(result_obj) == length);
   return result_obj;
 }
-static inline char small_string_at(struct object* obj, word index) {
+static inline char small_string_at(struct object* obj, uword index) {
   assert(is_small_string(obj));
   assert(index >= 0);
   assert(index < small_string_length(obj));
@@ -468,12 +468,12 @@ struct object* mkstring_uninit_private(struct gc_heap* heap, size_t size) {
   return result;
 }
 
-struct object* mkstring(struct gc_heap* heap, const char *data, size_t size) {
-  if (size < kMaxSmallStringLength) {
-    return mksmallstring(data, size);
+struct object* mkstring(struct gc_heap* heap, const char *data, uword length) {
+  if (length < kMaxSmallStringLength) {
+    return mksmallstring(data, length);
   }
-  struct object *result = mkstring_uninit_private(heap, size);
-  memcpy(as_heap_string(result)->data, data, size);
+  struct object *result = mkstring_uninit_private(heap, length);
+  memcpy(as_heap_string(result)->data, data, length);
   return result;
 }
 
@@ -484,7 +484,7 @@ static inline uword string_length(struct object* obj) {
   return as_heap_string(obj)->size;
 }
 
-char string_at(struct object* obj, word index) {
+char string_at(struct object* obj, uword index) {
   if (is_small_string(obj)) {
     return small_string_at(obj, index);
   }
@@ -560,10 +560,10 @@ struct object* heap_string_concat(struct object* a, struct object* b) {
   GC_PROTECT(a);
   GC_PROTECT(b);
   struct object *result = mkstring_uninit_private(heap, a_size + b_size);
-  for (size_t i = 0; i < a_size; i++) {
+  for (uword i = 0; i < a_size; i++) {
     as_heap_string(result)->data[i] = string_at(a, i);
   }
-  for (size_t i = 0; i < b_size; i++) {
+  for (uword i = 0; i < b_size; i++) {
     as_heap_string(result)->data[a_size + i] = string_at(b, i);
   }
   return result;

@@ -60,6 +60,7 @@ class Compiler:
         self.function: CompiledFunction = main_fn
         self.record_keys: dict[str, int] = {}
         self.debug: bool = False
+        self.used_runtime_functions: set[str] = set()
 
     def record_key(self, key: str) -> int:
         result = self.record_keys.get(key)
@@ -255,6 +256,7 @@ class Compiler:
             if isinstance(exp.func, Var):
                 if exp.func.name == "runtime":
                     assert isinstance(exp.arg, String)
+                    self.used_runtime_functions.add(exp.arg.value)
                     return f"builtin_{exp.arg.value}"
             callee = self.compile(env, exp.func)
             arg = self.compile(env, exp.arg)
@@ -341,7 +343,8 @@ def main() -> None:
     result = compiler.compile({}, program)
     main_fn.code.append(f"return {result};")
 
-    for builtin in BUILTINS:
+    builtins = [builtin for builtin in BUILTINS if builtin in compiler.used_runtime_functions]
+    for builtin in builtins:
         fn = CompiledFunction(f"builtin_{builtin}_wrapper", params=["this", "arg"])
         fn.code.append(f"return {builtin}(arg);")
         compiler.functions.append(fn)
@@ -356,7 +359,7 @@ def main() -> None:
         print("};", file=f)
         for function in compiler.functions:
             print(function.decl() + ";", file=f)
-        for builtin in BUILTINS:
+        for builtin in builtins:
             print(f"struct object* builtin_{builtin} = NULL;", file=f)
         for function in compiler.functions:
             print(f"{function.decl()} {{", file=f)
@@ -366,7 +369,7 @@ def main() -> None:
         print("int main() {", file=f)
         print(f"heap = make_heap({args.memory});", file=f)
         print("HANDLES();", file=f)
-        for builtin in BUILTINS:
+        for builtin in builtins:
             print(f"builtin_{builtin} = mkclosure(heap, builtin_{builtin}_wrapper, 0);", file=f)
             print(f"GC_PROTECT(builtin_{builtin});", file=f)
         print(f"struct object* result = {main_fn.name}();", file=f)

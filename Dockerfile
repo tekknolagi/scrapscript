@@ -9,6 +9,7 @@ RUN unzip ../$COSMO bin/ape.elf bin/assimilate bin/bash bin/python bin/zip
 RUN sh bin/zip -A --delete bin/python "Lib/site-packages/*"
 RUN mkdir Lib
 COPY scrapscript.py Lib
+COPY compiler.py Lib
 COPY webrepl.py Lib
 RUN bin/ape.elf bin/python -m compileall Lib
 RUN mv Lib/__pycache__/scrapscript*.pyc Lib/scrapscript.pyc

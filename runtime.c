@@ -15,6 +15,8 @@ const int kPointerSize = sizeof(void*);
 typedef intptr_t word;
 typedef uintptr_t uword;
 
+// Garbage collector core by Andy Wingo <wingo@pobox.com>.
+
 struct gc_obj {
   uintptr_t tag;  // low bit is 0 if forwarding ptr
   uintptr_t payload[0];

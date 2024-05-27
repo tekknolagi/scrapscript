@@ -365,6 +365,10 @@ def compile_to_string(source: str, memory: int, debug: bool) -> str:
     for key in compiler.record_keys:
         print(f'"{key}",', file=f)
     print("};", file=f)
+    print("const char* variant_names[] = {", file=f)
+    for key in compiler.variant_tags:
+        print(f'"{key}",', file=f)
+    print("};", file=f)
     print("enum {", file=f)
     for key, idx in compiler.variant_tags.items():
         print(f"Tag_{key} = {idx},", file=f)

@@ -664,6 +664,7 @@ bool string_equal_cstr_len(struct object* string, const char* cstr, uword len) {
 }
 
 const char* record_keys[];
+const char* variant_names[];
 
 struct object* print(struct object* obj) {
   if (is_num(obj)) {
@@ -698,6 +699,10 @@ struct object* print(struct object* obj) {
       putchar(string_at(obj, i));
     }
     putchar('"');
+  } else if (is_variant(obj)) {
+    putchar('#');
+    printf("%s ", variant_names[variant_tag(obj)]);
+    print(variant_value(obj));
   } else {
     assert(is_heap_object(obj));
     fprintf(stderr, "unknown tag: %lu\n", as_heap_object(obj)->tag);

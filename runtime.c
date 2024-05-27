@@ -44,6 +44,7 @@ const int kBitsPerByte = 8;
 static const uword kSmallIntTag = 0;      // 0b****0
 static const uword kHeapObjectTag = 1;    // 0b**001
 static const uword kEmptyListTag = 5;     // 0b00101
+static const uword kHoleTag = 7;          // 0b00111
 static const uword kSmallStringTag = 13;  // 0b01101
 
 bool is_small_int(struct object* obj) {
@@ -57,6 +58,10 @@ bool is_heap_object(struct object* obj) {
 }
 struct object* empty_list() { return (struct object*)kEmptyListTag; }
 bool is_empty_list(struct object* obj) { return obj == empty_list(); }
+struct object* hole() { return (struct object*)kHoleTag; }
+bool is_hole(struct object* obj) {
+  return (((uword)obj) & kImmediateTagMask) == kHoleTag;
+}
 static ALWAYS_INLINE bool is_small_string(struct object* obj) {
   return (((uword)obj) & kImmediateTagMask) == kSmallStringTag;
 }
@@ -703,6 +708,8 @@ struct object* print(struct object* obj) {
     putchar('#');
     printf("%s ", variant_names[variant_tag(obj)]);
     print(variant_value(obj));
+  } else if (is_hole(obj)) {
+    fputs("()", stdout);
   } else {
     assert(is_heap_object(obj));
     fprintf(stderr, "unknown tag: %lu\n", as_heap_object(obj)->tag);

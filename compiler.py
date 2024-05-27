@@ -14,6 +14,7 @@ from scrapscript import (
     Binop,
     BinopKind,
     Function,
+    Hole,
     Int,
     List,
     MatchFunction,
@@ -226,6 +227,8 @@ class Compiler:
             # TODO(max): Bignum
             self._debug("collect(heap);")
             return self._mktemp(f"mknum(heap, {exp.value})")
+        if isinstance(exp, Hole):
+            return self._mktemp("hole()")
         if isinstance(exp, Variant):
             self._debug("collect(heap);")
             self.variant_tag(exp.tag)

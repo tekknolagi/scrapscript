@@ -378,7 +378,9 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         # we can match variants in MatchFunction
         # It needs to be higher than the precedence of the && operator so that
         # we can use #true() and #false() in boolean expressions
-        l = Variant(token.value, parse(tokens, PS["&&"].pr + 1))
+        # It needs to be higher than the precedence of juxtaposition so that
+        # f #true() #false() is parsed as f(TRUE)(FALSE)
+        l = Variant(token.value, parse(tokens, PS[""].pr + 1))
     elif isinstance(token, BytesLit):
         base = token.base
         if base == 85:
@@ -2271,6 +2273,18 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_variant_returns_variant(self) -> None:
         self.assertEqual(parse([VariantToken("abc"), IntLit(1)]), Variant("abc", Int(1)))
+
+    def test_match_with_variant(self) -> None:
+        ast = parse(tokenize("| #true () -> 123"))
+        self.assertEqual(ast, MatchFunction([MatchCase(TRUE, Int(123))]))
+
+    def test_binary_and_with_variant_args(self) -> None:
+        ast = parse(tokenize("#true() && #false()"))
+        self.assertEqual(ast, Binop(BinopKind.BOOL_AND, TRUE, FALSE))
+
+    def test_apply_with_variant_args(self) -> None:
+        ast = parse(tokenize("f #true() #false()"))
+        self.assertEqual(ast, Apply(Apply(Var("f"), TRUE), FALSE))
 
 
 class MatchTests(unittest.TestCase):

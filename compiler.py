@@ -368,14 +368,15 @@ def compile_to_string(source: str, memory: int, debug: bool) -> str:
     for key in compiler.record_keys:
         print(f'"{key}",', file=f)
     print("};", file=f)
-    print("const char* variant_names[] = {", file=f)
-    for key in compiler.variant_tags:
-        print(f'"{key}",', file=f)
-    print("};", file=f)
-    print("enum {", file=f)
-    for key, idx in compiler.variant_tags.items():
-        print(f"Tag_{key} = {idx},", file=f)
-    print("};", file=f)
+    if compiler.variant_tags:
+        print("const char* variant_names[] = {", file=f)
+        for key in compiler.variant_tags:
+            print(f'"{key}",', file=f)
+        print("};", file=f)
+        print("enum {", file=f)
+        for key, idx in compiler.variant_tags.items():
+            print(f"Tag_{key} = {idx},", file=f)
+        print("};", file=f)
     for function in compiler.functions:
         print(function.decl() + ";", file=f)
     for builtin in builtins:
@@ -396,6 +397,36 @@ def compile_to_string(source: str, memory: int, debug: bool) -> str:
     print("destroy_heap(heap);", file=f)
     print("}", file=f)
     return f.getvalue()
+
+
+def discover_cflags(cc: str, debug: bool = True) -> list[str]:
+    default_cflags = ["-Wall", "-Wextra", "-fno-strict-aliasing"]
+    if debug:
+        default_cflags += ["-O0", "-ggdb"]
+    else:
+        default_cflags += ["-O2", "-DNDEBUG"]
+        if "cosmo" not in cc:
+            # cosmocc does not support LTO
+            default_cflags.append("-flto")
+    return env_get_split("CFLAGS", default_cflags)
+
+
+def compile_to_binary(source: str, memory: int, debug: bool) -> str:
+    import shutil
+    import subprocess
+    import sysconfig
+    import tempfile
+
+    cc = sysconfig.get_config_var("CC")
+    cflags = discover_cflags(cc, debug)
+    c_code = compile_to_string(source, memory, debug)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as c_file:
+        outdir = os.path.dirname(c_file.name)
+        shutil.copy("runtime.c", outdir)
+        c_file.write(c_code)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".out", delete=False) as out_file:
+        subprocess.run([cc, *cflags, "-o", out_file.name, c_file.name], check=True)
+    return out_file.name
 
 
 def main() -> None:
@@ -428,15 +459,7 @@ def main() -> None:
         import subprocess
 
         cc = os.environ.get("CC", "clang")
-        default_cflags = ["-Wall", "-Wextra", "-fno-strict-aliasing"]
-        if args.debug:
-            default_cflags += ["-O0", "-ggdb"]
-        else:
-            default_cflags += ["-O2", "-DNDEBUG"]
-            if "cosmo" not in cc:
-                # cosmocc does not support LTO
-                default_cflags.append("-flto")
-        cflags = env_get_split("CFLAGS", default_cflags)
+        cflags = discover_cflags(cc, args.debug)
         ldflags = env_get_split("LDFLAGS")
         subprocess.run([cc, "-o", "a.out", *cflags, args.output, *ldflags], check=True)
 

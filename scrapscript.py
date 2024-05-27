@@ -1075,6 +1075,8 @@ class MatchError(Exception):
 
 
 def match(obj: Object, pattern: Object) -> Optional[Env]:
+    if isinstance(pattern, Hole):
+        return {} if isinstance(obj, Hole) else None
     if isinstance(pattern, Int):
         return {} if isinstance(obj, Int) and obj.value == pattern.value else None
     if isinstance(pattern, Float):
@@ -2248,6 +2250,12 @@ class ParserTests(unittest.TestCase):
 
 
 class MatchTests(unittest.TestCase):
+    def test_match_hole_with_non_hole_returns_none(self) -> None:
+        self.assertEqual(match(Int(1), pattern=Hole()), None)
+
+    def test_match_hole_with_hole_returns_empty_dict(self) -> None:
+        self.assertEqual(match(Hole(), pattern=Hole()), {})
+
     def test_match_with_equal_ints_returns_empty_dict(self) -> None:
         self.assertEqual(match(Int(1), pattern=Int(1)), {})
 

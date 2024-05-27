@@ -22,6 +22,7 @@ from scrapscript import (
     Spread,
     String,
     Var,
+    Variant,
     Where,
     free_in,
     parse,
@@ -60,6 +61,7 @@ class Compiler:
         self.functions: list[CompiledFunction] = [main_fn]
         self.function: CompiledFunction = main_fn
         self.record_keys: dict[str, int] = {}
+        self.variant_tags: dict[str, int] = {}
         self.debug: bool = False
         self.used_runtime_functions: set[str] = set()
 
@@ -68,6 +70,13 @@ class Compiler:
         if result is not None:
             return result
         result = self.record_keys[key] = len(self.record_keys)
+        return result
+
+    def variant_tag(self, key: str) -> int:
+        result = self.variant_tags.get(key)
+        if result is not None:
+            return result
+        result = self.variant_tags[key] = len(self.variant_tags)
         return result
 
     def gensym(self, stem: str = "tmp") -> str:
@@ -149,6 +158,12 @@ class Compiler:
             self._emit(f"if (!is_num({arg})) {{ goto {fallthrough}; }}")
             self._emit(f"if (num_value({arg}) != {pattern.value}) {{ goto {fallthrough}; }}")
             return {}
+        if isinstance(pattern, Variant):
+            self.variant_tag(pattern.tag)  # register it for the big enum
+            self._emit(f"if (!is_variant({arg})) {{ goto {fallthrough}; }}")
+            self._emit(f"if (variant_tag({arg}) != Tag_{pattern.tag}) {{ goto {fallthrough}; }}")
+            return self.try_match(env, self._mktemp(f"variant_value({arg})"), pattern.value, fallthrough)
+
         if isinstance(pattern, String):
             self._emit(f"if (!is_string({arg})) {{ goto {fallthrough}; }}")
             value = pattern.value
@@ -211,6 +226,13 @@ class Compiler:
             # TODO(max): Bignum
             self._debug("collect(heap);")
             return self._mktemp(f"mknum(heap, {exp.value})")
+        if isinstance(exp, Variant):
+            self._debug("collect(heap);")
+            self.variant_tag(exp.tag)
+            value = self.compile(env, exp.value)
+            result = self._mktemp(f"mkvariant(heap, Tag_{exp.tag})")
+            self._emit(f"variant_set({result}, {value});")
+            return result
         if isinstance(exp, String):
             self._debug("collect(heap);")
             string_repr = json.dumps(exp.value)
@@ -248,10 +270,10 @@ class Compiler:
             new_env = {**env, **res_env}
             return self.compile(new_env, exp.body)
         if isinstance(exp, Var):
-            value = env.get(exp.name)
-            if value is None:
+            var_value = env.get(exp.name)
+            if var_value is None:
                 raise NameError(f"name '{exp.name}' is not defined")
-            return value
+            return var_value
         if isinstance(exp, Apply):
             if isinstance(exp.func, Var):
                 if exp.func.name == "runtime":
@@ -342,6 +364,10 @@ def compile_to_string(source: str, memory: int, debug: bool) -> str:
     print("const char* record_keys[] = {", file=f)
     for key in compiler.record_keys:
         print(f'"{key}",', file=f)
+    print("};", file=f)
+    print("enum {", file=f)
+    for key, idx in compiler.variant_tags.items():
+        print(f"Tag_{key} = {idx},", file=f)
     print("};", file=f)
     for function in compiler.functions:
         print(function.decl() + ";", file=f)

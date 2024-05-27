@@ -226,7 +226,8 @@ static ALWAYS_INLINE ALLOCATOR struct object* allocate(struct gc_heap* heap,
   TAG(TAG_LIST)                                                                \
   TAG(TAG_CLOSURE)                                                             \
   TAG(TAG_RECORD)                                                              \
-  TAG(TAG_STRING)
+  TAG(TAG_STRING)                                                              \
+  TAG(TAG_VARIANT)
 
 enum {
 // All odd becase of the kNotForwardedBit
@@ -269,6 +270,12 @@ struct heap_string {
   char data[];
 };
 
+struct variant {
+  struct gc_obj HEAD;
+  size_t tag;
+  struct object* value;
+};
+
 size_t variable_size(size_t base, size_t count) {
   return base + count * kPointerSize;
 }
@@ -292,6 +299,8 @@ size_t heap_object_size(struct gc_obj* obj) {
       return record_size(((struct record*)obj)->size);
     case TAG_STRING:
       return heap_string_size(((struct heap_string*)obj)->size);
+    case TAG_VARIANT:
+      return sizeof(struct variant);
     default:
       fprintf(stderr, "unknown tag: %lu\n", obj->tag);
       abort();
@@ -316,6 +325,9 @@ size_t trace_heap_object(struct gc_obj* obj, struct gc_heap* heap,
       }
       break;
     case TAG_STRING:
+      break;
+    case TAG_VARIANT:
+      visit(&((struct variant*)obj)->value, heap);
       break;
     default:
       fprintf(stderr, "unknown tag: %lu\n", obj->tag);
@@ -495,6 +507,32 @@ char string_at(struct object* obj, uword index) {
     return small_string_at(obj, index);
   }
   return as_heap_string(obj)->data[index];
+}
+
+bool is_variant(struct object* obj) {
+  return is_heap_object(obj) && as_heap_object(obj)->tag == TAG_VARIANT;
+}
+
+struct variant* as_variant(struct object* obj) {
+  assert(is_variant(obj));
+  return (struct variant*)as_heap_object(obj);
+}
+
+struct object* mkvariant(struct gc_heap* heap, size_t tag) {
+  struct object* result = allocate(heap, sizeof(struct variant));
+  as_heap_object(result)->tag = TAG_VARIANT;
+  as_variant(result)->tag = tag;
+  return result;
+}
+
+size_t variant_tag(struct object* obj) { return as_variant(obj)->tag; }
+
+struct object* variant_value(struct object* obj) {
+  return as_variant(obj)->value;
+}
+
+void variant_set(struct object* variant, struct object* value) {
+  as_variant(variant)->value = value;
 }
 
 #define MAX_HANDLES 20

@@ -1188,7 +1188,12 @@ def free_in(exp: Object) -> Set[str]:
     if isinstance(exp, Apply):
         return free_in(exp.func) | free_in(exp.arg)
     if isinstance(exp, Access):
-        return free_in(exp.obj)
+        # For records, y is not free in x@y; it is a field name.
+        # For lists, y *is* free in x@y; it is an index expression (could be a
+        # var).
+        # For now, we'll assume it might be an expression and mark it as a
+        # (possibly extra) freevar.
+        return free_in(exp.obj) | free_in(exp.at)
     if isinstance(exp, Where):
         assert isinstance(exp.binding, Assign)
         return (free_in(exp.body) - {exp.binding.name.name}) | free_in(exp.binding)
@@ -3138,6 +3143,12 @@ class EndToEndTests(EndToEndTestsBase):
     def test_access_list_expr(self) -> None:
         self.assertEqual(self._run("xs@(1+1) . xs = [1, 2, 3]"), Int(3))
 
+    def test_access_list_closure_var(self) -> None:
+        self.assertEqual(
+            self._run("list_at 1 [1,2,3] . list_at = idx -> ls -> ls@idx"),
+            Int(2),
+        )
+
     def test_functions_eval_arguments(self) -> None:
         self.assertEqual(self._run("(x -> x) c . c = 1"), Int(1))
 
@@ -3582,7 +3593,7 @@ class ClosureOptimizeTests(unittest.TestCase):
         self.assertEqual(free_in(Apply(Var("x"), Var("y"))), {"x", "y"})
 
     def test_access(self) -> None:
-        self.assertEqual(free_in(Access(Var("x"), Var("y"))), {"x"})
+        self.assertEqual(free_in(Access(Var("x"), Var("y"))), {"x", "y"})
 
     def test_where(self) -> None:
         exp = parse(tokenize("x . x = 1"))

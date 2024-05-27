@@ -110,7 +110,7 @@ class Juxt(Token):
 
 
 @dataclass(eq=True)
-class SymbolToken(Token):
+class VariantToken(Token):
     value: str
 
 
@@ -172,7 +172,7 @@ class Lexer:
                 raise UnexpectedEOFError("while reading symbol")
             if not isinstance(value, Name):
                 raise ParseError(f"expected name after #, got {value!r}")
-            return self.make_token(SymbolToken, value.value)
+            return self.make_token(VariantToken, value.value)
         if c == "~":
             if self.has_input() and self.peek_char() == "~":
                 self.read_char()
@@ -373,8 +373,12 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     elif isinstance(token, Name):
         # TODO: Handle kebab case vars
         l = Var(token.value)
-    elif isinstance(token, SymbolToken):
-        l = Symbol(token.value)
+    elif isinstance(token, VariantToken):
+        # It needs to be higher than the precedence of the -> operator so that
+        # we can match variants in MatchFunction
+        # It needs to be higher than the precedence of the && operator so that
+        # we can use #true() and #false() in boolean expressions
+        l = Variant(token.value, parse(tokens, PS["&&"].pr + 1))
     elif isinstance(token, BytesLit):
         base = token.base
         if base == 85:
@@ -984,21 +988,31 @@ class Access(Object):
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
-class Symbol(Object):
-    value: str
+class Variant(Object):
+    tag: str
+    value: Object
 
     def serialize(self) -> Dict[str, object]:
-        return self._serialize(value=self.value)
+        return self._serialize(tag=self.tag, value=self.value.serialize())
 
     @staticmethod
-    def deserialize(msg: Dict[str, object]) -> "Symbol":
-        assert msg["type"] == "Symbol"
+    def deserialize(msg: Dict[str, object]) -> "Variant":
+        assert msg["type"] == "Variant"
+        tag = msg["tag"]
+        assert isinstance(tag, str)
         value_obj = msg["value"]
-        assert isinstance(value_obj, str)
-        return Symbol(value_obj)
+        assert isinstance(value_obj, dict)
+        value = Object.deserialize(value_obj)
+        return Variant(tag, value)
 
     def __str__(self) -> str:
-        return f"#{self.value}"
+        return f"#{self.tag} {self.value}"
+
+
+TRUE = Variant("true", Hole())
+
+
+FALSE = Variant("false", Hole())
 
 
 def unpack_number(obj: Object) -> Union[int, float]:
@@ -1021,9 +1035,11 @@ def eval_str(env: Env, exp: Object) -> str:
 
 def eval_bool(env: Env, exp: Object) -> bool:
     result = eval_exp(env, exp)
-    if isinstance(result, Symbol) and result.value in ("true", "false"):
-        return result.value == "true"
-    raise TypeError(f"expected #true or #false, got {type(result).__name__}")
+    if not isinstance(result, Variant):
+        raise TypeError(f"expected #true or #false, got {type(result).__name__}")
+    if result.tag not in ("true", "false"):
+        raise TypeError(f"expected #true or #false, got {type(result).__name__}")
+    return result.tag == "true"
 
 
 def eval_list(env: Env, exp: Object) -> typing.List[Object]:
@@ -1034,7 +1050,7 @@ def eval_list(env: Env, exp: Object) -> typing.List[Object]:
 
 
 def make_bool(x: bool) -> Object:
-    return Symbol("true" if x else "false")
+    return TRUE if x else FALSE
 
 
 def wrap_inferred_number_type(x: Union[int, float]) -> Object:
@@ -1085,8 +1101,12 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
         return {} if isinstance(obj, String) and obj.value == pattern.value else None
     if isinstance(pattern, Var):
         return {pattern.name: obj}
-    if isinstance(pattern, Symbol):
-        return {} if isinstance(obj, Symbol) and obj.value == pattern.value else None
+    if isinstance(pattern, Variant):
+        if not isinstance(obj, Variant):
+            return None
+        if obj.tag != pattern.tag:
+            return None
+        return match(obj.value, pattern.value)
     if isinstance(pattern, Record):
         if not isinstance(obj, Record):
             return None
@@ -1134,8 +1154,10 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
 
 
 def free_in(exp: Object) -> Set[str]:
-    if isinstance(exp, (Int, Float, String, Bytes, Hole, NativeFunction, Symbol)):
+    if isinstance(exp, (Int, Float, String, Bytes, Hole, NativeFunction)):
         return set()
+    if isinstance(exp, Variant):
+        return free_in(exp.value)
     if isinstance(exp, Var):
         return {exp.name}
     if isinstance(exp, Spread):
@@ -1184,8 +1206,10 @@ def improve_closure(closure: Closure) -> Closure:
 
 def eval_exp(env: Env, exp: Object) -> Object:
     logger.debug(exp)
-    if isinstance(exp, (Int, Float, String, Bytes, Hole, Closure, NativeFunction, Symbol)):
+    if isinstance(exp, (Int, Float, String, Bytes, Hole, Closure, NativeFunction)):
         return exp
+    if isinstance(exp, Variant):
+        return Variant(exp.tag, eval_exp(env, exp.value))
     if isinstance(exp, Var):
         value = env.get(exp.name)
         if value is None:
@@ -1225,7 +1249,7 @@ def eval_exp(env: Env, exp: Object) -> Object:
         return eval_exp(new_env, exp.body)
     if isinstance(exp, Assert):
         cond = eval_exp(env, exp.cond)
-        if cond != Symbol("true"):
+        if cond != TRUE:
             raise AssertionError(f"condition {exp.cond} failed")
         return eval_exp(env, exp.value)
     if isinstance(exp, Function):
@@ -1782,17 +1806,17 @@ class TokenizerTests(unittest.TestCase):
             ],
         )
 
-    def test_tokenize_symbol_with_space(self) -> None:
-        self.assertEqual(tokenize("# abc"), [SymbolToken("abc")])
+    def test_tokenize_variant_with_space(self) -> None:
+        self.assertEqual(tokenize("# abc"), [VariantToken("abc")])
 
-    def test_tokenize_symbol_with_no_space(self) -> None:
-        self.assertEqual(tokenize("#abc"), [SymbolToken("abc")])
+    def test_tokenize_variant_with_no_space(self) -> None:
+        self.assertEqual(tokenize("#abc"), [VariantToken("abc")])
 
-    def test_tokenize_symbol_non_name_raises_parse_error(self) -> None:
+    def test_tokenize_variant_non_name_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, "expected name"):
             tokenize("#1")
 
-    def test_tokenize_symbol_eof_raises_unexpected_eof_error(self) -> None:
+    def test_tokenize_variant_eof_raises_unexpected_eof_error(self) -> None:
         with self.assertRaisesRegex(UnexpectedEOFError, "while reading symbol"):
             tokenize("#")
 
@@ -2245,8 +2269,8 @@ class ParserTests(unittest.TestCase):
         with self.assertRaisesRegex(ParseError, re.escape("unexpected token RightBrace(lineno=-1)")):
             parse([LeftBrace(), Name("x"), Operator("="), IntLit(1), Operator(","), RightBrace()])
 
-    def test_parse_symbol_returns_symbol(self) -> None:
-        self.assertEqual(parse([SymbolToken("abc")]), Symbol("abc"))
+    def test_parse_variant_returns_variant(self) -> None:
+        self.assertEqual(parse([VariantToken("abc"), IntLit(1)]), Variant("abc", Int(1)))
 
 
 class MatchTests(unittest.TestCase):
@@ -2519,14 +2543,18 @@ class MatchTests(unittest.TestCase):
             None,
         )
 
-    def test_match_symbol_with_equal_symbol_returns_empty_dict(self) -> None:
-        self.assertEqual(match(Symbol("abc"), pattern=Symbol("abc")), {})
+    def test_match_variant_with_equal_tag_returns_empty_dict(self) -> None:
+        self.assertEqual(match(Variant("abc", Hole()), pattern=Variant("abc", Hole())), {})
 
-    def test_match_symbol_with_inequal_symbol_returns_none(self) -> None:
-        self.assertEqual(match(Symbol("def"), pattern=Symbol("abc")), None)
+    def test_match_variant_with_inequal_tag_returns_none(self) -> None:
+        self.assertEqual(match(Variant("def", Hole()), pattern=Variant("abc", Hole())), None)
 
-    def test_match_symbol_with_different_type_returns_none(self) -> None:
-        self.assertEqual(match(Int(123), pattern=Symbol("abc")), None)
+    def test_match_variant_matches_value(self) -> None:
+        self.assertEqual(match(Variant("abc", Int(123)), pattern=Variant("abc", Hole())), None)
+        self.assertEqual(match(Variant("abc", Int(123)), pattern=Variant("abc", Int(123))), {})
+
+    def test_match_variant_with_different_type_returns_none(self) -> None:
+        self.assertEqual(match(Int(123), pattern=Variant("abc", Hole())), None)
 
 
 class EvalTests(unittest.TestCase):
@@ -2597,19 +2625,19 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_with_binop_equal_with_equal_returns_true(self) -> None:
         exp = Binop(BinopKind.EQUAL, Int(1), Int(1))
-        self.assertEqual(eval_exp({}, exp), Symbol("true"))
+        self.assertEqual(eval_exp({}, exp), TRUE)
 
     def test_eval_with_binop_equal_with_inequal_returns_false(self) -> None:
         exp = Binop(BinopKind.EQUAL, Int(1), Int(2))
-        self.assertEqual(eval_exp({}, exp), Symbol("false"))
+        self.assertEqual(eval_exp({}, exp), FALSE)
 
     def test_eval_with_binop_not_equal_with_equal_returns_false(self) -> None:
         exp = Binop(BinopKind.NOT_EQUAL, Int(1), Int(1))
-        self.assertEqual(eval_exp({}, exp), Symbol("false"))
+        self.assertEqual(eval_exp({}, exp), FALSE)
 
     def test_eval_with_binop_not_equal_with_inequal_returns_true(self) -> None:
         exp = Binop(BinopKind.NOT_EQUAL, Int(1), Int(2))
-        self.assertEqual(eval_exp({}, exp), Symbol("true"))
+        self.assertEqual(eval_exp({}, exp), TRUE)
 
     def test_eval_with_binop_concat_with_strings_returns_string(self) -> None:
         exp = Binop(BinopKind.STRING_CONCAT, String("hello"), String(" world"))
@@ -2709,16 +2737,16 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(env, {})
 
     def test_eval_assert_with_truthy_cond_returns_value(self) -> None:
-        exp = Assert(Int(123), Symbol("true"))
+        exp = Assert(Int(123), TRUE)
         self.assertEqual(eval_exp({}, exp), Int(123))
 
     def test_eval_assert_with_falsey_cond_raises_assertion_error(self) -> None:
-        exp = Assert(Int(123), Symbol("false"))
-        with self.assertRaisesRegex(AssertionError, re.escape("condition #false failed")):
+        exp = Assert(Int(123), FALSE)
+        with self.assertRaisesRegex(AssertionError, re.escape("condition #false () failed")):
             eval_exp({}, exp)
 
     def test_eval_nested_assert(self) -> None:
-        exp = Assert(Assert(Int(123), Symbol("true")), Symbol("true"))
+        exp = Assert(Assert(Int(123), TRUE), TRUE)
         self.assertEqual(eval_exp({}, exp), Int(123))
 
     def test_eval_hole(self) -> None:
@@ -2874,7 +2902,7 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_less_returns_bool(self) -> None:
         ast = Binop(BinopKind.LESS, Int(3), Int(4))
-        self.assertEqual(eval_exp({}, ast), Symbol("true"))
+        self.assertEqual(eval_exp({}, ast), TRUE)
 
     def test_eval_less_on_non_bool_raises_type_error(self) -> None:
         ast = Binop(BinopKind.LESS, String("xyz"), Int(4))
@@ -2883,7 +2911,7 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_less_equal_returns_bool(self) -> None:
         ast = Binop(BinopKind.LESS_EQUAL, Int(3), Int(4))
-        self.assertEqual(eval_exp({}, ast), Symbol("true"))
+        self.assertEqual(eval_exp({}, ast), TRUE)
 
     def test_eval_less_equal_on_non_bool_raises_type_error(self) -> None:
         ast = Binop(BinopKind.LESS_EQUAL, String("xyz"), Int(4))
@@ -2892,7 +2920,7 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_greater_returns_bool(self) -> None:
         ast = Binop(BinopKind.GREATER, Int(3), Int(4))
-        self.assertEqual(eval_exp({}, ast), Symbol("false"))
+        self.assertEqual(eval_exp({}, ast), FALSE)
 
     def test_eval_greater_on_non_bool_raises_type_error(self) -> None:
         ast = Binop(BinopKind.GREATER, String("xyz"), Int(4))
@@ -2901,7 +2929,7 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_greater_equal_returns_bool(self) -> None:
         ast = Binop(BinopKind.GREATER_EQUAL, Int(3), Int(4))
-        self.assertEqual(eval_exp({}, ast), Symbol("false"))
+        self.assertEqual(eval_exp({}, ast), FALSE)
 
     def test_eval_greater_equal_on_non_bool_raises_type_error(self) -> None:
         ast = Binop(BinopKind.GREATER_EQUAL, String("xyz"), Int(4))
@@ -2909,18 +2937,18 @@ class EvalTests(unittest.TestCase):
             eval_exp({}, ast)
 
     def test_boolean_and_evaluates_args(self) -> None:
-        ast = Binop(BinopKind.BOOL_AND, Symbol("true"), Var("a"))
-        self.assertEqual(eval_exp({"a": Symbol("false")}, ast), Symbol("false"))
+        ast = Binop(BinopKind.BOOL_AND, TRUE, Var("a"))
+        self.assertEqual(eval_exp({"a": FALSE}, ast), FALSE)
 
-        ast = Binop(BinopKind.BOOL_AND, Var("a"), Symbol("false"))
-        self.assertEqual(eval_exp({"a": Symbol("true")}, ast), Symbol("false"))
+        ast = Binop(BinopKind.BOOL_AND, Var("a"), FALSE)
+        self.assertEqual(eval_exp({"a": TRUE}, ast), FALSE)
 
     def test_boolean_or_evaluates_args(self) -> None:
-        ast = Binop(BinopKind.BOOL_OR, Symbol("false"), Var("a"))
-        self.assertEqual(eval_exp({"a": Symbol("true")}, ast), Symbol("true"))
+        ast = Binop(BinopKind.BOOL_OR, FALSE, Var("a"))
+        self.assertEqual(eval_exp({"a": TRUE}, ast), TRUE)
 
-        ast = Binop(BinopKind.BOOL_OR, Var("a"), Symbol("true"))
-        self.assertEqual(eval_exp({"a": Symbol("false")}, ast), Symbol("true"))
+        ast = Binop(BinopKind.BOOL_OR, Var("a"), TRUE)
+        self.assertEqual(eval_exp({"a": FALSE}, ast), TRUE)
 
     def test_boolean_and_short_circuit(self) -> None:
         def raise_func(message: Object) -> Object:
@@ -2930,8 +2958,8 @@ class EvalTests(unittest.TestCase):
 
         error = NativeFunction("error", raise_func)
         apply = Apply(Var("error"), String("expected failure"))
-        ast = Binop(BinopKind.BOOL_AND, Symbol("false"), apply)
-        self.assertEqual(eval_exp({"error": error}, ast), Symbol("false"))
+        ast = Binop(BinopKind.BOOL_AND, FALSE, apply)
+        self.assertEqual(eval_exp({"error": error}, ast), FALSE)
 
     def test_boolean_or_short_circuit(self) -> None:
         def raise_func(message: Object) -> Object:
@@ -2941,8 +2969,8 @@ class EvalTests(unittest.TestCase):
 
         error = NativeFunction("error", raise_func)
         apply = Apply(Var("error"), String("expected failure"))
-        ast = Binop(BinopKind.BOOL_OR, Symbol("true"), apply)
-        self.assertEqual(eval_exp({"error": error}, ast), Symbol("true"))
+        ast = Binop(BinopKind.BOOL_OR, TRUE, apply)
+        self.assertEqual(eval_exp({"error": error}, ast), TRUE)
 
     def test_boolean_and_on_int_raises_type_error(self) -> None:
         exp = Binop(BinopKind.BOOL_AND, Int(1), Int(2))
@@ -2959,8 +2987,14 @@ class EvalTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "cannot evaluate a spread"):
             eval_exp({}, exp)
 
-    def test_eval_symbol_returns_symbol(self) -> None:
-        self.assertEqual(eval_exp({}, Symbol("abc")), Symbol("abc"))
+    def test_eval_variant_returns_variant(self) -> None:
+        self.assertEqual(
+            eval_exp(
+                {},
+                Variant("abc", Binop(BinopKind.ADD, Int(1), Int(2))),
+            ),
+            Variant("abc", Int(3)),
+        )
 
     def test_eval_float_and_float_addition_returns_float(self) -> None:
         self.assertEqual(eval_exp({}, Binop(BinopKind.ADD, Float(1.0), Float(2.0))), Float(3.0))
@@ -3356,17 +3390,17 @@ class EndToEndTests(EndToEndTestsBase):
     def test_exp_binds_tighter_than_mul(self) -> None:
         self.assertEqual(self._run("5 * 2 ^ 3"), Int(40))
 
-    def test_symbol_true_returns_true(self) -> None:
-        self.assertEqual(self._run("# true", {}), Symbol("true"))
+    def test_variant_true_returns_true(self) -> None:
+        self.assertEqual(self._run("# true ()", {}), TRUE)
 
-    def test_symbol_false_returns_false(self) -> None:
-        self.assertEqual(self._run("#false", {}), Symbol("false"))
+    def test_variant_false_returns_false(self) -> None:
+        self.assertEqual(self._run("#false ()", {}), FALSE)
 
     def test_boolean_and_binds_tighter_than_or(self) -> None:
-        self.assertEqual(self._run("#true || #true && boom", {}), Symbol("true"))
+        self.assertEqual(self._run("#true () || #true () && boom", {}), TRUE)
 
     def test_compare_binds_tighter_than_boolean_and(self) -> None:
-        self.assertEqual(self._run("1 < 2 && 2 < 1"), Symbol("false"))
+        self.assertEqual(self._run("1 < 2 && 2 < 1"), FALSE)
 
     def test_match_list_spread(self) -> None:
         self.assertEqual(
@@ -3408,17 +3442,30 @@ class EndToEndTests(EndToEndTestsBase):
             Int(4),
         )
 
-    def test_match_expr_as_boolean_symbols(self) -> None:
+    def test_match_expr_as_boolean_variants(self) -> None:
         self.assertEqual(
             self._run(
                 """
         say (1 < 2)
         . say =
-          | #false -> "oh no"
-          | #true -> "omg"
+          | #false () -> "oh no"
+          | #true () -> "omg"
         """
             ),
             String("omg"),
+        )
+
+    def test_match_variant_record(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        f #add {x = 3, y = 4}
+        . f =
+          | # b () -> "foo"
+          | #add {x = x, y = y} -> x + y
+        """
+            ),
+            Int(7),
         )
 
 
@@ -3449,8 +3496,8 @@ class ClosureOptimizeTests(unittest.TestCase):
     def test_nativefunction(self) -> None:
         self.assertEqual(free_in(NativeFunction("id", lambda x: x)), set())
 
-    def test_symbol(self) -> None:
-        self.assertEqual(free_in(Symbol("x")), set())
+    def test_variant(self) -> None:
+        self.assertEqual(free_in(Variant("x", Var("y"))), {"y"})
 
     def test_var(self) -> None:
         self.assertEqual(free_in(Var("x")), {"x"})
@@ -3598,7 +3645,7 @@ class PreludeTests(EndToEndTestsBase):
         with self.assertRaises(MatchError):
             self._run(
                 """
-        filter (x -> #no) [1]
+        filter (x -> #no ()) [1]
         """
             )
 
@@ -3769,7 +3816,7 @@ class PreludeTests(EndToEndTestsBase):
         all (x -> x < 5) [1, 2, 3, 4]
         """
             ),
-            Symbol("true"),
+            TRUE,
         )
 
     def test_all_returns_false(self) -> None:
@@ -3779,7 +3826,7 @@ class PreludeTests(EndToEndTestsBase):
         all (x -> x < 5) [2, 4, 6]
         """
             ),
-            Symbol("false"),
+            FALSE,
         )
 
     def test_all_with_empty_list_returns_true(self) -> None:
@@ -3789,7 +3836,7 @@ class PreludeTests(EndToEndTestsBase):
         all (x -> x == 5) []
         """
             ),
-            Symbol("true"),
+            TRUE,
         )
 
     def test_all_with_non_bool_raises_type_error(self) -> None:
@@ -3807,7 +3854,7 @@ class PreludeTests(EndToEndTestsBase):
         all (x -> x > 1) [1, "a", "b"]
         """
             ),
-            Symbol("false"),
+            FALSE,
         )
 
     def test_any_returns_true(self) -> None:
@@ -3817,7 +3864,7 @@ class PreludeTests(EndToEndTestsBase):
         any (x -> x < 4) [1, 3, 5]
         """
             ),
-            Symbol("true"),
+            TRUE,
         )
 
     def test_any_returns_false(self) -> None:
@@ -3827,7 +3874,7 @@ class PreludeTests(EndToEndTestsBase):
         any (x -> x < 3) [4, 5, 6]
         """
             ),
-            Symbol("false"),
+            FALSE,
         )
 
     def test_any_with_empty_list_returns_false(self) -> None:
@@ -3837,7 +3884,7 @@ class PreludeTests(EndToEndTestsBase):
         any (x -> x == 5) []
         """
             ),
-            Symbol("false"),
+            FALSE,
         )
 
     def test_any_with_non_bool_raises_type_error(self) -> None:
@@ -3855,7 +3902,7 @@ class PreludeTests(EndToEndTestsBase):
         any (x -> x > 1) [2, "a", "b"]
         """
             ),
-            Symbol("true"),
+            Variant("true", Hole()),
         )
 
 
@@ -3937,9 +3984,9 @@ class ObjectSerializeTests(unittest.TestCase):
         obj = Var("abc")
         self.assertEqual(obj.serialize(), {"type": "Var", "name": "abc"})
 
-    def test_serialize_symbol(self) -> None:
-        obj = Symbol("true")
-        self.assertEqual(obj.serialize(), {"type": "Symbol", "value": "true"})
+    def test_serialize_variant(self) -> None:
+        obj = Variant("abc", Int(1))
+        self.assertEqual(obj.serialize(), {"type": "Variant", "tag": "abc", "value": {"type": "Int", "value": 1}})
 
     def test_serialize_binary_add(self) -> None:
         obj = Binop(BinopKind.ADD, Int(123), Int(456))
@@ -4037,9 +4084,9 @@ class ObjectDeserializeTests(unittest.TestCase):
         msg = {"type": "Var", "name": "abc"}
         self.assertEqual(Object.deserialize(msg), Var("abc"))
 
-    def test_deserialize_symbol(self) -> None:
-        msg = {"type": "Symbol", "value": "abc"}
-        self.assertEqual(Object.deserialize(msg), Symbol("abc"))
+    def test_deserialize_variant(self) -> None:
+        msg = {"type": "Variant", "tag": "abc", "value": {"type": "Int", "value": 123}}
+        self.assertEqual(Object.deserialize(msg), Variant("abc", Int(123)))
 
     def test_deserialize_binary_add(self) -> None:
         msg = {
@@ -4120,9 +4167,9 @@ class SerializeTests(unittest.TestCase):
         obj = Var("abc")
         self.assertEqual(serialize(obj), b"d4:name3:abc4:type3:Vare")
 
-    def test_serialize_symbol(self) -> None:
-        obj = Symbol("abcd")
-        self.assertEqual(serialize(obj), b"d4:type6:Symbol5:value4:abcde")
+    def test_serialize_variant(self) -> None:
+        obj = Variant("abcd", Int(5))
+        self.assertEqual(serialize(obj), b"d3:tag4:abcd4:type7:Variant5:valued4:type3:Int5:valuei5eee")
 
     def test_serialize_function(self) -> None:
         obj = Function(Var("x"), Binop(BinopKind.ADD, Int(1), Var("x")))
@@ -4231,8 +4278,8 @@ class PrettyPrintTests(unittest.TestCase):
         )
 
     def test_pretty_print_assert(self) -> None:
-        obj = Assert(Int(123), Symbol("true"))
-        self.assertEqual(str(obj), "Assert(value=Int(value=123), cond=Symbol(value='true'))")
+        obj = Assert(Int(123), Variant("true", String("foo")))
+        self.assertEqual(str(obj), "Assert(value=Int(value=123), cond=Variant(tag='true', value=String(value='foo')))")
 
     def test_pretty_print_envobject(self) -> None:
         obj = EnvObject({"x": Int(1)})
@@ -4268,9 +4315,9 @@ class PrettyPrintTests(unittest.TestCase):
         obj = Access(Record({"a": Int(4)}), Var("a"))
         self.assertEqual(str(obj), "Access(obj=Record(data={'a': Int(value=4)}), at=Var(name='a'))")
 
-    def test_pretty_print_symbol(self) -> None:
-        obj = Symbol("x")
-        self.assertEqual(str(obj), "#x")
+    def test_pretty_print_variant(self) -> None:
+        obj = Variant("x", Int(123))
+        self.assertEqual(str(obj), "#x 123")
 
 
 def fetch(url: Object) -> Object:
@@ -4329,8 +4376,8 @@ id = x -> x
 
 . filter = f ->
   | [] -> []
-  | [x, ...xs] -> f x |> | #true -> x >+ filter f xs
-                         | #false -> filter f xs
+  | [x, ...xs] -> f x |> | #true () -> x >+ filter f xs
+                         | #false () -> filter f xs
 
 . concat = xs ->
   | [] -> xs
@@ -4355,11 +4402,11 @@ id = x -> x
     | [x, ...xs] -> x >+ take (n - 1) xs
 
 . all = f ->
-  | [] -> #true
+  | [] -> #true ()
   | [x, ...xs] -> f x && all f xs
 
 . any = f ->
-  | [] -> #false
+  | [] -> #false ()
   | [x, ...xs] -> f x || any f xs
 """
 

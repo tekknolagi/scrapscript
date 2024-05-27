@@ -604,10 +604,6 @@ struct object* list_cons(struct object* item, struct object* list) {
   return result;
 }
 
-struct object* list_append(struct object* list, struct object* item) {
-  abort();
-}
-
 struct object* heap_string_concat(struct object* a, struct object* b) {
   uword a_size = string_length(a);
   uword b_size = string_length(b);

@@ -42,10 +42,14 @@ jobs:
       run: sudo apt update
     - name: Install Python
       run: sudo apt install --yes ${{matrix.PYTHON}}
+    - name: Install TCC
+      run: sudo apt install --yes tcc
     - name: Run interpreter tests
       run: ${{matrix.PYTHON}} scrapscript.py test
     - name: Run compiler tests
       run: ${{matrix.PYTHON}} compiler_tests.py
+    - name: Run compiler tests with TCC
+      run: CC=tcc ${{matrix.PYTHON}} compiler_tests.py
   build_docker_image:
     runs-on: ubuntu-latest
     permissions:

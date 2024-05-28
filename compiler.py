@@ -400,13 +400,13 @@ def compile_to_string(source: str, memory: int, debug: bool) -> str:
     return f.getvalue()
 
 
-def discover_cflags(cc: str, debug: bool = True) -> typing.List[str]:
+def discover_cflags(cc: typing.List[str], debug: bool = True) -> typing.List[str]:
     default_cflags = ["-Wall", "-Wextra", "-fno-strict-aliasing"]
     if debug:
         default_cflags += ["-O0", "-ggdb"]
     else:
         default_cflags += ["-O2", "-DNDEBUG"]
-        if "cosmo" not in cc:
+        if "cosmo" not in cc[0]:
             # cosmocc does not support LTO
             default_cflags.append("-flto")
     return env_get_split("CFLAGS", default_cflags)
@@ -418,7 +418,7 @@ def compile_to_binary(source: str, memory: int, debug: bool) -> str:
     import sysconfig
     import tempfile
 
-    cc = os.environ.get("CC", sysconfig.get_config_var("CC"))
+    cc = env_get_split("CC", [sysconfig.get_config_var("CC")])
     cflags = discover_cflags(cc, debug)
     c_code = compile_to_string(source, memory, debug)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as c_file:
@@ -426,7 +426,7 @@ def compile_to_binary(source: str, memory: int, debug: bool) -> str:
         shutil.copy("runtime.c", outdir)
         c_file.write(c_code)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".out", delete=False) as out_file:
-        subprocess.run([cc, *cflags, "-o", out_file.name, c_file.name], check=True)
+        subprocess.run([*cc, *cflags, "-o", out_file.name, c_file.name], check=True)
     return out_file.name
 
 
@@ -459,10 +459,10 @@ def main() -> None:
     if args.compile:
         import subprocess
 
-        cc = os.environ.get("CC", "clang")
+        cc = env_get_split("CC", ["clang"])
         cflags = discover_cflags(cc, args.debug)
         ldflags = env_get_split("LDFLAGS")
-        subprocess.run([cc, "-o", "a.out", *cflags, args.output, *ldflags], check=True)
+        subprocess.run([*cc, "-o", "a.out", *cflags, args.output, *ldflags], check=True)
 
     if args.run:
         import subprocess

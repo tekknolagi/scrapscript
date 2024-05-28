@@ -303,8 +303,8 @@ PS = {
     ">>": lp(14),
     "<<": lp(14),
     "^": rp(13),
-    "*": lp(12),
-    "/": lp(12),
+    "*": rp(12),
+    "/": rp(12),
     "//": lp(12),
     "%": lp(12),
     "+": lp(11),
@@ -1856,6 +1856,12 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(
             parse([Operator("-"), Name("l"), Operator("*"), Name("r")]),
             Binop(BinopKind.MUL, Binop(BinopKind.SUB, Int(0), Var("l")), Var("r")),
+        )
+
+    def test_parse_negative_mul_and_div_bind_left_to_right(self) -> None:
+        self.assertEqual(
+            parse([IntLit(1), Operator("/"), IntLit(3), Operator("*"), IntLit(3)]),
+            Binop(BinopKind.MUL, Binop(BinopKind.DIV, Int(1), Int(3)), Int(3)),
         )
 
     def test_parse_negative_int_binds_tighter_than_index(self) -> None:
@@ -3928,6 +3934,16 @@ class PreludeTests(EndToEndTestsBase):
         """
             ),
             Variant("true", Hole()),
+        )
+
+    def test_mult_and_div_have_left_to_right_precedence(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+        1 / 3 * 3
+        """
+            ),
+            Float(1.0),
         )
 
 

@@ -413,12 +413,13 @@ def discover_cflags(cc: typing.List[str], debug: bool = True) -> typing.List[str
 
 
 def compile_to_binary(source: str, memory: int, debug: bool) -> str:
+    import shlex
     import shutil
     import subprocess
     import sysconfig
     import tempfile
 
-    cc = env_get_split("CC", [sysconfig.get_config_var("CC")])
+    cc = env_get_split("CC", shlex.split(sysconfig.get_config_var("CC")))
     cflags = discover_cflags(cc, debug)
     c_code = compile_to_string(source, memory, debug)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as c_file:

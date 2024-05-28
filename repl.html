@@ -66,8 +66,9 @@ function updateHistory(inp, out) {
 }
 
 async function sendRequest(exp) {
-    const scrap = document.compiler;
-    return {result: scrap.compile_to_string(exp, /*memory=*/1024, /*debug=*/false), monad: null, ok: true};
+    const scrap = document.scrapscript;
+    const [result, monad] = document.monad.bind(scrap.parse(scrap.tokenize(exp)));
+    return {result, monad, ok: true};
 }
 
 let input = document.getElementById("input");
@@ -195,15 +196,10 @@ async function main() {
       response = await pyfetch("/scrapscript.py")
       with open("scrapscript.py", "wb") as f:
           f.write(await response.bytes())
-      response = await pyfetch("/compiler.py")
-      with open("compiler.py", "wb") as f:
-          f.write(await response.bytes())
   `)
   const scrapscript = await pyodide.pyimport("scrapscript");
-// document.monad = scrapscript.ScrapMonad(scrapscript.boot_env());
+document.monad = scrapscript.ScrapMonad(scrapscript.boot_env());
 document.scrapscript = scrapscript;
-  const compiler = await pyodide.pyimport("compiler");
-  document.compiler = compiler;
 }
 main();
 </script>

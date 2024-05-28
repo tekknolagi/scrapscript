@@ -3936,7 +3936,7 @@ class PreludeTests(EndToEndTestsBase):
             Variant("true", Hole()),
         )
 
-    def test_mult_and_div_have_left_to_right_precedence(self) -> None:
+    def test_mul_and_div_have_left_to_right_precedence(self) -> None:
         self.assertEqual(
             self._run(
                 """

@@ -28,6 +28,27 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_var(self) -> None:
         self.assertEqual(self._run("a . a = 1"), "1\n")
 
+    def test_record(self) -> None:
+        self.assertEqual(self._run("{a = 1, b = 2}"), "{a = 1, b = 2}\n")
+
+    def test_record_access(self) -> None:
+        self.assertEqual(self._run("rec@a . rec = {a = 1, b = 2}"), "1\n")
+
+    def test_hole(self) -> None:
+        self.assertEqual(self._run("()"), "()\n")
+
+    def test_variant(self) -> None:
+        self.assertEqual(self._run("# foo 123"), "#foo 123\n")
+
+    def test_function(self) -> None:
+        self.assertEqual(self._run("f 1 . f = x -> x + 1"), "2\n")
+
+    def test_match_int(self) -> None:
+        self.assertEqual(self._run("f 3 . f = | 1 -> 2 | 3 -> 4"), "4\n")
+
+    def test_match_list(self) -> None:
+        self.assertEqual(self._run("f [4, 5] . f = | [1, 2] -> 3 | [4, 5] -> 6"), "6\n")
+
 
 if __name__ == "__main__":
     unittest.main()

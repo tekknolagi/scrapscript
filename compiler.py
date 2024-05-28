@@ -417,7 +417,7 @@ def compile_to_binary(source: str, memory: int, debug: bool) -> str:
     import sysconfig
     import tempfile
 
-    cc = sysconfig.get_config_var("CC")
+    cc = os.environ.get("CC", sysconfig.get_config_var("CC"))
     cflags = discover_cflags(cc, debug)
     c_code = compile_to_string(source, memory, debug)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as c_file:

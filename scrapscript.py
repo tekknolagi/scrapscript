@@ -4485,6 +4485,30 @@ def floor(obj: Object) -> Object:
     return Float(math.floor(obj.value))
 
 
+def stringlength(obj: Object) -> Object:
+    if not isinstance(obj, String):
+        raise TypeError(f"$$stringlength expected String, but got {type(obj).__name__}")
+    return Int(len(obj.value))
+
+
+def substr(obj: Object) -> Object:
+    if not isinstance(obj, String):
+        raise TypeError(f"$$substr expected String, but got {type(obj).__name__}")
+
+    def substr_inner_start(start: Object) -> Object:
+        if not isinstance(start, Int):
+            raise TypeError(f"$$substr expected Int for start, but got {type(start).__name__}")
+
+        def substr_inner_end(end: Object) -> Object:
+            if not isinstance(end, Int):
+                raise TypeError(f"$$substr expected Int for end, but got {type(end).__name__}")
+            return String(obj.value[start.value : end.value])
+
+        return NativeFunction("$$substr_inner_end", substr_inner_end)
+
+    return NativeFunction("$$substr_inner_start", substr_inner_start)
+
+
 STDLIB = {
     "$$add": Closure({}, Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))),
     "$$fetch": NativeFunction("$$fetch", fetch),
@@ -4496,6 +4520,8 @@ STDLIB = {
     "$$cos": NativeFunction("$$cos", cos),
     "$$sin": NativeFunction("$$sin", sin),
     "$$floor": NativeFunction("$$floor", floor),
+    "$$stringlength": NativeFunction("$$stringlength", stringlength),
+    "$$substr": NativeFunction("$$substr", substr),
 }
 
 

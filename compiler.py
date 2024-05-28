@@ -219,9 +219,10 @@ class Compiler:
             case_result = self.compile({**funcenv, **env_updates}, case.body)
             self._emit(f"return {case_result};")
             self._emit(f"{fallthrough}:;")
-        # TODO(max): (non-fatal?) exceptions
         self._emit(r'fprintf(stderr, "no matching cases\n");')
         self._emit("abort();")
+        # Pacify the C compiler
+        self._emit("return NULL;")
         self.function = cur
         return self.make_closure(env, fn)
 
@@ -387,6 +388,9 @@ def compile_to_string(source: str, memory: int, debug: bool) -> str:
         for key, idx in compiler.variant_tags.items():
             print(f"Tag_{key} = {idx},", file=f)
         print("};", file=f)
+    else:
+        # Pacify the C compiler
+        print("const char* variant_names[] = { NULL };", file=f)
     for function in compiler.functions:
         print(function.decl() + ";", file=f)
     for builtin in builtins:

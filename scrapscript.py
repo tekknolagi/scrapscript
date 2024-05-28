@@ -1858,12 +1858,6 @@ class ParserTests(unittest.TestCase):
             Binop(BinopKind.MUL, Binop(BinopKind.SUB, Int(0), Var("l")), Var("r")),
         )
 
-    def test_parse_negative_mul_and_div_bind_left_to_right(self) -> None:
-        self.assertEqual(
-            parse([IntLit(1), Operator("/"), IntLit(3), Operator("*"), IntLit(3)]),
-            Binop(BinopKind.MUL, Binop(BinopKind.DIV, Int(1), Int(3)), Int(3)),
-        )
-
     def test_parse_negative_int_binds_tighter_than_index(self) -> None:
         self.assertEqual(
             parse([Operator("-"), Name("l"), Operator("@"), Name("r")]),
@@ -1930,6 +1924,12 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(
             parse([IntLit(1), Operator("*"), IntLit(2), Operator("+"), IntLit(3)]),
             Binop(BinopKind.ADD, Binop(BinopKind.MUL, Int(1), Int(2)), Int(3)),
+        )
+
+    def test_mul_and_div_bind_left_to_right(self) -> None:
+        self.assertEqual(
+            parse([IntLit(1), Operator("/"), IntLit(3), Operator("*"), IntLit(3)]),
+            Binop(BinopKind.MUL, Binop(BinopKind.DIV, Int(1), Int(3)), Int(3)),
         )
 
     def test_exp_binds_tighter_than_mul_right(self) -> None:

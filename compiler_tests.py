@@ -49,6 +49,10 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_match_list(self) -> None:
         self.assertEqual(self._run("f [4, 5] . f = | [1, 2] -> 3 | [4, 5] -> 6"), "6\n")
 
+    @unittest.skip("TODO")
+    def test_match_record(self) -> None:
+        self.assertEqual(self._run("f {a = 4, b = 5} . f = | {a = 1, b = 2} -> 3 | {a = 4, b = 5} -> 6"), "6\n")
+
 
 if __name__ == "__main__":
     unittest.main()

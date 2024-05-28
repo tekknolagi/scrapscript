@@ -4,8 +4,9 @@ import io
 import itertools
 import json
 import os
+import typing
 
-from typing import Optional
+from typing import Dict, Optional
 
 from scrapscript import (
     Access,
@@ -30,7 +31,7 @@ from scrapscript import (
     tokenize,
 )
 
-Env = dict[str, str]
+Env = Dict[str, str]
 
 
 fn_counter = itertools.count()
@@ -40,9 +41,9 @@ fn_counter = itertools.count()
 class CompiledFunction:
     id: int = dataclasses.field(default=0, init=False, compare=False, hash=False)
     name: str
-    params: list[str]
-    fields: list[str] = dataclasses.field(default_factory=list)
-    code: list[str] = dataclasses.field(default_factory=list)
+    params: typing.List[str]
+    fields: typing.List[str] = dataclasses.field(default_factory=list)
+    code: typing.List[str] = dataclasses.field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.id = next(fn_counter)
@@ -59,10 +60,10 @@ class CompiledFunction:
 class Compiler:
     def __init__(self, main_fn: CompiledFunction) -> None:
         self.gensym_counter: int = 0
-        self.functions: list[CompiledFunction] = [main_fn]
+        self.functions: typing.List[CompiledFunction] = [main_fn]
         self.function: CompiledFunction = main_fn
-        self.record_keys: dict[str, int] = {}
-        self.variant_tags: dict[str, int] = {}
+        self.record_keys: Dict[str, int] = {}
+        self.variant_tags: Dict[str, int] = {}
         self.debug: bool = False
         self.used_runtime_functions: set[str] = set()
 
@@ -294,7 +295,7 @@ class Compiler:
             self._debug("collect(heap);")
             return result
         if isinstance(exp, Record):
-            values: dict[str, str] = {}
+            values: Dict[str, str] = {}
             for key, value_exp in exp.data.items():
                 values[key] = self.compile(env, value_exp)
             result = self._mktemp(f"mkrecord(heap, {len(values)})")
@@ -334,7 +335,7 @@ BUILTINS = [
 ]
 
 
-def env_get_split(key: str, default: Optional[list[str]] = None) -> list[str]:
+def env_get_split(key: str, default: Optional[typing.List[str]] = None) -> typing.List[str]:
     import shlex
 
     cflags = os.environ.get(key)
@@ -399,7 +400,7 @@ def compile_to_string(source: str, memory: int, debug: bool) -> str:
     return f.getvalue()
 
 
-def discover_cflags(cc: str, debug: bool = True) -> list[str]:
+def discover_cflags(cc: str, debug: bool = True) -> typing.List[str]:
     default_cflags = ["-Wall", "-Wextra", "-fno-strict-aliasing"]
     if debug:
         default_cflags += ["-O0", "-ggdb"]

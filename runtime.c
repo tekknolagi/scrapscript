@@ -30,19 +30,16 @@ struct object {};
 // The three low bits make up a primary tag, used to differentiate gc_obj
 // from immediate objects. All even tags map to SmallInt, which is
 // optimized by checking only the lowest bit for parity.
-enum {
-  kSmallIntTagBits = 1,
-  kPrimaryTagBits = 3,
-  kImmediateTagBits = 5,
-  kWordSize = sizeof(word),
-  kBitsPerByte = 8,
-  kBitsPerPointer = kBitsPerByte * kWordSize,
-};
+static const uword kSmallIntTagBits = 1;
+static const uword kPrimaryTagBits = 3;
+static const uword kImmediateTagBits = 5;
 static const uword kSmallIntTagMask = (1 << kSmallIntTagBits) - 1;
 static const uword kPrimaryTagMask = (1 << kPrimaryTagBits) - 1;
 static const uword kImmediateTagMask = (1 << kImmediateTagBits) - 1;
 
-static const word kMaxSmallStringLength = kWordSize - 1;
+static const uword kWordSize = sizeof(word);
+static const uword kMaxSmallStringLength = kWordSize - 1;
+static const uword kBitsPerByte = 8;
 
 static const uword kSmallIntTag = 0;      // 0b****0
 static const uword kHeapObjectTag = 1;    // 0b**001
@@ -74,7 +71,6 @@ static ALWAYS_INLINE uword small_string_length(struct object* obj) {
 }
 static ALWAYS_INLINE struct object* mksmallstring(const char* data,
                                                   uword length) {
-  assert(length >= 0);
   assert(length <= kMaxSmallStringLength);
   uword result = 0;
   for (word i = length - 1; i >= 0; i--) {
@@ -90,7 +86,6 @@ static ALWAYS_INLINE struct object* mksmallstring(const char* data,
 }
 static ALWAYS_INLINE char small_string_at(struct object* obj, uword index) {
   assert(is_small_string(obj));
-  assert(index >= 0);
   assert(index < small_string_length(obj));
   // +1 for (length | tag) byte
   return ((uword)obj >> ((index + 1) * kBitsPerByte)) & 0xFF;
@@ -346,9 +341,8 @@ size_t trace_heap_object(struct gc_obj* obj, struct gc_heap* heap,
   return heap_object_size(obj);
 }
 
-enum {
-  kSmallIntBits = kBitsPerPointer - kSmallIntTagBits,
-};
+static const uword kBitsPerPointer = kBitsPerByte * kWordSize;
+static const word kSmallIntBits = kBitsPerPointer - kSmallIntTagBits;
 static const word kSmallIntMinValue = -(((word)1) << (kSmallIntBits - 1));
 static const word kSmallIntMaxValue = (((word)1) << (kSmallIntBits - 1)) - 1;
 

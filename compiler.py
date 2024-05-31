@@ -160,6 +160,9 @@ class Compiler:
             self._emit(f"if (!is_num({arg})) {{ goto {fallthrough}; }}")
             self._emit(f"if (num_value({arg}) != {pattern.value}) {{ goto {fallthrough}; }}")
             return {}
+        if isinstance(pattern, Hole):
+            self._emit(f"if (!is_hole({arg})) {{ goto {fallthrough}; }}")
+            return {}
         if isinstance(pattern, Variant):
             self.variant_tag(pattern.tag)  # register it for the big enum
             self._emit(f"if (!is_variant({arg})) {{ goto {fallthrough}; }}")

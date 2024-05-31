@@ -52,6 +52,12 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_match_record(self) -> None:
         self.assertEqual(self._run("f {a = 4, b = 5} . f = | {a = 1, b = 2} -> 3 | {a = 4, b = 5} -> 6"), "6\n")
 
+    def test_match_hole(self) -> None:
+        self.assertEqual(self._run("f () . f = | 1 -> 3 | () -> 4"), "4\n")
+
+    def test_match_variant(self) -> None:
+        self.assertEqual(self._run("f #foo () . f = | # bar 1 -> 3 | # foo () -> 4"), "4\n")
+
 
 if __name__ == "__main__":
     unittest.main()

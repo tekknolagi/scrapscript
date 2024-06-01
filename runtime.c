@@ -564,7 +564,6 @@ void pop_handles(void* local_handles) {
 #define GC_PROTECT(x)                                                          \
   assert(local_handles.stack_pointer < MAX_HANDLES);                           \
   local_handles.stack[local_handles.stack_pointer++] = (struct object**)(&x)
-#define END_HANDLES() handles = local_handles.next
 #define GC_HANDLE(type, name, val)                                             \
   type name = val;                                                             \
   GC_PROTECT(name)

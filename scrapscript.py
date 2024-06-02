@@ -4509,6 +4509,12 @@ def substr(obj: Object) -> Object:
     return NativeFunction("$$substr_inner_start", substr_inner_start)
 
 
+def inttostr(obj: Object) -> Object:
+    if not isinstance(obj, Int):
+        raise TypeError(f"$$inttostr expected Int, but got {type(obj).__name__}")
+    return String(str(obj.value))
+
+
 STDLIB = {
     "$$add": Closure({}, Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))),
     "$$fetch": NativeFunction("$$fetch", fetch),
@@ -4522,6 +4528,7 @@ STDLIB = {
     "$$floor": NativeFunction("$$floor", floor),
     "$$stringlength": NativeFunction("$$stringlength", stringlength),
     "$$substr": NativeFunction("$$substr", substr),
+    "$$inttostr": NativeFunction("$$inttostr", inttostr),
 }
 
 

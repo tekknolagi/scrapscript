@@ -63,25 +63,21 @@ class Compiler:
         self.functions: typing.List[CompiledFunction] = [main_fn]
         self.function: CompiledFunction = main_fn
         self.record_keys: Dict[str, int] = {}
-        self.record_builders: Dict[tuple[str], CompiledFunction] = {}
+        self.record_builders: Dict[tuple[str, ...], CompiledFunction] = {}
         self.variant_tags: Dict[str, int] = {}
         self.debug: bool = False
-        self.used_runtime_functions: set[str] = set()
 
-    def record_key(self, key: str) -> int:
-        result = self.record_keys.get(key)
-        if result is not None:
-            return result
-        result = self.record_keys[key] = len(self.record_keys)
-        return result
+    def record_key(self, key: str) -> str:
+        if key not in self.record_keys:
+            self.record_keys[key] = len(self.record_keys)
+        return f"Record_{key}"
 
-    def record_builder(self, keys: tuple[str]) -> CompiledFunction:
-        result = self.record_builders.get(keys)
-        if result is not None:
-            return result
+    def record_builder(self, keys: tuple[str, ...]) -> CompiledFunction:
+        builder = self.record_builders.get(keys)
+        if builder is not None:
+            return builder
 
-        builder = CompiledFunction(f"Record_builder_{'_'.join(keys)}",
-                                   list(keys))
+        builder = CompiledFunction(f"Record_builder_{'_'.join(keys)}", list(keys))
         self.functions.append(builder)
         cur = self.function
         self.function = builder
@@ -89,9 +85,7 @@ class Compiler:
         result = self._mktemp(f"mkrecord(heap, {len(keys)})")
         for i, key in enumerate(keys):
             key_idx = self.record_key(key)
-            self._emit(
-                f"record_set({result}, /*index=*/{i}, (struct record_field){{.key=Record_{key}, .value={key}}});"
-            )
+            self._emit(f"record_set({result}, /*index=*/{i}, (struct record_field){{.key={key_idx}, .value={key}}});")
         self._debug("collect(heap);")
         self._emit(f"return {result};")
 
@@ -320,11 +314,6 @@ class Compiler:
                 raise NameError(f"name '{exp.name}' is not defined")
             return var_value
         if isinstance(exp, Apply):
-            if isinstance(exp.func, Var):
-                if exp.func.name == "runtime":
-                    assert isinstance(exp.arg, String)
-                    self.used_runtime_functions.add(exp.arg.value)
-                    return f"builtin_{exp.arg.value}"
             callee = self.compile(env, exp.func)
             arg = self.compile(env, exp.arg)
             return self._mktemp(f"closure_call({callee}, {arg})")
@@ -365,11 +354,6 @@ class Compiler:
 # The const heap will never be scanned
 # The const heap can be serialized to disk and mmap'd
 
-BUILTINS = [
-    "print",
-    "println",
-]
-
 
 def env_get_split(key: str, default: Optional[typing.List[str]] = None) -> typing.List[str]:
     import shlex
@@ -390,12 +374,6 @@ def compile_to_string(source: str, memory: int, debug: bool) -> str:
     compiler.debug = debug
     result = compiler.compile({}, program)
     main_fn.code.append(f"return {result};")
-
-    builtins = [builtin for builtin in BUILTINS if builtin in compiler.used_runtime_functions]
-    for builtin in builtins:
-        fn = CompiledFunction(f"builtin_{builtin}_wrapper", params=["this", "arg"])
-        fn.code.append(f"return {builtin}(arg);")
-        compiler.functions.append(fn)
 
     f = io.StringIO()
     print('#include "runtime.c"', file=f)
@@ -424,23 +402,12 @@ def compile_to_string(source: str, memory: int, debug: bool) -> str:
         print("const char* variant_names[] = { NULL };", file=f)
     for function in compiler.functions:
         print(function.decl() + ";", file=f)
-    for builtin in builtins:
-        print(f"struct object* builtin_{builtin} = NULL;", file=f)
     for function in compiler.functions:
         print(f"{function.decl()} {{", file=f)
         for line in function.code:
             print(line, file=f)
         print("}", file=f)
-    print("int main() {", file=f)
-    print(f"heap = make_heap({memory});", file=f)
-    print("HANDLES();", file=f)
-    for builtin in builtins:
-        print(f"builtin_{builtin} = mkclosure(heap, builtin_{builtin}_wrapper, 0);", file=f)
-        print(f"GC_PROTECT(builtin_{builtin});", file=f)
-    print(f"struct object* result = {main_fn.name}();", file=f)
-    print("println(result);", file=f)
-    print("destroy_heap(heap);", file=f)
-    print("}", file=f)
+    print(f"static const uword kMemorySize = {memory};", file=f)
     return f.getvalue()
 
 
@@ -486,6 +453,7 @@ def main() -> None:
     parser.add_argument("--memory", type=int, default=1024)
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--debug", action="store_true", default=False)
+    parser.add_argument("--platform", default="cli.c")
     args = parser.parse_args()
 
     with open(args.file, "r") as f:
@@ -493,8 +461,12 @@ def main() -> None:
 
     c_program = compile_to_string(source, args.memory, args.debug)
 
+    with open(args.platform, "r") as f:
+        platform = f.read()
+
     with open(args.output, "w") as f:
         f.write(c_program)
+        f.write(platform)
 
     if args.format:
         import subprocess

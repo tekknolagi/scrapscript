@@ -63,6 +63,7 @@ class Compiler:
         self.functions: typing.List[CompiledFunction] = [main_fn]
         self.function: CompiledFunction = main_fn
         self.record_keys: Dict[str, int] = {}
+        self.record_builders: Dict[tuple[str], CompiledFunction] = {}
         self.variant_tags: Dict[str, int] = {}
         self.debug: bool = False
         self.used_runtime_functions: set[str] = set()
@@ -73,6 +74,30 @@ class Compiler:
             return result
         result = self.record_keys[key] = len(self.record_keys)
         return result
+
+    def record_builder(self, keys: tuple[str]) -> CompiledFunction:
+        result = self.record_builders.get(keys)
+        if result is not None:
+            return result
+
+        builder = CompiledFunction(f"Record_builder_{'_'.join(keys)}",
+                                   list(keys))
+        self.functions.append(builder)
+        cur = self.function
+        self.function = builder
+
+        result = self._mktemp(f"mkrecord(heap, {len(keys)})")
+        for i, key in enumerate(keys):
+            key_idx = self.record_key(key)
+            self._emit(
+                f"record_set({result}, /*index=*/{i}, (struct record_field){{.key=Record_{key}, .value={key}}});"
+            )
+        self._debug("collect(heap);")
+        self._emit(f"return {result};")
+
+        self.function = cur
+        self.record_builders[keys] = builder
+        return builder
 
     def variant_tag(self, key: str) -> int:
         result = self.variant_tags.get(key)
@@ -314,14 +339,9 @@ class Compiler:
             values: Dict[str, str] = {}
             for key, value_exp in exp.data.items():
                 values[key] = self.compile(env, value_exp)
-            result = self._mktemp(f"mkrecord(heap, {len(values)})")
-            for i, (key, value) in enumerate(values.items()):
-                key_idx = self.record_key(key)
-                self._emit(
-                    f"record_set({result}, /*index=*/{i}, (struct record_field){{.key=Record_{key}, .value={value}}});"
-                )
-            self._debug("collect(heap);")
-            return result
+            keys = tuple(sorted(exp.data.keys()))
+            builder = self.record_builder(keys)
+            return self._mktemp(f"{builder.name}({', '.join(values[key] for key in keys)})")
         if isinstance(exp, Access):
             assert isinstance(exp.at, Var), f"only Var access is supported, got {type(exp.at)}"
             record = self.compile(env, exp.obj)

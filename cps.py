@@ -14,6 +14,7 @@ from scrapscript import (
     Apply,
     Function,
     List,
+    Variant,
 )
 
 
@@ -109,6 +110,9 @@ def cps(exp: Object, k: CPSExpr) -> CPSExpr:
         head = Var(gensym())
         tail = Var(gensym())
         return cps(items[0], cont(head, cps(List(items[1:]), cont(tail, Prim("cons", [head, tail, k])))))
+    if isinstance(exp, Variant):
+        tag_value = Var(gensym())
+        return cps(exp.value, cont(tag_value, Prim("tag", [Atom(exp.tag), tag_value, k])))
     raise NotImplementedError(f"cps: {exp}")
 
 
@@ -176,6 +180,13 @@ class CPSTests(unittest.TestCase):
 
     def test_empty_list(self) -> None:
         self.assertEqual(cps(List([]), Var("k")), App(Var("k"), [Atom([])]))
+
+    def test_variant(self) -> None:
+        self.assertEqual(
+            cps(parse(tokenize("# a_tag 123")), Var("k")),
+            # ((fun (v0) ($tag 'a_tag' v0 k)) 123)
+            App(Fun([Var("v0")], Prim("tag", [Atom("a_tag"), Var("v0"), Var("k")])), [Atom(123)]),
+        )
 
 
 def arg_name(arg: CPSExpr) -> str:
@@ -476,6 +487,14 @@ class OptTests(unittest.TestCase):
                     Fun([Var("v46")], Prim("cons", [Atom(3), Var("v46"), Var("k")])),
                 ],
             ),
+        )
+
+    def test_variant(self) -> None:
+        exp = parse(tokenize("# a_tag 123"))
+        self.assertEqual(
+            spin_opt(cps(exp, Var("k"))),
+            # ($tag 'a_tag' 123 k)
+            Prim("tag", [Atom("a_tag"), Atom(123), Var("k")]),
         )
 
 

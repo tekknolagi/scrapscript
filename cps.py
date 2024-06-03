@@ -305,8 +305,9 @@ def opt(exp: CPSExpr) -> CPSExpr:
         if exp.op == "+":
             consts = [arg for arg in args if isinstance(arg, Atom)]
             vars = [arg for arg in args if not isinstance(arg, Atom)]
-            consts = [Atom(sum(c.value for c in consts))]  # type: ignore
-            args = consts + vars
+            if consts:
+                consts = [Atom(sum(c.value for c in consts))]  # type: ignore
+                args = consts + vars
         if len(args) == 1:
             return App(cont, args)
         return Prim(exp.op, args + [cont])
@@ -396,6 +397,14 @@ class OptTests(unittest.TestCase):
         )
 
     def test_add_function(self) -> None:
+        exp = parse(tokenize("(x -> y -> x + y) a b"))
+        self.assertEqual(
+            spin_opt(cps(exp, Var("k"))),
+            # ($+ a b k)
+            Prim("+", [Var("a"), Var("b"), Var("k")]),
+        )
+
+    def test_fold_add_function(self) -> None:
         exp = parse(tokenize("add a b . add = x -> y -> x + y . a = 3 . b = 4"))
         self.assertEqual(
             spin_opt(cps(exp, Var("k"))),

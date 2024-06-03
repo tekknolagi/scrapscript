@@ -1,7 +1,20 @@
 import dataclasses
 import itertools
 import unittest
-from scrapscript import parse, tokenize, Assign, Int, Var as ScrapVar, Object, Binop, BinopKind, Where, Apply, Function
+from scrapscript import (
+    parse,
+    tokenize,
+    Assign,
+    Int,
+    Var as ScrapVar,
+    Object,
+    Binop,
+    BinopKind,
+    Where,
+    Apply,
+    Function,
+    List,
+)
 
 
 @dataclasses.dataclass
@@ -31,7 +44,7 @@ class Prim(CPSExpr):
     args: list[CPSExpr]
 
     def __repr__(self) -> str:
-        return f"({self.op} {' '.join(map(repr, self.args))})"
+        return f"(${self.op} {' '.join(map(repr, self.args))})"
 
 
 @dataclasses.dataclass
@@ -89,6 +102,13 @@ def cps(exp: Object, k: CPSExpr) -> CPSExpr:
         arg = Var(exp.arg.name)
         subk = Var(gensym())
         return App(k, [Fun([arg, subk], cps(exp.body, subk))])
+    if isinstance(exp, List) and not exp.items:
+        return App(k, [Atom([])])
+    if isinstance(exp, List):
+        items = exp.items
+        head = Var(gensym())
+        tail = Var(gensym())
+        return cps(items[0], cont(head, cps(List(items[1:]), cont(tail, Prim("cons", [head, tail, k])))))
     raise NotImplementedError(f"cps: {exp}")
 
 
@@ -153,6 +173,9 @@ class CPSTests(unittest.TestCase):
                 [Atom(2)],
             ),
         )
+
+    def test_empty_list(self) -> None:
+        self.assertEqual(cps(List([]), Var("k")), App(Var("k"), [Atom([])]))
 
 
 def arg_name(arg: CPSExpr) -> str:
@@ -273,16 +296,20 @@ def opt(exp: CPSExpr) -> CPSExpr:
     if isinstance(exp, Var):
         return exp
     if isinstance(exp, Prim):
-        args = [opt(arg) for arg in exp.args]
-        consts = [arg for arg in args if isinstance(arg, Atom)]
-        vars = [arg for arg in args if not isinstance(arg, Atom)]
+        args = [opt(arg) for arg in exp.args[:-1]]
+        cont = exp.args[-1]
+        if exp.op == "cons":
+            assert len(args) == 2
+            if all(isinstance(arg, Atom) for arg in args):
+                return App(cont, [Atom(args)])
         if exp.op == "+":
+            consts = [arg for arg in args if isinstance(arg, Atom)]
+            vars = [arg for arg in args if not isinstance(arg, Atom)]
             consts = [Atom(sum(c.value for c in consts))]  # type: ignore
             args = consts + vars
-        if len(args) == 2:
-            # Last argument is a cont
-            return App(args[1], [args[0]])
-        return Prim(exp.op, args)
+        if len(args) == 1:
+            return App(cont, args)
+        return Prim(exp.op, args + [cont])
     if isinstance(exp, App) and isinstance(exp.fun, Fun):
         fun = opt(exp.fun)
         assert isinstance(fun, Fun)
@@ -375,6 +402,33 @@ class OptTests(unittest.TestCase):
             App(Var("k"), [Atom(7)]),
         )
 
+    def test_make_empty_list(self) -> None:
+        exp = parse(tokenize("[]"))
+        self.assertEqual(spin_opt(cps(exp, Var("k"))), App(Var("k"), [Atom([])]))
+
+    def test_make_const_list(self) -> None:
+        exp = parse(tokenize("[1+2, 2+3, 3+4]"))
+        self.assertEqual(
+            spin_opt(cps(exp, Var("k"))),
+            App(Var("k"), [Atom([Atom(3), Atom([Atom(5), Atom([Atom(7), Atom([])])])])]),
+        )
+
+    def test_make_list(self) -> None:
+        exp = parse(tokenize("[1+2, x, 3+4]"))
+        self.assertEqual(
+            spin_opt(cps(exp, Var("k"))),
+            # ($cons x [7, []] (fun (v46) ($cons 3 v46 k)))
+            Prim(
+                "cons",
+                [
+                    Var("x"),
+                    Atom([Atom(7), Atom([])]),
+                    Fun([Var("v46")], Prim("cons", [Atom(3), Var("v46"), Var("k")])),
+                ],
+            ),
+        )
+
 
 if __name__ == "__main__":
+    __import__("sys").modules["unittest.util"]._MAX_LENGTH = 999999999
     unittest.main()

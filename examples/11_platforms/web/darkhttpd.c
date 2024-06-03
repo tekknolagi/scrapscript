@@ -2174,196 +2174,33 @@ static void process_get(struct connection *conn) {
         return;
     }
 
-    if (want_single_file) {
-        target = xstrdup(wwwroot);
-        mimetype = url_content_type(wwwroot);
-    }
-    else if (decoded_url[strlen(decoded_url)-1] == '/') {
-        /* does it end in a slash? serve up url/index_name */
-        xasprintf(&target, "%s%s%s", wwwroot, decoded_url, index_name);
-        if (!file_exists(target)) {
-            free(target);
-            if (no_listing) {
-                free(decoded_url);
-                /* Return 404 instead of 403 to make --no-listing
-                 * indistinguishable from the directory not existing.
-                 * i.e.: Don't leak information.
-                 */
-                default_reply(conn, 404, "Not Found",
-                    "The URL you requested was not found.");
-                return;
-            }
-            xasprintf(&target, "%s%s", wwwroot, decoded_url);
-            generate_dir_listing(conn, target, decoded_url);
-            free(target);
-            free(decoded_url);
-            return;
-        }
-        mimetype = url_content_type(index_name);
-    }
-    else {
-        /* points to a file */
-        xasprintf(&target, "%s%s", wwwroot, decoded_url);
-        mimetype = url_content_type(decoded_url);
-    }
-    free(decoded_url);
+    // TODO(max): pass decoded_url to scrapscript
+
+    mimetype = "text/plain";
     if (debug)
         printf("url=\"%s\", target=\"%s\", content-type=\"%s\"\n",
-               conn->url, target, mimetype);
+               conn->url, decoded_url, mimetype);
+    free(decoded_url);
 
-    /* open file */
-    conn->reply_fd = open(target, O_RDONLY | O_NONBLOCK);
-    free(target);
+    conn->reply_type = REPLY_GENERATED;
+    conn->reply_length = xasprintf(&(conn->reply), "henlo\n");
 
-    if (conn->reply_fd == -1) {
-        /* open() failed */
-        if (errno == EACCES)
-            default_reply(conn, 403, "Forbidden",
-                "You don't have permission to access this URL.");
-        else if (errno == ENOENT)
-            default_reply(conn, 404, "Not Found",
-                "The URL you requested was not found.");
-        else
-            default_reply(conn, 500, "Internal Server Error",
-                "The URL you requested cannot be returned: %s.",
-                strerror(errno));
-
-        return;
-    }
-
-    /* stat the file */
-    if (fstat(conn->reply_fd, &filestat) == -1) {
-        default_reply(conn, 500, "Internal Server Error",
-            "fstat() failed: %s.", strerror(errno));
-        return;
-    }
-
-    /* make sure it's a regular file */
-    if ((S_ISDIR(filestat.st_mode)) && (!want_single_file)) {
-        redirect(conn, "%s/", conn->url);
-        return;
-    }
-    else if (!S_ISREG(filestat.st_mode)) {
-        default_reply(conn, 403, "Forbidden", "Not a regular file.");
-        return;
-    }
-
-    conn->reply_type = REPLY_FROMFILE;
-    rfc1123_date(lastmod, filestat.st_mtime);
-
-    /* check for If-Modified-Since, may not have to send */
-    if_mod_since = parse_field(conn, "If-Modified-Since: ");
-    if ((if_mod_since != NULL) &&
-            (strcmp(if_mod_since, lastmod) == 0)) {
-        if (debug)
-            printf("not modified since %s\n", if_mod_since);
-        conn->http_code = 304;
-        conn->header_length = xasprintf(&(conn->header),
-         "HTTP/1.1 304 Not Modified\r\n"
-         "Date: %s\r\n"
-         "%s" /* server */
-         "Accept-Ranges: bytes\r\n"
-         "%s" /* keep-alive */
-         "%s" /* custom headers */
-         "\r\n",
-         rfc1123_date(date, now), server_hdr, keep_alive(conn),
-         custom_hdrs);
-        conn->reply_length = 0;
-        conn->reply_type = REPLY_GENERATED;
-        conn->header_only = 1;
-
-        free(if_mod_since);
-        return;
-    }
-    free(if_mod_since);
-
-    if (conn->range_begin_given || conn->range_end_given) {
-        off_t from, to;
-
-        if (conn->range_begin_given && conn->range_end_given) {
-            /* 100-200 */
-            from = conn->range_begin;
-            to = conn->range_end;
-
-            /* clamp end to filestat.st_size-1 */
-            if (to > (filestat.st_size - 1))
-                to = filestat.st_size - 1;
-        }
-        else if (conn->range_begin_given && !conn->range_end_given) {
-            /* 100- :: yields 100 to end */
-            from = conn->range_begin;
-            to = filestat.st_size - 1;
-        }
-        else if (!conn->range_begin_given && conn->range_end_given) {
-            /* -200 :: yields last 200 */
-            to = filestat.st_size - 1;
-            from = to - conn->range_end + 1;
-
-            /* clamp start */
-            if (from < 0)
-                from = 0;
-        }
-        else
-            errx(1, "internal error - from/to mismatch");
-
-        if (from >= filestat.st_size) {
-            default_reply(conn, 416, "Requested Range Not Satisfiable",
-                "You requested a range outside of the file.");
-            return;
-        }
-
-        if (to < from) {
-            default_reply(conn, 416, "Requested Range Not Satisfiable",
-                "You requested a backward range.");
-            return;
-        }
-
-        conn->reply_start = from;
-        conn->reply_length = to - from + 1;
-
-        conn->header_length = xasprintf(&(conn->header),
-            "HTTP/1.1 206 Partial Content\r\n"
-            "Date: %s\r\n"
-            "%s" /* server */
-            "Accept-Ranges: bytes\r\n"
-            "%s" /* keep-alive */
-            "%s" /* custom headers */
-            "Content-Length: %llu\r\n"
-            "Content-Range: bytes %llu-%llu/%llu\r\n"
-            "Content-Type: %s\r\n"
-            "Last-Modified: %s\r\n"
-            "\r\n"
-            ,
-            rfc1123_date(date, now), server_hdr, keep_alive(conn),
-            custom_hdrs,
-            llu(conn->reply_length), llu(from), llu(to),
-            llu(filestat.st_size), mimetype, lastmod
-        );
-        conn->http_code = 206;
-        if (debug)
-            printf("sending %llu-%llu/%llu\n",
-                   llu(from), llu(to), llu(filestat.st_size));
-    }
-    else {
-        /* no range stuff */
-        conn->reply_length = filestat.st_size;
-        conn->header_length = xasprintf(&(conn->header),
-            "HTTP/1.1 200 OK\r\n"
-            "Date: %s\r\n"
-            "%s" /* server */
-            "Accept-Ranges: bytes\r\n"
-            "%s" /* keep-alive */
-            "%s" /* custom headers */
-            "Content-Length: %llu\r\n"
-            "Content-Type: %s\r\n"
-            "Last-Modified: %s\r\n"
-            "\r\n"
-            ,
-            rfc1123_date(date, now), server_hdr, keep_alive(conn),
-            custom_hdrs, llu(conn->reply_length), mimetype, lastmod
-        );
-        conn->http_code = 200;
-    }
+    conn->header_length = xasprintf(&(conn->header),
+        "HTTP/1.1 200 OK\r\n"
+        "Date: %s\r\n"
+        "%s" /* server */
+        "Accept-Ranges: bytes\r\n"
+        "%s" /* keep-alive */
+        "%s" /* custom headers */
+        "Content-Length: %llu\r\n"
+        "Content-Type: %s\r\n"
+        "Last-Modified: %s\r\n"
+        "\r\n"
+        ,
+        rfc1123_date(date, now), server_hdr, keep_alive(conn),
+        custom_hdrs, llu(conn->reply_length), mimetype, rfc1123_date(lastmod, now)
+    );
+    conn->http_code = 200;
 }
 
 /* Returns 1 if passwords are equal, runtime is proportional to the length of

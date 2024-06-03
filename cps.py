@@ -306,6 +306,7 @@ def opt(exp: CPSExpr) -> CPSExpr:
             consts = [arg for arg in args if isinstance(arg, Atom)]
             vars = [arg for arg in args if not isinstance(arg, Atom)]
             if consts:
+                # TODO(max): Only sum ints
                 consts = [Atom(sum(c.value for c in consts))]  # type: ignore
                 args = consts + vars
         if len(args) == 1:
@@ -397,6 +398,30 @@ class OptTests(unittest.TestCase):
         )
 
     def test_add_function(self) -> None:
+        exp = parse(tokenize("x -> y -> x + y"))
+        self.assertEqual(
+            spin_opt(cps(exp, Var("k"))),
+            # (k (fun (x v0) (v0 (fun (y v1) ($+ x y v1)))))
+            App(
+                Var("k"),
+                [
+                    Fun(
+                        [Var("x"), Var("v0")],
+                        App(
+                            Var("v0"),
+                            [
+                                Fun(
+                                    [Var("y"), Var("v1")],
+                                    Prim("+", [Var("x"), Var("y"), Var("v1")]),
+                                )
+                            ],
+                        ),
+                    )
+                ],
+            ),
+        )
+
+    def test_fold_add_function_var(self) -> None:
         exp = parse(tokenize("(x -> y -> x + y) a b"))
         self.assertEqual(
             spin_opt(cps(exp, Var("k"))),
@@ -404,7 +429,7 @@ class OptTests(unittest.TestCase):
             Prim("+", [Var("a"), Var("b"), Var("k")]),
         )
 
-    def test_fold_add_function(self) -> None:
+    def test_fold_add_function_int(self) -> None:
         exp = parse(tokenize("add a b . add = x -> y -> x + y . a = 3 . b = 4"))
         self.assertEqual(
             spin_opt(cps(exp, Var("k"))),

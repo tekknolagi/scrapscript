@@ -1114,10 +1114,16 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
             return None
         result: Env = {}
         use_spread = False
+        seen_keys: set[str] = set()
         for key, pattern_item in pattern.data.items():
             if isinstance(pattern_item, Spread):
                 use_spread = True
+                if pattern_item.name is not None:
+                    assert isinstance(result, dict)  # for .update()
+                    rest_keys = set(obj.data.keys()) - seen_keys
+                    result.update({pattern_item.name: Record({key: obj.data[key] for key in rest_keys})})
                 break
+            seen_keys.add(key)
             obj_item = obj.data.get(key)
             if obj_item is None:
                 return None
@@ -3300,6 +3306,9 @@ class EndToEndTests(EndToEndTestsBase):
             Int(3),
         )
 
+    def test_match_record_spread_binds_spread(self) -> None:
+        self.assertEqual(self._run("(| { a=1, ...rest } -> rest) {a=1, b=2, c=3}"), Record({"b": Int(2), "c": Int(3)}))
+
     def test_match_list_binds_vars(self) -> None:
         self.assertEqual(
             self._run(
@@ -3363,6 +3372,9 @@ class EndToEndTests(EndToEndTestsBase):
             ),
             Int(2),
         )
+
+    def test_match_list_spread_binds_spread(self) -> None:
+        self.assertEqual(self._run("(| [x, ...xs] -> xs) [1, 2]"), List([Int(2)]))
 
     def test_pipe(self) -> None:
         self.assertEqual(self._run("1 |> (a -> a + 2)"), Int(3))

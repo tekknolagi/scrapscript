@@ -421,6 +421,22 @@ class OptTests(unittest.TestCase):
             ),
         )
 
+    def test_fold_add_function_curried(self) -> None:
+        exp = parse(tokenize("(x -> y -> x + y) 3"))
+        self.assertEqual(
+            spin_opt(cps(exp, Var("k"))),
+            # (k (fun (v6 v7) ($+ 3 v6 v7)))
+            App(
+                Var("k"),
+                [
+                    Fun(
+                        [Var("v6"), Var("v7")],
+                        Prim("+", [Atom(3), Var("v6"), Var("v7")]),
+                    )
+                ],
+            ),
+        )
+
     def test_fold_add_function_var(self) -> None:
         exp = parse(tokenize("(x -> y -> x + y) a b"))
         self.assertEqual(

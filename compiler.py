@@ -318,7 +318,7 @@ class Compiler:
             for i, (key, value) in enumerate(values.items()):
                 key_idx = self.record_key(key)
                 self._emit(
-                    f"record_set({result}, /*index=*/{i}, (struct record_field){{.key={key_idx}, .value={value}}});"
+                    f"record_set({result}, /*index=*/{i}, (struct record_field){{.key=Record_{key}, .value={value}}});"
                 )
             self._debug("collect(heap);")
             return result
@@ -385,6 +385,11 @@ def compile_to_string(source: str, memory: int, debug: bool) -> str:
     for key in compiler.record_keys:
         print(f'"{key}",', file=f)
     print("};", file=f)
+    if compiler.record_keys:
+        print("enum {", file=f)
+        for key, idx in compiler.record_keys.items():
+            print(f"Record_{key} = {idx},", file=f)
+        print("};", file=f)
     if compiler.variant_tags:
         print("const char* variant_names[] = {", file=f)
         for key in compiler.variant_tags:

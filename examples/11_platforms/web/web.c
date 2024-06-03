@@ -13,7 +13,7 @@ static int
 dispatch(struct wby_con *connection, void *userdata)
 {
     HANDLES();
-    GC_HANDLE(struct object*, handler, (struct object*)userdata);
+    GC_HANDLE(struct object*, handler, *(struct object**)userdata);
     GC_HANDLE(struct object*, url, mkstring(heap, connection->request.uri, strlen(connection->request.uri)));
     GC_HANDLE(struct object*, response, closure_call(handler, url));
     assert(is_record(response));
@@ -46,9 +46,7 @@ int main(int argc, const char * argv[])
     config.request_buffer_size = 2048;
     config.io_buffer_size = 8192;
     config.dispatch = dispatch;
-    config.userdata = handler;
-
-    GC_PROTECT(config.userdata);
+    config.userdata = &handler;
 
     /* compute and allocate needed memory and start server */
     struct wby_server server;

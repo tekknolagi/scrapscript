@@ -1,7 +1,7 @@
 import dataclasses
 import itertools
 import unittest
-from scrapscript import parse, tokenize, Assign, Int, Var as ScrapVar, Object, Binop, BinopKind, Where
+from scrapscript import parse, tokenize, Assign, Int, Var as ScrapVar, Object, Binop, BinopKind, Where, Apply, Function
 
 
 @dataclasses.dataclass
@@ -80,6 +80,15 @@ def cps(exp: Object, k: CPSExpr) -> CPSExpr:
         value = exp.binding.value
         body = exp.body
         return cps(value, cont(Var(name), cps(body, k)))
+    if isinstance(exp, Apply):
+        fun = Var(gensym())
+        arg = Var(gensym())
+        return cps(exp.func, cont(fun, cps(exp.arg, cont(arg, App(fun, [arg, k])))))
+    if isinstance(exp, Function):
+        assert isinstance(exp.arg, ScrapVar)
+        arg = Var(exp.arg.name)
+        subk = Var(gensym())
+        return App(k, [Fun([arg, subk], cps(exp.body, subk))])
     raise NotImplementedError(f"cps: {exp}")
 
 
@@ -255,7 +264,7 @@ class SubstTests(unittest.TestCase):
 
 
 def is_simple(exp: CPSExpr) -> bool:
-    return isinstance(exp, (Atom, Var))
+    return isinstance(exp, (Atom, Var, Fun))
 
 
 def opt(exp: CPSExpr) -> CPSExpr:
@@ -270,8 +279,9 @@ def opt(exp: CPSExpr) -> CPSExpr:
         if exp.op == "+":
             consts = [Atom(sum(c.value for c in consts))]  # type: ignore
             args = consts + vars
-        if len(args) == 1:
-            return args[0]
+        if len(args) == 2:
+            # Last argument is a cont
+            return App(args[1], [args[0]])
         return Prim(exp.op, args)
     if isinstance(exp, App) and isinstance(exp.fun, Fun):
         fun = opt(exp.fun)
@@ -283,6 +293,14 @@ def opt(exp: CPSExpr) -> CPSExpr:
         if all(is_simple(arg) for arg in actuals):
             new_env = {arg_name(formal): actual for formal, actual in zip(formals, actuals)}
             return subst(fun.body, new_env)
+        return App(fun, actuals)
+    if isinstance(exp, App):
+        fun = opt(exp.fun)
+        args = [opt(arg) for arg in exp.args]
+        return App(fun, args)
+    if isinstance(exp, Fun):
+        body = opt(exp.body)
+        return Fun(exp.args, body)
     return exp
 
 
@@ -300,22 +318,61 @@ class OptTests(unittest.TestCase):
         cps_counter = itertools.count()
 
     def test_prim(self) -> None:
-        exp = Prim("+", [Atom(1), Atom(2), Atom(3)])
-        self.assertEqual(opt(exp), Atom(6))
+        exp = Prim("+", [Atom(1), Atom(2), Atom(3), Var("k")])
+        self.assertEqual(opt(exp), App(Var("k"), [Atom(6)]))
 
     def test_prim_var(self) -> None:
-        exp = Prim("+", [Atom(1), Var("x"), Atom(3)])
-        self.assertEqual(opt(exp), Prim("+", [Atom(4), Var("x")]))
+        exp = Prim("+", [Atom(1), Var("x"), Atom(3), Var("k")])
+        self.assertEqual(opt(exp), Prim("+", [Atom(4), Var("x"), Var("k")]))
 
     def test_subst(self) -> None:
-        exp = App(Fun([Var("x")], Prim("+", [Atom(1), Var("x"), Atom(2)])), [Atom(3)])
-        self.assertEqual(spin_opt(exp), Atom(6))
+        exp = App(Fun([Var("x")], Prim("+", [Atom(1), Var("x"), Atom(2), Var("k")])), [Atom(3)])
+        self.assertEqual(spin_opt(exp), App(Var("k"), [Atom(6)]))
 
     def test_add(self) -> None:
         exp = parse(tokenize("1 + 2 + c"))
         self.assertEqual(
             spin_opt(cps(exp, Var("k"))),
-            Prim("+", [Atom(2), Var("c"), Fun([Var("v9")], Prim("+", [Atom(1), Var("v9"), Var("k")]))]),
+            Prim("+", [Atom(2), Var("c"), Fun([Var("v6")], Prim("+", [Atom(1), Var("v6"), Var("k")]))]),
+        )
+
+    def test_simple_fun(self) -> None:
+        exp = cps(parse(tokenize("_ -> 1")), Var("k"))
+        self.assertEqual(
+            spin_opt(exp),
+            # (k (fun (_ v0) (v0 1)))
+            App(
+                Var("k"),
+                [
+                    Fun(
+                        [Var("_"), Var("v0")],
+                        App(Var("v0"), [Atom(1)]),
+                    )
+                ],
+            ),
+        )
+
+    def test_fun(self) -> None:
+        exp = cps(parse(tokenize("_ -> 1 + 2 + 3")), Var("k"))
+        self.assertEqual(
+            spin_opt(exp),
+            # (k (fun (_ v0) (v0 6)))
+            App(
+                Var("k"),
+                [
+                    Fun(
+                        [Var("_"), Var("v0")],
+                        App(Var("v0"), [Atom(6)]),
+                    )
+                ],
+            ),
+        )
+
+    def test_add_function(self) -> None:
+        exp = parse(tokenize("add a b . add = x -> y -> x + y . a = 3 . b = 4"))
+        self.assertEqual(
+            spin_opt(cps(exp, Var("k"))),
+            App(Var("k"), [Atom(7)]),
         )
 
 

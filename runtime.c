@@ -471,6 +471,10 @@ struct object* record_get(struct object* record, size_t key) {
   return NULL;
 }
 
+size_t record_num_fields(struct object* record) {
+  return as_record(record)->size;
+}
+
 bool is_string(struct object* obj) {
   if (is_small_string(obj)) {
     return true;
@@ -600,6 +604,34 @@ struct object* list_cons(struct object* item, struct object* list) {
   struct object* result = mklist(heap);
   as_list(result)->first = item;
   as_list(result)->rest = list;
+  return result;
+}
+
+bool array_contains(size_t* haystack, size_t size, size_t needle) {
+  for (size_t i = 0; i < size; i++) {
+    if (haystack[i] == needle) {
+      return true;
+    }
+  }
+  return false;
+}
+
+struct object* record_rest(struct object* record, size_t* exclude,
+                           size_t num_excluded) {
+  // NB: This is used in a match expression so it is assumed that all of the
+  // key indices in the exclude array are present in the record and that there
+  // are no duplicates in either the record or the exclude array.
+  HANDLES();
+  GC_PROTECT(record);
+  size_t num_keys = record_num_fields(record);
+  size_t num_result_keys = num_keys - num_excluded;
+  struct object* result = mkrecord(heap, num_result_keys);
+  for (size_t src = 0, dst = 0; dst < num_result_keys; src++) {
+    struct record_field field = as_record(record)->fields[src];
+    if (!array_contains(exclude, num_excluded, field.key)) {
+      record_set(result, dst++, field);
+    }
+  }
   return result;
 }
 

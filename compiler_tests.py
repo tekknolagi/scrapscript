@@ -52,12 +52,17 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_match_list_spread(self) -> None:
         self.assertEqual(self._run("f [4, 5] . f = | [_, ...xs] -> xs"), "[5]\n")
 
+    def test_match_list_spread_empty(self) -> None:
+        self.assertEqual(self._run("f [4] . f = | [_, ...xs] -> xs"), "[]\n")
+
     def test_match_record(self) -> None:
         self.assertEqual(self._run("f {a = 4, b = 5} . f = | {a = 1, b = 2} -> 3 | {a = 4, b = 5} -> 6"), "6\n")
 
-    @unittest.skip("TODO")
     def test_match_record_spread(self) -> None:
-        self.assertEqual(self._run("f {a=1, b=2, c=3} . f = | {a=1, ...rest} -> rest"), "[5]\n")
+        self.assertEqual(self._run("f {a=1, b=2, c=3} . f = | {a=1, ...rest} -> rest"), "{b = 2, c = 3}\n")
+
+    def test_match_record_spread_empty(self) -> None:
+        self.assertEqual(self._run("f {a=1} . f = | {a=1, ...rest} -> rest"), "{}\n")
 
     def test_match_hole(self) -> None:
         self.assertEqual(self._run("f () . f = | 1 -> 3 | () -> 4"), "4\n")

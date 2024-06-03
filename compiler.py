@@ -220,9 +220,19 @@ class Compiler:
         if isinstance(pattern, Record):
             self._emit(f"if (!is_record({arg})) {{ goto {fallthrough}; }}")
             updates = {}
+            seen_key_indices: list[int] = []
             for key, pattern_value in pattern.data.items():
-                assert not isinstance(pattern_value, Spread), "record spread not yet supported"
+                if isinstance(pattern_value, Spread):
+                    use_spread = True
+                    if pattern_value.name:
+                        num_seen_keys = len(seen_key_indices)
+                        self._emit(
+                            f"size_t seen_keys[{num_seen_keys}] = {{ {', '.join(map(str, seen_key_indices))} }};"
+                        )
+                        updates[pattern_value.name] = self._mktemp(f"record_rest({arg}, seen_keys, {num_seen_keys})")
+                    break
                 key_idx = self.record_key(key)
+                seen_key_indices.append(key_idx)
                 record_value = self._mktemp(f"record_get({arg}, {key_idx})")
                 self._emit(f"if ({record_value} == NULL) {{ goto {fallthrough}; }}")
                 updates.update(self.try_match(env, record_value, pattern_value, fallthrough))

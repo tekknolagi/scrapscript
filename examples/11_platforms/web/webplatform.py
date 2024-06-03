@@ -2,36 +2,20 @@
 # Run from the root of the repository with
 # $ PYTHONPATH=. python3 examples/11_platforms/web/webplatform.py
 import http.server
+import os
 import socketserver
 
 from scrapscript import eval_exp, Apply, Record, parse, tokenize, String, Int
 
-HANDLER = eval_exp(
-    {},
-    parse(
-        tokenize(
-            """
-| { method = "GET", ...rest } -> get rest
-| _ -> (status 501 <| page "unsupported method")
-
-. get =
-  | { path = "/" } -> (status 200 <| page "you're on the index")
-  | { path = "/about" } -> (status 200 <| page "you're on the about page")
-  | _ -> notfound
-
-. notfound = (status 404 <| page "not found")
-. status = code -> body -> { code = code, body = body }
-. page = body -> "<!doctype html><html><body>" ++ body ++ "</body></html>"
-"""
-        )
-    ),
-)
+HANDLER_FILE_NAME = "handler.scrap"
+PLATFORM_DIR_NAME = os.path.dirname(os.path.realpath(__file__))
+with open(os.path.join(PLATFORM_DIR_NAME, HANDLER_FILE_NAME), "r") as f:
+    HANDLER = eval_exp({}, parse(tokenize(f.read())))
 
 
 class WebPlatform(http.server.SimpleHTTPRequestHandler):
-    def handle_request(self, verb: str) -> None:
-        request = Record({"method": String(verb), "path": String(self.path)})
-        result = eval_exp({}, Apply(HANDLER, request))
+    def handle_request(self) -> None:
+        result = eval_exp({}, Apply(HANDLER, String(self.path)))
         assert isinstance(result, Record)
         assert "code" in result.data
         assert isinstance(result.data["code"], Int)
@@ -46,10 +30,7 @@ class WebPlatform(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(result.data["body"].value.encode("utf-8"))
 
     def do_GET(self) -> None:
-        self.handle_request("GET")
-
-    def do_POST(self) -> None:
-        self.handle_request("POST")
+        self.handle_request()
 
 
 server = socketserver.TCPServer

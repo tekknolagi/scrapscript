@@ -631,7 +631,7 @@ class ClosureTests(unittest.TestCase):
 
 class C:
     def __init__(self) -> None:
-        self.funs: list[CPSExpr] = []
+        self.funs: list[str] = []
 
     def G(self, exp: CPSExpr) -> str:
         match exp:
@@ -641,6 +641,7 @@ class C:
                 return name
             case App(k, [Fun(_, _)]):
                 assert isinstance(k, Var)
+                assert isinstance(exp.args[0], Fun)
                 fun, name = self.G_proc(exp.args[0])
                 self.funs.append(fun)
                 return f"return mkclosure({name});"
@@ -671,7 +672,7 @@ class C:
             case _:
                 raise NotImplementedError(f"G_cont: {exp}")
 
-    def G_proc(self, exp: Fun) -> str:
+    def G_proc(self, exp: Fun) -> tuple[str, str]:
         match exp:
             case Fun([*args, _], M1):
                 return f"proc fun{exp.id}({', '.join(arg.name for arg in args)}) {{ {self.G(M1)} " + "}", f"fun{exp.id}"

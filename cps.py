@@ -20,7 +20,7 @@ from scrapscript import (
 
 @dataclasses.dataclass
 class CPSExpr:
-    annotations: dict[str, object] = dataclasses.field(default_factory=dict, init=False)
+    pass
 
 
 @dataclasses.dataclass
@@ -55,10 +55,21 @@ fun_counter = itertools.count()
 class Fun(CPSExpr):
     args: list[Var]
     body: CPSExpr
+    annotations: dict[str, object] = dataclasses.field(default_factory=dict)
     id: int = dataclasses.field(default_factory=lambda: next(fun_counter), compare=False)
 
     def name(self) -> str:
         return f"fun{self.id}"
+
+    def freevars(self) -> set[str]:
+        result = self.annotations["freevars"]
+        assert isinstance(result, set)
+        return result
+
+    def kind(self) -> str:
+        result = self.annotations["kind"]
+        assert isinstance(result, str)
+        return result
 
     def __repr__(self) -> str:
         args = " ".join(map(repr, self.args))
@@ -520,6 +531,27 @@ def free_in(exp: CPSExpr) -> set[str]:
     raise NotImplementedError(f"free_in: {exp}")
 
 
+def annotate_free_in(exp: CPSExpr) -> None:
+    match exp:
+        case Atom(_):
+            return
+        case Var(_):
+            return
+        case Prim(_, args):
+            for arg in args:
+                annotate_free_in(arg)
+        case Fun(args, body):
+            freevars = free_in(exp)
+            exp.annotations["freevars"] = freevars
+            for arg in args:
+                annotate_free_in(arg)
+            annotate_free_in(body)
+        case App(fun, args):
+            for arg in args:
+                annotate_free_in(arg)
+            annotate_free_in(fun)
+
+
 class FreeInTests(unittest.TestCase):
     def test_atom(self) -> None:
         self.assertEqual(free_in(Atom(42)), set())
@@ -535,205 +567,266 @@ class FreeInTests(unittest.TestCase):
         exp = Fun([Var("x"), Var("y")], Prim("+", [Var("x"), Var("y"), Var("z")]))
         self.assertEqual(free_in(exp), {"z"})
 
+    def test_fun_annotate(self) -> None:
+        exp = Fun([Var("x"), Var("y")], Prim("+", [Var("x"), Var("y"), Var("z")]))
+        annotate_free_in(exp)
+        self.assertEqual(exp.freevars(), {"z"})
+
     def test_app(self) -> None:
         exp = App(Var("f"), [Var("x"), Var("y")])
         self.assertEqual(free_in(exp), {"f", "x", "y"})
 
 
-def make_closures_explicit(exp: CPSExpr, replacements: dict[str, CPSExpr]) -> CPSExpr:
-    def rec(exp: CPSExpr) -> CPSExpr:
-        return make_closures_explicit(exp, replacements)
-
+def classify_lambdas(exp: CPSExpr) -> None:
     match exp:
         case Atom(_):
-            return exp
-        case Var(name):
-            if name in replacements:
-                return replacements[name]
-            return exp
-        case Prim(op, args):
-            return Prim(op, [rec(arg) for arg in args])
-        case Fun(args, body):
-            freevars = sorted(free_in(exp))
-            this = Var("this")
-            new_replacements = {fv: Prim("clo", [this, Atom(idx)]) for idx, fv in enumerate(freevars)}
-            body = make_closures_explicit(body, {**replacements, **new_replacements})
-            return Fun([this] + args, body)
-        case App(fun, args):
-            return App(rec(fun), [rec(arg) for arg in args])
-    raise NotImplementedError(f"make_closures_explicit: {exp}")
+            return
+        case Var(_):
+            return
+        case App(Fun(_, body) as lam, args):
+            lam.annotations["kind"] = "open"
+            classify_lambdas(body)
+            for arg in args:
+                classify_lambdas(arg)
+        case Prim(_, [*args, Fun(_, _) as lam]):
+            lam.annotations["kind"] = "open"
+            for arg in args:
+                classify_lambdas(arg)
+        case App(f, args):
+            classify_lambdas(f)
+            for arg in args:
+                classify_lambdas(arg)
+        case Fun(_, body) as lam:
+            lam.annotations["kind"] = "closed"
+            classify_lambdas(body)
+        case Prim(_, args):
+            for arg in args:
+                classify_lambdas(arg)
+        case _:
+            raise NotImplementedError(f"classify_lambdas: {exp}")
 
 
-class ClosureTests(unittest.TestCase):
-    def test_no_freevars(self) -> None:
+class ClassificationTests(unittest.TestCase):
+    def test_open(self) -> None:
+        lam = Fun([Var("x")], Var("x"))
+        exp = App(lam, [Atom(42)])
+        classify_lambdas(exp)
+        self.assertEqual(lam.kind(), "open")
+
+    def test_open_prim(self) -> None:
+        lam = Fun([Var("x")], Var("x"))
+        exp = Prim("+", [Var("x"), Var("y"), lam])
+        classify_lambdas(exp)
+        self.assertEqual(lam.kind(), "open")
+
+    def test_closed_arg(self) -> None:
+        lam = Fun([Var("x")], Var("x"))
+        exp = App(Var("f"), [lam])
+        classify_lambdas(exp)
+        self.assertEqual(lam.kind(), "closed")
+
+    def test_closed(self) -> None:
         exp = Fun([Var("x")], Var("x"))
-        # (fun (this x) x)
-        self.assertEqual(make_closures_explicit(exp, {}), Fun([Var("this"), Var("x")], Var("x")))
-
-    def test_freevars(self) -> None:
-        exp = Fun([Var("k")], Prim("+", [Var("x"), Var("y"), Var("k")]))
-        # (fun (this k) ($+ ($clo this 0) ($clo this 1) k))
-        self.assertEqual(
-            make_closures_explicit(exp, {}),
-            Fun(
-                [Var("this"), Var("k")],
-                Prim(
-                    "+",
-                    [
-                        Prim("clo", [Var("this"), Atom(0)]),
-                        Prim("clo", [Var("this"), Atom(1)]),
-                        Var("k"),
-                    ],
-                ),
-            ),
-        )
-
-    def test_app_fun(self) -> None:
-        exp = App(Fun([Var("x")], Var("x")), [Atom(42)])
-        # ((fun (this x) x) 42)
-        self.assertEqual(
-            make_closures_explicit(exp, {}),
-            App(Fun([Var("this"), Var("x")], Var("x")), [Atom(42)]),
-        )
-
-    def test_app(self) -> None:
-        exp = App(Var("f"), [Atom(42)])
-        # (f 42)
-        self.assertEqual(make_closures_explicit(exp, {}), App(Var("f"), [Atom(42)]))
-
-    def test_add_function(self) -> None:
-        exp = cps(parse(tokenize("x -> y -> x + y")), Var("k"))
-        exp = spin_opt(exp)
-        # (k (fun (this x v2)
-        #      (v2 (fun (this y v3)
-        #            ($+ ($clo this 0) y v3)))))
-        self.assertEqual(
-            make_closures_explicit(exp, {}),
-            App(
-                Var("k"),
-                [
-                    Fun(
-                        [Var("this"), Var("x"), Var("v2")],
-                        App(
-                            Var("v2"),
-                            [
-                                Fun(
-                                    [Var("this"), Var("y"), Var("v3")],
-                                    Prim("+", [Prim("clo", [Var("this"), Atom(0)]), Var("y"), Var("v3")]),
-                                )
-                            ],
-                        ),
-                    )
-                ],
-            ),
-        )
+        classify_lambdas(exp)
+        self.assertEqual(exp.kind(), "closed")
 
 
-class C:
-    def __init__(self) -> None:
-        self.funs: list[str] = []
-
-    def G(self, exp: CPSExpr) -> str:
-        match exp:
-            case Atom(int(value)):
-                return str(value)
-            case Var(name):
-                return name
-            case App(k, [Fun(_, _)]):
-                assert isinstance(k, Var)
-                assert isinstance(exp.args[0], Fun)
-                fun, name = self.G_proc(exp.args[0])
-                self.funs.append(fun)
-                return f"return mkclosure({name});"
-            case App(k, [E]):
-                assert is_simple(E)
-                return f"return {E};"
-            case App(E, [*args, k]):
-                assert isinstance(E, Var)
-                assert all(is_simple(arg) for arg in args)
-                return self.G_cont(f"{E.name}({', '.join(str(arg) for arg in args)})", k)
-            case Prim("+", [x, y, k]):
-                assert is_simple(x)
-                assert is_simple(y)
-                return self.G_cont(f"{x} + {y}", k)
-            # TODO(max): j case
-            # TODO(max): Split cont and fun or annotate
-            case Prim("if", [cond, tk, fk]):
-                return f"if ({cond}) {{ {self.G(tk)} }} else {{ {self.G(fk)} }}"
-            case _:
-                raise NotImplementedError(f"G: {exp}")
-
-    def G_cont(self, val: str, exp: CPSExpr) -> str:
-        match exp:
-            case Fun([res], M1):
-                return f"{res} <- {val}; {self.G(M1)}"
-            case Var(_):
-                return f"return {val};"
-            case _:
-                raise NotImplementedError(f"G_cont: {exp}")
-
-    def G_proc(self, exp: Fun) -> tuple[str, str]:
-        match exp:
-            case Fun([*args, _], M1):
-                return f"proc fun{exp.id}({', '.join(arg.name for arg in args)}) {{ {self.G(M1)} " + "}", f"fun{exp.id}"
-            case _:
-                raise NotImplementedError(f"G_proc: {exp}")
-
-    def code(self) -> str:
-        return "\n\n".join(self.funs)
-
-
-class GTests(unittest.TestCase):
-    def setUp(self) -> None:
-        global cps_counter
-        cps_counter = itertools.count()
-
-        global fun_counter
-        fun_counter = itertools.count()
-
-    def test_app_cont(self) -> None:
-        # (E ... (fun (x) M1))
-        exp = App(Var("f"), [Atom(1), Fun([Var("x")], App(Var("k"), [Var("x")]))])
-        self.assertEqual(C().G(exp), "x <- f(1); return x;")
-
-    def test_tailcall(self) -> None:
-        # (E ... k)
-        exp = App(Var("f"), [Atom(1), Var("k")])
-        self.assertEqual(C().G(exp), "return f(1);")
-
-    def test_return(self) -> None:
-        # (k E)
-        exp = App(Var("k"), [Atom(1)])
-        self.assertEqual(C().G(exp), "return 1;")
-
-    def test_if(self) -> None:
-        # ($if cond t f)
-        exp = Prim(
-            "if",
-            [
-                Atom(1),
-                App(Var("k"), [Atom(2)]),
-                App(Var("k"), [Atom(3)]),
-            ],
-        )
-        self.assertEqual(C().G(exp), "if (1) { return 2; } else { return 3; }")
-
-    def test_add_cont(self) -> None:
-        # ($+ x y (fun (res) M1))
-        exp = Prim("+", [Atom(1), Atom(2), Fun([Var("res")], App(Var("k"), [Var("res")]))])
-        self.assertEqual(C().G(exp), "res <- 1 + 2; return res;")
-
-    def test_add_cont_var(self) -> None:
-        # ($+ x y k)
-        exp = Prim("+", [Atom(1), Atom(2), Var("k")])
-        self.assertEqual(C().G(exp), "return 1 + 2;")
-
-    def test_proc(self) -> None:
-        exp = App(Var("k"), [Fun([Var("x"), Var("j")], Prim("+", [Var("x"), Atom(1), Var("j")]))])
-        c = C()
-        code = c.G(exp)
-        self.assertEqual(c.code(), "proc fun0(x) { return x + 1; }")
-        self.assertEqual(code, "return mkclosure(fun0);")
+#
+#
+# def make_closures_explicit(exp: CPSExpr, replacements: dict[str, CPSExpr]) -> CPSExpr:
+#     def rec(exp: CPSExpr) -> CPSExpr:
+#         return make_closures_explicit(exp, replacements)
+#
+#     match exp:
+#         case Atom(_):
+#             return exp
+#         case Var(name):
+#             if name in replacements:
+#                 return replacements[name]
+#             return exp
+#         case Prim(op, args):
+#             return Prim(op, [rec(arg) for arg in args])
+#         case Fun(args, body):
+#             freevars = sorted(free_in(exp))
+#             this = Var("this")
+#             new_replacements = {fv: Prim("clo", [this, Atom(idx)]) for idx, fv in enumerate(freevars)}
+#             body = make_closures_explicit(body, {**replacements, **new_replacements})
+#             return Fun([this] + args, body)
+#         case App(fun, args):
+#             return App(rec(fun), [rec(arg) for arg in args])
+#     raise NotImplementedError(f"make_closures_explicit: {exp}")
+#
+#
+# class ClosureTests(unittest.TestCase):
+#     def test_no_freevars(self) -> None:
+#         exp = Fun([Var("x")], Var("x"))
+#         # (fun (this x) x)
+#         self.assertEqual(make_closures_explicit(exp, {}), Fun([Var("this"), Var("x")], Var("x")))
+#
+#     def test_freevars(self) -> None:
+#         exp = Fun([Var("k")], Prim("+", [Var("x"), Var("y"), Var("k")]))
+#         # (fun (this k) ($+ ($clo this 0) ($clo this 1) k))
+#         self.assertEqual(
+#             make_closures_explicit(exp, {}),
+#             Fun(
+#                 [Var("this"), Var("k")],
+#                 Prim(
+#                     "+",
+#                     [
+#                         Prim("clo", [Var("this"), Atom(0)]),
+#                         Prim("clo", [Var("this"), Atom(1)]),
+#                         Var("k"),
+#                     ],
+#                 ),
+#             ),
+#         )
+#
+#     def test_app_fun(self) -> None:
+#         exp = App(Fun([Var("x")], Var("x")), [Atom(42)])
+#         # ((fun (this x) x) 42)
+#         self.assertEqual(
+#             make_closures_explicit(exp, {}),
+#             App(Fun([Var("this"), Var("x")], Var("x")), [Atom(42)]),
+#         )
+#
+#     def test_app(self) -> None:
+#         exp = App(Var("f"), [Atom(42)])
+#         # (f 42)
+#         self.assertEqual(make_closures_explicit(exp, {}), App(Var("f"), [Atom(42)]))
+#
+#     def test_add_function(self) -> None:
+#         exp = cps(parse(tokenize("x -> y -> x + y")), Var("k"))
+#         exp = spin_opt(exp)
+#         # (k (fun (this x v2)
+#         #      (v2 (fun (this y v3)
+#         #            ($+ ($clo this 0) y v3)))))
+#         self.assertEqual(
+#             make_closures_explicit(exp, {}),
+#             App(
+#                 Var("k"),
+#                 [
+#                     Fun(
+#                         [Var("this"), Var("x"), Var("v2")],
+#                         App(
+#                             Var("v2"),
+#                             [
+#                                 Fun(
+#                                     [Var("this"), Var("y"), Var("v3")],
+#                                     Prim("+", [Prim("clo", [Var("this"), Atom(0)]), Var("y"), Var("v3")]),
+#                                 )
+#                             ],
+#                         ),
+#                     )
+#                 ],
+#             ),
+#         )
+#
+#
+# class C:
+#     def __init__(self) -> None:
+#         self.funs: list[str] = []
+#
+#     def G(self, exp: CPSExpr) -> str:
+#         match exp:
+#             case Atom(int(value)):
+#                 return str(value)
+#             case Var(name):
+#                 return name
+#             case App(k, [Fun(_, _)]):
+#                 assert isinstance(k, Var)
+#                 assert isinstance(exp.args[0], Fun)
+#                 fun, name = self.G_proc(exp.args[0])
+#                 self.funs.append(fun)
+#                 return f"return mkclosure({name});"
+#             case App(k, [E]):
+#                 assert is_simple(E)
+#                 return f"return {E};"
+#             case App(E, [*args, k]):
+#                 assert isinstance(E, Var)
+#                 assert all(is_simple(arg) for arg in args)
+#                 return self.G_cont(f"{E.name}({', '.join(str(arg) for arg in args)})", k)
+#             case Prim("+", [x, y, k]):
+#                 assert is_simple(x)
+#                 assert is_simple(y)
+#                 return self.G_cont(f"{x} + {y}", k)
+#             # TODO(max): j case
+#             # TODO(max): Split cont and fun or annotate
+#             case Prim("if", [cond, tk, fk]):
+#                 return f"if ({cond}) {{ {self.G(tk)} }} else {{ {self.G(fk)} }}"
+#             case _:
+#                 raise NotImplementedError(f"G: {exp}")
+#
+#     def G_cont(self, val: str, exp: CPSExpr) -> str:
+#         match exp:
+#             case Fun([res], M1):
+#                 return f"{res} <- {val}; {self.G(M1)}"
+#             case Var(_):
+#                 return f"return {val};"
+#             case _:
+#                 raise NotImplementedError(f"G_cont: {exp}")
+#
+#     def G_proc(self, exp: Fun) -> tuple[str, str]:
+#         match exp:
+#             case Fun([*args, _], M1):
+#                 return f"proc fun{exp.id}({', '.join(arg.name for arg in args)}) {{ {self.G(M1)} " + "}", f"fun{exp.id}"
+#             case _:
+#                 raise NotImplementedError(f"G_proc: {exp}")
+#
+#     def code(self) -> str:
+#         return "\n\n".join(self.funs)
+#
+#
+# class GTests(unittest.TestCase):
+#     def setUp(self) -> None:
+#         global cps_counter
+#         cps_counter = itertools.count()
+#
+#         global fun_counter
+#         fun_counter = itertools.count()
+#
+#     def test_app_cont(self) -> None:
+#         # (E ... (fun (x) M1))
+#         exp = App(Var("f"), [Atom(1), Fun([Var("x")], App(Var("k"), [Var("x")]))])
+#         self.assertEqual(C().G(exp), "x <- f(1); return x;")
+#
+#     def test_tailcall(self) -> None:
+#         # (E ... k)
+#         exp = App(Var("f"), [Atom(1), Var("k")])
+#         self.assertEqual(C().G(exp), "return f(1);")
+#
+#     def test_return(self) -> None:
+#         # (k E)
+#         exp = App(Var("k"), [Atom(1)])
+#         self.assertEqual(C().G(exp), "return 1;")
+#
+#     def test_if(self) -> None:
+#         # ($if cond t f)
+#         exp = Prim(
+#             "if",
+#             [
+#                 Atom(1),
+#                 App(Var("k"), [Atom(2)]),
+#                 App(Var("k"), [Atom(3)]),
+#             ],
+#         )
+#         self.assertEqual(C().G(exp), "if (1) { return 2; } else { return 3; }")
+#
+#     def test_add_cont(self) -> None:
+#         # ($+ x y (fun (res) M1))
+#         exp = Prim("+", [Atom(1), Atom(2), Fun([Var("res")], App(Var("k"), [Var("res")]))])
+#         self.assertEqual(C().G(exp), "res <- 1 + 2; return res;")
+#
+#     def test_add_cont_var(self) -> None:
+#         # ($+ x y k)
+#         exp = Prim("+", [Atom(1), Atom(2), Var("k")])
+#         self.assertEqual(C().G(exp), "return 1 + 2;")
+#
+#     def test_proc(self) -> None:
+#         exp = App(Var("k"), [Fun([Var("x"), Var("j")], Prim("+", [Var("x"), Atom(1), Var("j")]))])
+#         c = C()
+#         code = c.G(exp)
+#         self.assertEqual(c.code(), "proc fun0(x) { return x + 1; }")
+#         self.assertEqual(code, "return mkclosure(fun0);")
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ FROM caddy
 COPY . .
 
 # set caddy port
-RUN echo "http://localhost:8000" > /etc/caddy/Caddyfile
+RUN echo "http://*:8000" > /etc/caddy/Caddyfile
 RUN echo "rewrite /repl /repl.html" >> /etc/caddy/Caddyfile
 RUN echo "rewrite /compilerepl /compilerepl.html" >> /etc/caddy/Caddyfile
 RUN echo "file_server" >> /etc/caddy/Caddyfile

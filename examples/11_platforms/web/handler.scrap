@@ -1,8 +1,8 @@
-| "/" -> (status 200 <| page ("you're on the index. make sure to also look at our " ++ link "about page" "/about"))
-| "/about" -> (status 200 <| page ("you're on the about page. go " ++ (link "home" "/")))
+| "/" -> status 200 <| page <| "you're on the index. make sure to also look at our " ++ link "about page" "/about"
+| "/about" -> status 200 <| page <| "you're on the about page. go " ++ link "home" "/"
 | _ -> notfound
 
-. notfound = (status 404 <| page "not found")
+. notfound = status 404 <| page "not found"
 . status = code -> body -> { code = code, body = body }
 . link = text -> path -> "<a href=" ++ path ++ ">" ++ text ++ "</a>"
 . page = body -> "<!doctype html><html><body>" ++ body ++ "</body></html>"

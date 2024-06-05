@@ -2,7 +2,7 @@
 | "/about" -> status 200 <| page "about" <| "you're on the about page. go " ++ link "home" "/"
 | _ -> notfound
 
-. notfound = status 404 <| page "not found"
+. notfound = status 404 <| page "not found" <| "the page you're looking for doesn't exist. go " ++ link "home" "/"
 . status = code -> body -> { code = code, body = body }
 . page = title -> body -> "<!doctype html><html>" ++ "<head><title>" ++ title ++ "</title></head><body>" ++ body ++ "</body>" ++ footer ++ "</html>"
 . footer = "<br/><br/><footer>this page is served by " ++ link "scrapscript native" "https://github.com/tekknolagi/scrapscript" ++ "</footer>"

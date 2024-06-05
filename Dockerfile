@@ -1,13 +1,11 @@
-FROM busybox:1.35
-
-# Create a non-root user to own the files and run our server
-RUN adduser -D static
-USER static
-WORKDIR /home/static
+FROM caddy
 
 # Copy the static website
 # Use the .dockerignore file to control what ends up inside the image!
 COPY . .
 
-# Run BusyBox httpd
-CMD ["busybox", "httpd", "-f", "-v", "-p", "8000"]
+# set caddy port
+RUN echo "http://localhost:8000" > /etc/caddy/Caddyfile
+RUN echo "rewrite /repl /repl.html" >> /etc/caddy/Caddyfile
+RUN echo "rewrite /compilerepl /compilerepl.html" >> /etc/caddy/Caddyfile
+RUN echo "file_server" >> /etc/caddy/Caddyfile

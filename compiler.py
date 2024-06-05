@@ -6,7 +6,7 @@ import json
 import os
 import typing
 
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 from scrapscript import (
     Access,
@@ -63,7 +63,7 @@ class Compiler:
         self.functions: typing.List[CompiledFunction] = [main_fn]
         self.function: CompiledFunction = main_fn
         self.record_keys: Dict[str, int] = {}
-        self.record_builders: Dict[tuple[str, ...], CompiledFunction] = {}
+        self.record_builders: Dict[Tuple[str, ...], CompiledFunction] = {}
         self.variant_tags: Dict[str, int] = {}
         self.debug: bool = False
 
@@ -72,7 +72,7 @@ class Compiler:
             self.record_keys[key] = len(self.record_keys)
         return f"Record_{key}"
 
-    def record_builder(self, keys: tuple[str, ...]) -> CompiledFunction:
+    def record_builder(self, keys: Tuple[str, ...]) -> CompiledFunction:
         builder = self.record_builders.get(keys)
         if builder is not None:
             return builder

@@ -3,18 +3,21 @@ set -eux
 PREV="$(pwd)"
 DIR="$(mktemp -d)"
 cp scrapscript.py "$DIR"
-cp .args "$DIR"
-cp repl.html "$DIR"
-cp style.css "$DIR"
+cp compiler.py "$DIR"
+cp runtime.c "$DIR"
+cp cli.c "$DIR"
 cd "$DIR"
+printf -- '-m\nscrapscript\n...' > .args
 wget https://cosmo.zip/pub/cosmos/bin/python
 wget https://cosmo.zip/pub/cosmos/bin/zip
 chmod +x python
 chmod +x zip
-./python -m compileall scrapscript.py
+./python -m compileall -b scrapscript.py compiler.py
 mkdir Lib
-cp __pycache__/scrapscript.*.pyc Lib/scrapscript.pyc
-cp style.css repl.html Lib
+cp scrapscript.pyc Lib/scrapscript.pyc
+cp compiler.pyc Lib/compiler.pyc
+cp runtime.c Lib/runtime.c
+cp cli.c Lib/cli.c
 cp python scrapscript.com
 ./zip -r scrapscript.com Lib .args
 echo "Testing..."

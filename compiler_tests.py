@@ -1,7 +1,30 @@
+import os
 import unittest
 import subprocess
 
-from compiler import compile_to_binary
+from scrapscript import env_get_split, discover_cflags
+from compiler import compile_to_string
+
+
+def compile_to_binary(source: str, memory: int, debug: bool) -> str:
+    import shlex
+    import subprocess
+    import sysconfig
+    import tempfile
+
+    cc = env_get_split("CC", shlex.split(sysconfig.get_config_var("CC")))
+    cflags = discover_cflags(cc, debug)
+    cflags += [f"-DMEMORY_SIZE={memory}"]
+    c_code = compile_to_string(source, debug)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as c_file:
+        c_file.write(c_code)
+        # The platform is in the same directory as this file
+        dirname = os.path.dirname(__file__)
+        with open(os.path.join(dirname, "cli.c"), "r") as f:
+            c_file.write(f.read())
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".out", delete=False) as out_file:
+        subprocess.run([*cc, *cflags, "-o", out_file.name, c_file.name], check=True)
+    return out_file.name
 
 
 class CompilerEndToEndTests(unittest.TestCase):

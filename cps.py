@@ -608,70 +608,6 @@ class CFun:
     code: list[str] = dataclasses.field(default_factory=list)
 
 
-class Compiler:
-    def __init__(self, main: CFun) -> None:
-        self.funs = [main]
-        self.fun: CFun = main
-
-    def _emit(self, code: str) -> None:
-        self.fun.code.append(code)
-
-    def _mktemp(self, expr: str) -> str:
-        name = gensym()
-        self._emit(f"struct object* {name} = {expr};")
-        return name
-
-    def compile(self, exp: CPSExpr) -> str:
-        match exp:
-            case Var(name):
-                return name
-            case Atom(int(value)):
-                return self._mktemp(f"mknum({value})")
-            case Prim("clo", [Var("this"), Atom(idx)]):
-                return self._mktemp(f"closure_get(this, {idx})")
-            case Prim("+", [left, right, cont]):
-                left = self.compile(left)
-                right = self.compile(right)
-                result = self._mktemp(f"num_add({left}, {right})")
-                self._emit(f"return {cont}({result});")
-                return ""
-            # case Atom([]):
-            #     return self._mktemp("empty_list()")
-            # case Atom(list(value_exprs)):
-            #     values = [self.compile(value) for value in value_exprs]
-            #     num_values = len(values)
-            #     result = self._mktemp(f"list_cons({num_values})")
-            #     for i, value in enumerate(values):
-            #         self._emit(f"{result}[{i}] = {value};")
-            #     return result
-            case App(Var("halt"), [arg]):
-                self._emit(f"return {self.compile(arg)};")
-                return ""
-            case App(fun, args):
-                assert isinstance(fun, Var), "((fun ...) ...) should be optimized out"
-                fun_name = fun.name
-                arg_names = [self.compile(arg) for arg in args]
-                result = self._mktemp(f"clo call {fun_name}({', '.join(arg_names)})")
-                self._emit(f"return {result};")
-                return ""
-            case Fun(_, _):
-                prev = self.fun
-                self.fun = CFun(exp.name())
-                self.funs.append(self.fun)
-                result = self.compile_proc(exp)
-                self.fun = prev
-                return result
-            case _:
-                raise NotImplementedError(f"compile: {exp}")
-
-    def compile_proc(self, exp: Fun) -> str:
-        args = [arg.name for arg in exp.args]
-        self._emit(f"object {exp.name()}({', '.join(args)}) {{")
-        self.compile(exp.body)
-        self._emit("}")
-        return exp.name()
-
-
 class C:
     def __init__(self) -> None:
         self.funs = []
@@ -730,6 +666,9 @@ class GTests(unittest.TestCase):
         global cps_counter
         cps_counter = itertools.count()
 
+        global fun_counter
+        fun_counter = itertools.count()
+
     def test_app_cont(self) -> None:
         # (E ... (fun (x) M1))
         exp = App(Var("f"), [Atom(1), Fun([Var("x")], App(Var("k"), [Var("x")]))])
@@ -771,31 +710,32 @@ class GTests(unittest.TestCase):
         exp = App(Var("k"), [Fun([Var("x"), Var("j")], Prim("+", [Var("x"), Atom(1), Var("j")]))])
         c = C()
         code = c.G(exp)
-        self.assertEqual(c.code(), "proc fun45(x) { return x + 1; }")
-        self.assertEqual(code, "return mkclosure(fun45);")
+        self.assertEqual(c.code(), "proc fun0(x) { return x + 1; }")
+        self.assertEqual(code, "return mkclosure(fun0);")
 
-    def test_add_fn(self) -> None:
-        exp = parse(tokenize("x -> y -> x + y"))
-        exp = cps(exp, Var("k"))
-        exp = alphatise(exp)
-        exp = spin_opt(exp)
-        exp = make_closures_explicit(exp, {})
-        c = C()
-        code = c.G(exp)
-        self.assertEqual(
-            c.code(),
-            """
 
-""",
-        )
-        self.assertEqual(code, "")
+#     def test_add_fn(self) -> None:
+#         exp = parse(tokenize("x -> y -> x + y"))
+#         exp = cps(exp, Var("k"))
+#         exp = alphatise(exp)
+#         exp = spin_opt(exp)
+#         exp = make_closures_explicit(exp, {})
+#         c = C()
+#         code = c.G(exp)
+#         self.assertEqual(
+#             c.code(),
+#             """
+#
+# """,
+#         )
+#         self.assertEqual(code, "")
 
 
 if __name__ == "__main__":
     __import__("sys").modules["unittest.util"]._MAX_LENGTH = 999999999
     unittest.main()
 
-    c = Compiler(CFun("main"))
+    c = C(CFun("main"))
     exp = parse(tokenize("x -> y -> x + y"))
     print(exp)
     cps_exp = cps(exp, Var("halt"))

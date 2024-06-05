@@ -4587,6 +4587,67 @@ def test_command(args: argparse.Namespace) -> None:
     unittest.main(argv=[__file__, *args.unittest_args])
 
 
+def env_get_split(key: str, default: Optional[typing.List[str]] = None) -> typing.List[str]:
+    import shlex
+
+    cflags = os.environ.get(key)
+    if cflags:
+        return shlex.split(cflags)
+    if default:
+        return default
+    return []
+
+
+def discover_cflags(cc: typing.List[str], debug: bool = True) -> typing.List[str]:
+    default_cflags = ["-Wall", "-Wextra", "-fno-strict-aliasing"]
+    if debug:
+        default_cflags += ["-O0", "-ggdb"]
+    else:
+        default_cflags += ["-O2", "-DNDEBUG"]
+        if "cosmo" not in cc[0]:
+            # cosmocc does not support LTO
+            default_cflags.append("-flto")
+        if "mingw" in cc[0]:
+            # Windows does not support mmap
+            default_cflags.append("-DSTATIC_HEAP")
+    return env_get_split("CFLAGS", default_cflags)
+
+
+def compile_command(args: argparse.Namespace) -> None:
+    from compiler import compile_to_string
+
+    with open(args.file, "r") as f:
+        source = f.read()
+
+    c_program = compile_to_string(source, args.debug)
+
+    with open(args.platform, "r") as f:
+        platform = f.read()
+
+    with open(args.output, "w") as f:
+        f.write(c_program)
+        f.write(platform)
+
+    if args.format:
+        import subprocess
+
+        subprocess.run(["clang-format-15", "-i", args.output], check=True)
+
+    if args.compile:
+        import subprocess
+
+        cc = env_get_split("CC", ["clang"])
+        cflags = discover_cflags(cc, args.debug)
+        cflags += [f"-DMEMORY_SIZE={args.memory}"]
+        ldflags = env_get_split("LDFLAGS")
+        subprocess.run([*cc, "-o", "a.out", *cflags, args.output, *ldflags], check=True)
+
+    if args.run:
+        import subprocess
+
+        subprocess.run(["sh", "-c", "./a.out"], check=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="scrapscript")
     subparsers = parser.add_subparsers(dest="command")
@@ -4609,6 +4670,18 @@ def main() -> None:
     apply.set_defaults(func=apply_command)
     apply.add_argument("program")
     apply.add_argument("--debug", action="store_true")
+
+    comp = subparsers.add_parser("compile")
+    comp.set_defaults(func=compile_command)
+    comp.add_argument("file")
+    comp.add_argument("-o", "--output", default="output.c")
+    comp.add_argument("--format", action="store_true")
+    comp.add_argument("--compile", action="store_true")
+    comp.add_argument("--memory", type=int, default=1024)
+    comp.add_argument("--run", action="store_true")
+    comp.add_argument("--debug", action="store_true", default=False)
+    # The platform is in the same directory as this file
+    comp.add_argument("--platform", default=os.path.join(os.path.dirname(__file__), "cli.c"))
 
     args = parser.parse_args()
     if not args.command:

@@ -357,17 +357,6 @@ class Compiler:
 # The const heap can be serialized to disk and mmap'd
 
 
-def env_get_split(key: str, default: Optional[typing.List[str]] = None) -> typing.List[str]:
-    import shlex
-
-    cflags = os.environ.get(key)
-    if cflags:
-        return shlex.split(cflags)
-    if default:
-        return default
-    return []
-
-
 def compile_to_string(source: str, debug: bool) -> str:
     program = parse(tokenize(source))
 
@@ -413,91 +402,3 @@ def compile_to_string(source: str, debug: bool) -> str:
             print(line, file=f)
         print("}", file=f)
     return f.getvalue()
-
-
-def discover_cflags(cc: typing.List[str], debug: bool = True) -> typing.List[str]:
-    default_cflags = ["-Wall", "-Wextra", "-fno-strict-aliasing"]
-    if debug:
-        default_cflags += ["-O0", "-ggdb"]
-    else:
-        default_cflags += ["-O2", "-DNDEBUG"]
-        if "cosmo" not in cc[0]:
-            # cosmocc does not support LTO
-            default_cflags.append("-flto")
-        if "mingw" in cc[0]:
-            # Windows does not support mmap
-            default_cflags.append("-DSTATIC_HEAP")
-    return env_get_split("CFLAGS", default_cflags)
-
-
-def compile_to_binary(source: str, memory: int, debug: bool) -> str:
-    import shlex
-    import subprocess
-    import sysconfig
-    import tempfile
-
-    cc = env_get_split("CC", shlex.split(sysconfig.get_config_var("CC")))
-    cflags = discover_cflags(cc, debug)
-    cflags += [f"-DMEMORY_SIZE={memory}"]
-    c_code = compile_to_string(source, debug)
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as c_file:
-        c_file.write(c_code)
-        # The platform is in the same directory as this file
-        dirname = os.path.dirname(__file__)
-        with open(os.path.join(dirname, "cli.c"), "r") as f:
-            c_file.write(f.read())
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".out", delete=False) as out_file:
-        subprocess.run([*cc, *cflags, "-o", out_file.name, c_file.name], check=True)
-    return out_file.name
-
-
-def main() -> None:
-    import argparse
-
-    parser = argparse.ArgumentParser(prog="scrapscript")
-    parser.add_argument("file")
-    parser.add_argument("-o", "--output", default="output.c")
-    parser.add_argument("--format", action="store_true")
-    parser.add_argument("--compile", action="store_true")
-    parser.add_argument("--memory", type=int, default=1024)
-    parser.add_argument("--run", action="store_true")
-    parser.add_argument("--debug", action="store_true", default=False)
-    # The platform is in the same directory as this file
-    dirname = os.path.dirname(__file__)
-    parser.add_argument("--platform", default=os.path.join(dirname, "cli.c"))
-    args = parser.parse_args()
-
-    with open(args.file, "r") as f:
-        source = f.read()
-
-    c_program = compile_to_string(source, args.debug)
-
-    with open(args.platform, "r") as f:
-        platform = f.read()
-
-    with open(args.output, "w") as f:
-        f.write(c_program)
-        f.write(platform)
-
-    if args.format:
-        import subprocess
-
-        subprocess.run(["clang-format-15", "-i", args.output], check=True)
-
-    if args.compile:
-        import subprocess
-
-        cc = env_get_split("CC", ["clang"])
-        cflags = discover_cflags(cc, args.debug)
-        cflags += [f"-DMEMORY_SIZE={args.memory}"]
-        ldflags = env_get_split("LDFLAGS")
-        subprocess.run([*cc, "-o", "a.out", *cflags, args.output, *ldflags], check=True)
-
-    if args.run:
-        import subprocess
-
-        subprocess.run(["sh", "-c", "./a.out"], check=True)
-
-
-if __name__ == "__main__":
-    main()

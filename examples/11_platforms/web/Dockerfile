@@ -9,7 +9,7 @@ COPY scrapscript.py .
 COPY compiler.py .
 COPY runtime.c .
 COPY examples/11_platforms/web/ .
-RUN CC=bin/cosmocc python3 compiler.py --compile --platform web.c  handler.scrap
+RUN CC=bin/cosmocc python3 compiler.py --compile --memory 8192 --platform web.c  handler.scrap
 RUN bin/assimilate a.out
 RUN du -sh a.out
 

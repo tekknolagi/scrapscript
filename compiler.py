@@ -436,7 +436,10 @@ def compile_to_binary(source: str, memory: int, debug: bool) -> str:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as c_file:
         outdir = os.path.dirname(c_file.name)
         shutil.copy("runtime.c", outdir)
+        shutil.copy("cli.c", outdir)
         c_file.write(c_code)
+        with open("cli.c", "r") as f:
+            c_file.write(f.read())
     with tempfile.NamedTemporaryFile(mode="w", suffix=".out", delete=False) as out_file:
         subprocess.run([*cc, *cflags, "-o", out_file.name, c_file.name], check=True)
     return out_file.name

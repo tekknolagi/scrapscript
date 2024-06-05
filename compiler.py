@@ -376,7 +376,9 @@ def compile_to_string(source: str, debug: bool) -> str:
     main_fn.code.append(f"return {result};")
 
     f = io.StringIO()
-    with open("runtime.c", "r") as runtime:
+    # The runtime is in the same directory as this file
+    dirname = os.path.dirname(__file__)
+    with open(os.path.join(dirname, "runtime.c"), "r") as runtime:
         print(runtime.read(), file=f)
     print("#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct object*, name, exp)", file=f)
     # Declare all functions
@@ -435,7 +437,9 @@ def compile_to_binary(source: str, memory: int, debug: bool) -> str:
     c_code = compile_to_string(source, debug)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as c_file:
         c_file.write(c_code)
-        with open("cli.c", "r") as f:
+        # The platform is in the same directory as this file
+        dirname = os.path.dirname(__file__)
+        with open(os.path.join(dirname, "cli.c"), "r") as f:
             c_file.write(f.read())
     with tempfile.NamedTemporaryFile(mode="w", suffix=".out", delete=False) as out_file:
         subprocess.run([*cc, *cflags, "-o", out_file.name, c_file.name], check=True)
@@ -453,7 +457,9 @@ def main() -> None:
     parser.add_argument("--memory", type=int, default=1024)
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--debug", action="store_true", default=False)
-    parser.add_argument("--platform", default="cli.c")
+    # The platform is in the same directory as this file
+    dirname = os.path.dirname(__file__)
+    parser.add_argument("--platform", default=os.path.join(dirname, "cli.c"))
     args = parser.parse_args()
 
     with open(args.file, "r") as f:

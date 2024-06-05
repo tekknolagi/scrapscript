@@ -66,9 +66,12 @@ function updateHistory(inp, out) {
 }
 
 async function sendRequest(exp) {
-    const scrap = document.scrapscript;
-    const [result, monad] = document.monad.bind(scrap.parse(scrap.tokenize(exp)));
-    return {result, monad, ok: true};
+    const compiler = document.compiler;
+    try {
+      return {result: compiler.compile_to_string(exp, false), ok: true};
+    } catch (e) {
+      return {text: () => e.toString(), ok: false};
+    }
 }
 
 let input = document.getElementById("input");
@@ -121,11 +124,10 @@ function shrinkInput() {
 async function submitInput() {
     const response = await sendRequest(input.value);
     if (response.ok) {
-        const {result, monad} = response;
+        const {result} = response;
         updateHistory(input.value, result);
         history.push([input.value, result]);
         input.value = "";
-        document.monad = monad;
     } else {
         const msg = await response.text();
         updateHistory(input.value, msg);
@@ -196,10 +198,16 @@ async function main() {
       response = await pyfetch("/scrapscript.py")
       with open("scrapscript.py", "wb") as f:
           f.write(await response.bytes())
+      response = await pyfetch("/compiler.py")
+      with open("compiler.py", "wb") as f:
+          f.write(await response.bytes())
+      response = await pyfetch("/runtime.c")
+      with open("runtime.c", "wb") as f:
+          f.write(b"// ...runtime goes here...")
   `)
   const scrapscript = await pyodide.pyimport("scrapscript");
-document.monad = scrapscript.ScrapMonad(scrapscript.boot_env());
-document.scrapscript = scrapscript;
+  const compiler = await pyodide.pyimport("compiler");
+document.compiler = compiler;
   input.removeAttribute("disabled");
   input.setAttribute("placeholder", "Enter Scrapscript code here...");
   input.focus();

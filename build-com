@@ -3,10 +3,10 @@ set -eux
 PREV="$(pwd)"
 DIR="$(mktemp -d)"
 cp scrapscript.py "$DIR"
-cp .args "$DIR"
 cp repl.html "$DIR"
 cp style.css "$DIR"
 cd "$DIR"
+printf -- '-m\nscrapscript\n...' > .args
 wget https://cosmo.zip/pub/cosmos/bin/python
 wget https://cosmo.zip/pub/cosmos/bin/zip
 chmod +x python

@@ -176,8 +176,7 @@ class Compiler:
 
     def try_match(self, env: Env, arg: str, pattern: Object, fallthrough: str) -> Env:
         if isinstance(pattern, Int):
-            self._emit(f"if (!is_num({arg})) {{ goto {fallthrough}; }}")
-            self._emit(f"if (num_value({arg}) != {pattern.value}) {{ goto {fallthrough}; }}")
+            self._emit(f"if (!is_num_equal_word({arg}, {pattern.value})) {{ goto {fallthrough}; }}")
             return {}
         if isinstance(pattern, Hole):
             self._emit(f"if (!is_hole({arg})) {{ goto {fallthrough}; }}")

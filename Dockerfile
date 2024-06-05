@@ -1,28 +1,13 @@
-# Set things up
-FROM alpine:latest as build
-ARG VER=3.0.2
-ARG COSMO=cosmos-$VER.zip
-RUN wget https://github.com/jart/cosmopolitan/releases/download/$VER/$COSMO
-WORKDIR cosmo
-RUN unzip ../$COSMO bin/ape.elf bin/assimilate bin/bash bin/python bin/zip
-# Remove some packages we're never going to use
-RUN sh bin/zip -A --delete bin/python "Lib/site-packages/*"
-RUN mkdir Lib
-COPY scrapscript.py Lib
-COPY webrepl.py Lib
-RUN bin/ape.elf bin/python -m compileall Lib
-RUN mv Lib/__pycache__/scrapscript*.pyc Lib/scrapscript.pyc
-RUN mv Lib/__pycache__/webrepl*.pyc Lib/webrepl.pyc
-RUN rm Lib/webrepl.py
-RUN cp bin/python bin/scrapscript.com
-COPY style.css Lib
-COPY repl.html Lib
-RUN printf "-m\nwebrepl\n..." > .args
-RUN sh bin/zip -A -r bin/scrapscript.com Lib .args
-RUN bin/ape.elf bin/assimilate bin/scrapscript.com
+FROM busybox:1.35
 
-# Set up the container
-FROM scratch as webrepl
-COPY --from=build /cosmo/bin/scrapscript.com .
-EXPOSE 8000
-ENTRYPOINT ["./scrapscript.com"]
+# Create a non-root user to own the files and run our server
+RUN adduser -D static
+USER static
+WORKDIR /home/static
+
+# Copy the static website
+# Use the .dockerignore file to control what ends up inside the image!
+COPY . .
+
+# Run BusyBox httpd
+CMD ["busybox", "httpd", "-f", "-v", "-p", "8000"]

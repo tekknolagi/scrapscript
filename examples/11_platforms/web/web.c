@@ -26,6 +26,7 @@ dispatch(struct wby_con *connection, void *userdata)
     // TODO(max): Copy into buffer or strdup
     wby_write(connection, as_heap_string(body)->data, string_length(body));
     wby_response_end(connection);
+    fprintf(stderr, "%ld %s\n", num_value(code), connection->request.uri);
     return num_value(code) == 200;
 }
 

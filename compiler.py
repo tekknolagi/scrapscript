@@ -188,8 +188,11 @@ class Compiler:
             return self.try_match(env, self._mktemp(f"variant_value({arg})"), pattern.value, fallthrough)
 
         if isinstance(pattern, String):
-            self._emit(f"if (!is_string({arg})) {{ goto {fallthrough}; }}")
             value = pattern.value
+            if len(value) < 8:
+                self._emit(f"if ({arg} != mksmallstring({json.dumps(value)}, {len(value)})) {{ goto {fallthrough}; }}")
+                return {}
+            self._emit(f"if (!is_string({arg})) {{ goto {fallthrough}; }}")
             self._emit(
                 f"if (!string_equal_cstr_len({arg}, {json.dumps(value)}, {len(value)})) {{ goto {fallthrough}; }}"
             )

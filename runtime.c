@@ -142,7 +142,9 @@ static uintptr_t align_size(uintptr_t size) {
 #define MEMORY_SIZE 1024
 #endif
 
+#ifdef STATIC_HEAP
 static char heap_inited = 0;
+#endif
 
 static struct gc_heap* make_heap(size_t size) {
   size = align(size, getpagesize());

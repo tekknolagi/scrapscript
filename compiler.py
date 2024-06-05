@@ -376,7 +376,8 @@ def compile_to_string(source: str, debug: bool) -> str:
     main_fn.code.append(f"return {result};")
 
     f = io.StringIO()
-    print('#include "runtime.c"', file=f)
+    with open("runtime.c", "r") as runtime:
+        print(runtime.read(), file=f)
     print("#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct object*, name, exp)", file=f)
     # Declare all functions
     print("const char* record_keys[] = {", file=f)
@@ -424,7 +425,6 @@ def discover_cflags(cc: typing.List[str], debug: bool = True) -> typing.List[str
 
 def compile_to_binary(source: str, memory: int, debug: bool) -> str:
     import shlex
-    import shutil
     import subprocess
     import sysconfig
     import tempfile
@@ -434,8 +434,6 @@ def compile_to_binary(source: str, memory: int, debug: bool) -> str:
     cflags += [f"-DMEMORY_SIZE={memory}"]
     c_code = compile_to_string(source, debug)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as c_file:
-        outdir = os.path.dirname(c_file.name)
-        shutil.copy("runtime.c", outdir)
         c_file.write(c_code)
         with open("cli.c", "r") as f:
             c_file.write(f.read())

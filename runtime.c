@@ -573,7 +573,7 @@ void variant_set(struct object* variant, struct object* value) {
   as_variant(variant)->value = value;
 }
 
-#define MAX_HANDLES 20
+#define MAX_HANDLES 30
 
 struct handles {
   // TODO(max): Figure out how to make this a flat linked list with whole

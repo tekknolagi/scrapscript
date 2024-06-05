@@ -20,6 +20,3 @@ primary_region = "ewr"
   cpu_kind = "shared"
   cpus = 1
   memory_mb = 256
-
-[experimental]
-cmd = ["--port", "8000", "--debug", "--fork"]

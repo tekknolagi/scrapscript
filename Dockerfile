@@ -19,14 +19,12 @@ COPY scrapscript.py Lib/
 COPY compiler.py Lib/
 COPY runtime.c Lib/
 COPY cli.c Lib/
-RUN ./python -m compileall -b Lib/scrapscript.py Lib/compiler.py
-# RUN cp scrapscript.pyc Lib/scrapscript.pyc
-# RUN cp compiler.pyc Lib/compiler.pyc
+RUN sh -c "./python -m compileall -b Lib/scrapscript.py Lib/compiler.py"
 RUN mv python scrapscript.com
-RUN ./zip -r scrapscript.com Lib .args
+RUN sh -c "./zip -r scrapscript.com Lib .args"
 RUN echo "Testing..."
-RUN ./scrapscript.com apply "1+2"
-RUN ./assimilate scrapscript.com
+RUN sh -c './scrapscript.com apply "1+2"'
+RUN sh -c "./assimilate scrapscript.com"
 
 # Set up the container
 FROM scratch as main

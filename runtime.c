@@ -591,8 +591,9 @@ void pop_handles(void* local_handles) {
 }
 
 #define HANDLES()                                                              \
-  struct handles local_handles                                                 \
-      __attribute__((__cleanup__(pop_handles))) = {.next = handles};           \
+  struct handles local_handles __attribute__((__cleanup__(pop_handles)));      \
+  local_handles.next = handles;                                                \
+  local_handles.stack_pointer = 0;                                             \
   handles = &local_handles
 #define GC_PROTECT(x)                                                          \
   assert(local_handles.stack_pointer < MAX_HANDLES);                           \

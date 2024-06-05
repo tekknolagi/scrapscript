@@ -1,9 +1,10 @@
-| "/" -> status 200 <| page <| "you're on the index. make sure to also look at our " ++ link "about page" "/about"
-| "/about" -> status 200 <| page <| "you're on the about page. go " ++ link "home" "/"
+| "/" -> status 200 <| page "home" <| "you're on the index. make sure to also look at our " ++ link "about page" "/about"
+| "/about" -> status 200 <| page "about" <| "you're on the about page. go " ++ link "home" "/"
 | _ -> notfound
 
 . notfound = status 404 <| page "not found"
 . status = code -> body -> { code = code, body = body }
+. page = title -> body -> "<!doctype html><html>" ++ "<head><title>" ++ title ++ "</title></head><body>" ++ body ++ "</body>" ++ footer ++ "</html>"
+. footer = "<br/><br/><footer>this page is served by " ++ link "scrapscript native" "https://github.com/tekknolagi/scrapscript" ++ "</footer>"
+-- TODO(max): String escaping
 . link = text -> path -> "<a href=" ++ path ++ ">" ++ text ++ "</a>"
-. page = body -> "<!doctype html><html><body>" ++ body ++ "</body></html>"
-

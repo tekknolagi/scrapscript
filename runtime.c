@@ -350,13 +350,22 @@ bool smallint_is_valid(word value) {
   return (value >= kSmallIntMinValue) && (value <= kSmallIntMaxValue);
 }
 
-struct object* mknum(struct gc_heap* heap, word value) {
-  (void)heap;
+struct object* mksmallint(word value) {
   assert(smallint_is_valid(value));
   return (struct object*)(((uword)value << kSmallIntTagBits));
 }
 
+struct object* mknum(struct gc_heap* heap, word value) {
+  (void)heap;
+  return mksmallint(value);
+}
+
 bool is_num(struct object* obj) { return is_small_int(obj); }
+
+bool is_num_equal_word(struct object* obj, word value) {
+  assert(smallint_is_valid(value));
+  return obj == mksmallint(value);
+}
 
 word num_value(struct object* obj) {
   assert(is_num(obj));

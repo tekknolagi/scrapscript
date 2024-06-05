@@ -32,7 +32,7 @@ dispatch(struct wby_con *connection, void *userdata)
 int main(int argc, const char * argv[])
 {
     /* boot scrapscript */
-    heap = make_heap(kMemorySize);
+    heap = make_heap(MEMORY_SIZE);
     HANDLES();
     GC_HANDLE(struct object*, handler, scrap_main());
     assert(is_closure(handler));

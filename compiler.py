@@ -366,7 +366,7 @@ def env_get_split(key: str, default: Optional[typing.List[str]] = None) -> typin
     return []
 
 
-def compile_to_string(source: str, memory: int, debug: bool) -> str:
+def compile_to_string(source: str, debug: bool) -> str:
     program = parse(tokenize(source))
 
     main_fn = CompiledFunction("scrap_main", params=[])
@@ -407,7 +407,6 @@ def compile_to_string(source: str, memory: int, debug: bool) -> str:
         for line in function.code:
             print(line, file=f)
         print("}", file=f)
-    print(f"static const uword kMemorySize = {memory};", file=f)
     return f.getvalue()
 
 
@@ -432,7 +431,8 @@ def compile_to_binary(source: str, memory: int, debug: bool) -> str:
 
     cc = env_get_split("CC", shlex.split(sysconfig.get_config_var("CC")))
     cflags = discover_cflags(cc, debug)
-    c_code = compile_to_string(source, memory, debug)
+    cflags += [f"-DMEMORY_SIZE={memory}"]
+    c_code = compile_to_string(source, debug)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as c_file:
         outdir = os.path.dirname(c_file.name)
         shutil.copy("runtime.c", outdir)
@@ -459,7 +459,7 @@ def main() -> None:
     with open(args.file, "r") as f:
         source = f.read()
 
-    c_program = compile_to_string(source, args.memory, args.debug)
+    c_program = compile_to_string(source, args.debug)
 
     with open(args.platform, "r") as f:
         platform = f.read()
@@ -478,6 +478,7 @@ def main() -> None:
 
         cc = env_get_split("CC", ["clang"])
         cflags = discover_cflags(cc, args.debug)
+        cflags += [f"-DMEMORY_SIZE={args.memory}"]
         ldflags = env_get_split("LDFLAGS")
         subprocess.run([*cc, "-o", "a.out", *cflags, args.output, *ldflags], check=True)
 

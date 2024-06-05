@@ -1,0 +1,8 @@
+| "/" -> (status 200 <| page "you're on the index")
+| "/about" -> (status 200 <| page "you're on the about page")
+| _ -> notfound
+
+. notfound = (status 404 <| page "not found")
+. status = code -> body -> { code = code, body = body }
+. page = body -> "<!doctype html><html><body>" ++ body ++ "</body></html>"
+

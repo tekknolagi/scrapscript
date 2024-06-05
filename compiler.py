@@ -6,7 +6,7 @@ import json
 import os
 import typing
 
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 from scrapscript import (
     Access,
@@ -63,16 +63,35 @@ class Compiler:
         self.functions: typing.List[CompiledFunction] = [main_fn]
         self.function: CompiledFunction = main_fn
         self.record_keys: Dict[str, int] = {}
+        self.record_builders: Dict[Tuple[str, ...], CompiledFunction] = {}
         self.variant_tags: Dict[str, int] = {}
         self.debug: bool = False
-        self.used_runtime_functions: set[str] = set()
 
-    def record_key(self, key: str) -> int:
-        result = self.record_keys.get(key)
-        if result is not None:
-            return result
-        result = self.record_keys[key] = len(self.record_keys)
-        return result
+    def record_key(self, key: str) -> str:
+        if key not in self.record_keys:
+            self.record_keys[key] = len(self.record_keys)
+        return f"Record_{key}"
+
+    def record_builder(self, keys: Tuple[str, ...]) -> CompiledFunction:
+        builder = self.record_builders.get(keys)
+        if builder is not None:
+            return builder
+
+        builder = CompiledFunction(f"Record_builder_{'_'.join(keys)}", list(keys))
+        self.functions.append(builder)
+        cur = self.function
+        self.function = builder
+
+        result = self._mktemp(f"mkrecord(heap, {len(keys)})")
+        for i, key in enumerate(keys):
+            key_idx = self.record_key(key)
+            self._emit(f"record_set({result}, /*index=*/{i}, (struct record_field){{.key={key_idx}, .value={key}}});")
+        self._debug("collect(heap);")
+        self._emit(f"return {result};")
+
+        self.function = cur
+        self.record_builders[keys] = builder
+        return builder
 
     def variant_tag(self, key: str) -> int:
         result = self.variant_tags.get(key)
@@ -295,11 +314,6 @@ class Compiler:
                 raise NameError(f"name '{exp.name}' is not defined")
             return var_value
         if isinstance(exp, Apply):
-            if isinstance(exp.func, Var):
-                if exp.func.name == "runtime":
-                    assert isinstance(exp.arg, String)
-                    self.used_runtime_functions.add(exp.arg.value)
-                    return f"builtin_{exp.arg.value}"
             callee = self.compile(env, exp.func)
             arg = self.compile(env, exp.arg)
             return self._mktemp(f"closure_call({callee}, {arg})")
@@ -314,14 +328,9 @@ class Compiler:
             values: Dict[str, str] = {}
             for key, value_exp in exp.data.items():
                 values[key] = self.compile(env, value_exp)
-            result = self._mktemp(f"mkrecord(heap, {len(values)})")
-            for i, (key, value) in enumerate(values.items()):
-                key_idx = self.record_key(key)
-                self._emit(
-                    f"record_set({result}, /*index=*/{i}, (struct record_field){{.key={key_idx}, .value={value}}});"
-                )
-            self._debug("collect(heap);")
-            return result
+            keys = tuple(sorted(exp.data.keys()))
+            builder = self.record_builder(keys)
+            return self._mktemp(f"{builder.name}({', '.join(values[key] for key in keys)})")
         if isinstance(exp, Access):
             assert isinstance(exp.at, Var), f"only Var access is supported, got {type(exp.at)}"
             record = self.compile(env, exp.obj)
@@ -345,11 +354,6 @@ class Compiler:
 # The const heap will never be scanned
 # The const heap can be serialized to disk and mmap'd
 
-BUILTINS = [
-    "print",
-    "println",
-]
-
 
 def env_get_split(key: str, default: Optional[typing.List[str]] = None) -> typing.List[str]:
     import shlex
@@ -362,7 +366,7 @@ def env_get_split(key: str, default: Optional[typing.List[str]] = None) -> typin
     return []
 
 
-def compile_to_string(source: str, memory: int, debug: bool) -> str:
+def compile_to_string(source: str, debug: bool) -> str:
     program = parse(tokenize(source))
 
     main_fn = CompiledFunction("scrap_main", params=[])
@@ -371,20 +375,20 @@ def compile_to_string(source: str, memory: int, debug: bool) -> str:
     result = compiler.compile({}, program)
     main_fn.code.append(f"return {result};")
 
-    builtins = [builtin for builtin in BUILTINS if builtin in compiler.used_runtime_functions]
-    for builtin in builtins:
-        fn = CompiledFunction(f"builtin_{builtin}_wrapper", params=["this", "arg"])
-        fn.code.append(f"return {builtin}(arg);")
-        compiler.functions.append(fn)
-
     f = io.StringIO()
-    print('#include "runtime.c"', file=f)
+    with open("runtime.c", "r") as runtime:
+        print(runtime.read(), file=f)
     print("#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct object*, name, exp)", file=f)
     # Declare all functions
     print("const char* record_keys[] = {", file=f)
     for key in compiler.record_keys:
         print(f'"{key}",', file=f)
     print("};", file=f)
+    if compiler.record_keys:
+        print("enum {", file=f)
+        for key, idx in compiler.record_keys.items():
+            print(f"Record_{key} = {idx},", file=f)
+        print("};", file=f)
     if compiler.variant_tags:
         print("const char* variant_names[] = {", file=f)
         for key in compiler.variant_tags:
@@ -399,23 +403,11 @@ def compile_to_string(source: str, memory: int, debug: bool) -> str:
         print("const char* variant_names[] = { NULL };", file=f)
     for function in compiler.functions:
         print(function.decl() + ";", file=f)
-    for builtin in builtins:
-        print(f"struct object* builtin_{builtin} = NULL;", file=f)
     for function in compiler.functions:
         print(f"{function.decl()} {{", file=f)
         for line in function.code:
             print(line, file=f)
         print("}", file=f)
-    print("int main() {", file=f)
-    print(f"heap = make_heap({memory});", file=f)
-    print("HANDLES();", file=f)
-    for builtin in builtins:
-        print(f"builtin_{builtin} = mkclosure(heap, builtin_{builtin}_wrapper, 0);", file=f)
-        print(f"GC_PROTECT(builtin_{builtin});", file=f)
-    print(f"struct object* result = {main_fn.name}();", file=f)
-    print("println(result);", file=f)
-    print("destroy_heap(heap);", file=f)
-    print("}", file=f)
     return f.getvalue()
 
 
@@ -433,18 +425,18 @@ def discover_cflags(cc: typing.List[str], debug: bool = True) -> typing.List[str
 
 def compile_to_binary(source: str, memory: int, debug: bool) -> str:
     import shlex
-    import shutil
     import subprocess
     import sysconfig
     import tempfile
 
     cc = env_get_split("CC", shlex.split(sysconfig.get_config_var("CC")))
     cflags = discover_cflags(cc, debug)
-    c_code = compile_to_string(source, memory, debug)
+    cflags += [f"-DMEMORY_SIZE={memory}"]
+    c_code = compile_to_string(source, debug)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as c_file:
-        outdir = os.path.dirname(c_file.name)
-        shutil.copy("runtime.c", outdir)
         c_file.write(c_code)
+        with open("cli.c", "r") as f:
+            c_file.write(f.read())
     with tempfile.NamedTemporaryFile(mode="w", suffix=".out", delete=False) as out_file:
         subprocess.run([*cc, *cflags, "-o", out_file.name, c_file.name], check=True)
     return out_file.name
@@ -461,15 +453,20 @@ def main() -> None:
     parser.add_argument("--memory", type=int, default=1024)
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--debug", action="store_true", default=False)
+    parser.add_argument("--platform", default="cli.c")
     args = parser.parse_args()
 
     with open(args.file, "r") as f:
         source = f.read()
 
-    c_program = compile_to_string(source, args.memory, args.debug)
+    c_program = compile_to_string(source, args.debug)
+
+    with open(args.platform, "r") as f:
+        platform = f.read()
 
     with open(args.output, "w") as f:
         f.write(c_program)
+        f.write(platform)
 
     if args.format:
         import subprocess
@@ -481,6 +478,7 @@ def main() -> None:
 
         cc = env_get_split("CC", ["clang"])
         cflags = discover_cflags(cc, args.debug)
+        cflags += [f"-DMEMORY_SIZE={args.memory}"]
         ldflags = env_get_split("LDFLAGS")
         subprocess.run([*cc, "-o", "a.out", *cflags, args.output, *ldflags], check=True)
 

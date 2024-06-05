@@ -718,3 +718,7 @@ struct object* println(struct object* obj) {
   putchar('\n');
   return obj;
 }
+
+#ifndef MEMORY_SIZE
+#define MEMORY_SIZE 1024
+#endif

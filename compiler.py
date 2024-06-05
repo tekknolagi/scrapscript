@@ -159,7 +159,7 @@ class Compiler:
         if name is not None:
             result[name] = "this"
         for i, field in enumerate(fn.fields):
-            result[field] = self._mktemp(f"closure_get(this, {i})")
+            result[field] = self._mktemp(f"closure_get(this, /*{field}=*/{i})")
         return result
 
     def compile_function(self, env: Env, exp: Function, name: Optional[str]) -> str:
@@ -254,7 +254,7 @@ class Compiler:
     def make_closure(self, env: Env, fn: CompiledFunction) -> str:
         name = self._mktemp(f"mkclosure(heap, {fn.name}, {len(fn.fields)})")
         for i, field in enumerate(fn.fields):
-            self._emit(f"closure_set({name}, {i}, {env[field]});")
+            self._emit(f"closure_set({name}, /*{field}=*/{i}, {env[field]});")
         self._debug("collect(heap);")
         return name
 

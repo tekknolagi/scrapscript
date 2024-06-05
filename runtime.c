@@ -5,8 +5,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 #include <unistd.h>
+
+#ifndef STATIC_HEAP
+#include <sys/mman.h>
+#endif
 
 #define ALWAYS_INLINE inline __attribute__((always_inline))
 #define NEVER_INLINE __attribute__((noinline))
@@ -135,11 +138,26 @@ static uintptr_t align_size(uintptr_t size) {
   return align(size, sizeof(uintptr_t));
 }
 
+#ifndef MEMORY_SIZE
+#define MEMORY_SIZE 1024
+#endif
+
+static char heap_inited = 0;
+
 static struct gc_heap* make_heap(size_t size) {
   size = align(size, getpagesize());
   struct gc_heap* heap = malloc(sizeof(struct gc_heap));
+#ifdef STATIC_HEAP
+  static char mem[MEMORY_SIZE];
+  if (heap_inited) {
+    fprintf(stderr, "heap already initialized\n");
+    abort();
+  }
+  heap_inited = 1;
+#else
   void* mem = mmap(NULL, size, PROT_READ | PROT_WRITE,
                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+#endif
   heap->to_space = heap->hp = (uintptr_t)mem;
   heap->from_space = heap->limit = heap->hp + size / 2;
   heap->size = size;
@@ -147,7 +165,11 @@ static struct gc_heap* make_heap(size_t size) {
 }
 
 void destroy_heap(struct gc_heap* heap) {
+#ifdef STATIC_HEAP
+  heap_inited = 0;
+#else
   munmap((void*)heap->to_space, heap->size);
+#endif
   free(heap);
 }
 
@@ -727,7 +749,3 @@ struct object* println(struct object* obj) {
   putchar('\n');
   return obj;
 }
-
-#ifndef MEMORY_SIZE
-#define MEMORY_SIZE 1024
-#endif

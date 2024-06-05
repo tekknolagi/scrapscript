@@ -21,3 +21,6 @@ ENTRYPOINT ["./a.out"]
 
 # Deploy from the repo root with
 # fly deploy --dockerfile examples/11_platforms/web/Dockerfile --config examples/11_platforms/web/fly.toml
+#
+# or run locally with
+# docker run --init -it -p 8000:8000 scrapweb

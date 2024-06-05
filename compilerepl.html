@@ -38,7 +38,7 @@ browser using <a href="https://pyodide.org/">Pyodide</a>.</p>
 Output:
 </div>
 <div>
-<input id="input" type="text" /><input id="submit-input" type="submit" value="Submit" />
+<input id="input" type="text" disabled placeholder="Loading pyodide..." /><input id="submit-input" type="submit" value="Submit" />
 </div>
 <script type="module">
 "use strict";
@@ -208,6 +208,9 @@ async function main() {
   const scrapscript = await pyodide.pyimport("scrapscript");
   const compiler = await pyodide.pyimport("compiler");
 document.compiler = compiler;
+  input.removeAttribute("disabled");
+  input.setAttribute("placeholder", "Enter Scrapscript code here...");
+  input.focus();
 }
 main();
 </script>

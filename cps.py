@@ -601,16 +601,37 @@ class ClosureTests(unittest.TestCase):
         # (f 42)
         self.assertEqual(make_closures_explicit(exp, {}), App(Var("f"), [Atom(42)]))
 
-
-@dataclasses.dataclass
-class CFun:
-    name: str
-    code: list[str] = dataclasses.field(default_factory=list)
+    def test_add_function(self) -> None:
+        exp = cps(parse(tokenize("x -> y -> x + y")), Var("k"))
+        exp = spin_opt(exp)
+        # (k (fun (this x v2)
+        #      (v2 (fun (this y v3)
+        #            ($+ ($clo this 0) y v3)))))
+        self.assertEqual(
+            make_closures_explicit(exp, {}),
+            App(
+                Var("k"),
+                [
+                    Fun(
+                        [Var("this"), Var("x"), Var("v2")],
+                        App(
+                            Var("v2"),
+                            [
+                                Fun(
+                                    [Var("this"), Var("y"), Var("v3")],
+                                    Prim("+", [Prim("clo", [Var("this"), Atom(0)]), Var("y"), Var("v3")]),
+                                )
+                            ],
+                        ),
+                    )
+                ],
+            ),
+        )
 
 
 class C:
     def __init__(self) -> None:
-        self.funs = []
+        self.funs: list[CPSExpr] = []
 
     def G(self, exp: CPSExpr) -> str:
         match exp:

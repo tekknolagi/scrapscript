@@ -714,40 +714,6 @@ class GTests(unittest.TestCase):
         self.assertEqual(code, "return mkclosure(fun0);")
 
 
-#     def test_add_fn(self) -> None:
-#         exp = parse(tokenize("x -> y -> x + y"))
-#         exp = cps(exp, Var("k"))
-#         exp = alphatise(exp)
-#         exp = spin_opt(exp)
-#         exp = make_closures_explicit(exp, {})
-#         c = C()
-#         code = c.G(exp)
-#         self.assertEqual(
-#             c.code(),
-#             """
-#
-# """,
-#         )
-#         self.assertEqual(code, "")
-
-
 if __name__ == "__main__":
     __import__("sys").modules["unittest.util"]._MAX_LENGTH = 999999999
     unittest.main()
-
-    c = C(CFun("main"))
-    exp = parse(tokenize("x -> y -> x + y"))
-    print(exp)
-    cps_exp = cps(exp, Var("halt"))
-    print(cps_exp)
-    alphaed = alphatise(cps_exp)
-    optimized = spin_opt(alphaed)
-    print(optimized)
-    closurized = make_closures_explicit(optimized, {})
-    print(closurized)
-    print(c.G(closurized))
-    # c.compile(closurized)
-    # for fun in c.funs:
-    #     for line in fun.code:
-    #         print(line)
-    #     print()

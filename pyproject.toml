@@ -13,7 +13,7 @@ classifiers = [
 ]
 description = "Scrapscript interpreter"
 keywords = ["scrapscript", "interpreter"]
-license = "Apache Software License"
+license = "MIT"
 name = "scrapscript"
 readme = "README.md"
 repository = "https://github.com/tekknolagi/scrapscript"

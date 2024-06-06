@@ -736,95 +736,95 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(exp.kind(), "closed")
 
 
-#
-#
-# def make_closures_explicit(exp: CPSExpr, replacements: dict[str, CPSExpr]) -> CPSExpr:
-#     def rec(exp: CPSExpr) -> CPSExpr:
-#         return make_closures_explicit(exp, replacements)
-#
-#     match exp:
-#         case Atom(_):
-#             return exp
-#         case Var(name):
-#             if name in replacements:
-#                 return replacements[name]
-#             return exp
-#         case Prim(op, args):
-#             return Prim(op, [rec(arg) for arg in args])
-#         case Fun(args, body):
-#             freevars = sorted(free_in(exp))
-#             this = Var("this")
-#             new_replacements = {fv: Prim("clo", [this, Atom(idx)]) for idx, fv in enumerate(freevars)}
-#             body = make_closures_explicit(body, {**replacements, **new_replacements})
-#             return Fun([this] + args, body)
-#         case App(fun, args):
-#             return App(rec(fun), [rec(arg) for arg in args])
-#     raise NotImplementedError(f"make_closures_explicit: {exp}")
-#
-#
-# class ClosureTests(unittest.TestCase):
-#     def test_no_freevars(self) -> None:
-#         exp = Fun([Var("x")], Var("x"))
-#         # (fun (this x) x)
-#         self.assertEqual(make_closures_explicit(exp, {}), Fun([Var("this"), Var("x")], Var("x")))
-#
-#     def test_freevars(self) -> None:
-#         exp = Fun([Var("k")], Prim("+", [Var("x"), Var("y"), Var("k")]))
-#         # (fun (this k) ($+ ($clo this 0) ($clo this 1) k))
-#         self.assertEqual(
-#             make_closures_explicit(exp, {}),
-#             Fun(
-#                 [Var("this"), Var("k")],
-#                 Prim(
-#                     "+",
-#                     [
-#                         Prim("clo", [Var("this"), Atom(0)]),
-#                         Prim("clo", [Var("this"), Atom(1)]),
-#                         Var("k"),
-#                     ],
-#                 ),
-#             ),
-#         )
-#
-#     def test_app_fun(self) -> None:
-#         exp = App(Fun([Var("x")], Var("x")), [Atom(42)])
-#         # ((fun (this x) x) 42)
-#         self.assertEqual(
-#             make_closures_explicit(exp, {}),
-#             App(Fun([Var("this"), Var("x")], Var("x")), [Atom(42)]),
-#         )
-#
-#     def test_app(self) -> None:
-#         exp = App(Var("f"), [Atom(42)])
-#         # (f 42)
-#         self.assertEqual(make_closures_explicit(exp, {}), App(Var("f"), [Atom(42)]))
-#
-#     def test_add_function(self) -> None:
-#         exp = cps(parse(tokenize("x -> y -> x + y")), Var("k"))
-#         exp = spin_opt(exp)
-#         # (k (fun (this x v2)
-#         #      (v2 (fun (this y v3)
-#         #            ($+ ($clo this 0) y v3)))))
-#         self.assertEqual(
-#             make_closures_explicit(exp, {}),
-#             App(
-#                 Var("k"),
-#                 [
-#                     Fun(
-#                         [Var("this"), Var("x"), Var("v2")],
-#                         App(
-#                             Var("v2"),
-#                             [
-#                                 Fun(
-#                                     [Var("this"), Var("y"), Var("v3")],
-#                                     Prim("+", [Prim("clo", [Var("this"), Atom(0)]), Var("y"), Var("v3")]),
-#                                 )
-#                             ],
-#                         ),
-#                     )
-#                 ],
-#             ),
-#         )
+def make_closures_explicit(exp: CPSExpr, replacements: dict[str, CPSExpr]) -> CPSExpr:
+    def rec(exp: CPSExpr) -> CPSExpr:
+        return make_closures_explicit(exp, replacements)
+
+    match exp:
+        case Atom(_):
+            return exp
+        case Var(name):
+            if name in replacements:
+                return replacements[name]
+            return exp
+        case Prim(op, args):
+            return Prim(op, [rec(arg) for arg in args])
+        case Fun(args, body):
+            freevars = sorted(free_in(exp))
+            this = Var("this")
+            new_replacements = {fv: Prim("clo", [this, Atom(idx)]) for idx, fv in enumerate(freevars)}
+            body = make_closures_explicit(body, {**replacements, **new_replacements})
+            return Fun([this] + args, body)
+        case App(fun, args):
+            return App(rec(fun), [rec(arg) for arg in args])
+    raise NotImplementedError(f"make_closures_explicit: {exp}")
+
+
+class ClosureTests(unittest.TestCase):
+    def test_no_freevars(self) -> None:
+        exp = Fun([Var("x")], Var("x"))
+        # (fun (this x) x)
+        self.assertEqual(make_closures_explicit(exp, {}), Fun([Var("this"), Var("x")], Var("x")))
+
+    def test_freevars(self) -> None:
+        exp = Fun([Var("k")], Prim("+", [Var("x"), Var("y"), Var("k")]))
+        # (fun (this k) ($+ ($clo this 0) ($clo this 1) k))
+        self.assertEqual(
+            make_closures_explicit(exp, {}),
+            Fun(
+                [Var("this"), Var("k")],
+                Prim(
+                    "+",
+                    [
+                        Prim("clo", [Var("this"), Atom(0)]),
+                        Prim("clo", [Var("this"), Atom(1)]),
+                        Var("k"),
+                    ],
+                ),
+            ),
+        )
+
+    def test_app_fun(self) -> None:
+        exp = App(Fun([Var("x")], Var("x")), [Atom(42)])
+        # ((fun (this x) x) 42)
+        self.assertEqual(
+            make_closures_explicit(exp, {}),
+            App(Fun([Var("this"), Var("x")], Var("x")), [Atom(42)]),
+        )
+
+    def test_app(self) -> None:
+        exp = App(Var("f"), [Atom(42)])
+        # (f 42)
+        self.assertEqual(make_closures_explicit(exp, {}), App(Var("f"), [Atom(42)]))
+
+    def test_add_function(self) -> None:
+        exp = cps(parse(tokenize("x -> y -> x + y")), Var("k"))
+        exp = spin_opt(exp)
+        # (k (fun (this x v2)
+        #      (v2 (fun (this y v3)
+        #            ($+ ($clo this 0) y v3)))))
+        self.assertEqual(
+            make_closures_explicit(exp, {}),
+            App(
+                Var("k"),
+                [
+                    Fun(
+                        [Var("this"), Var("x"), Var("v2")],
+                        App(
+                            Var("v2"),
+                            [
+                                Fun(
+                                    [Var("this"), Var("y"), Var("v3")],
+                                    Prim("+", [Prim("clo", [Var("this"), Atom(0)]), Var("y"), Var("v3")]),
+                                )
+                            ],
+                        ),
+                    )
+                ],
+            ),
+        )
+
+
 #
 #
 # class C:

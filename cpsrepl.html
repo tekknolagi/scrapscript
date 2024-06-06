@@ -68,8 +68,10 @@ function updateHistory(inp, out) {
 async function sendRequest(exp) {
     const scrap = document.scrapscript;
     const prog = scrap.parse(scrap.tokenize(exp));
+    const cps = document.cps.cps(prog, document.cps.Var("k"));
+    const opt = document.cps.spin_opt(cps);
     try {
-      return {result: document.cps.cps(prog, document.cps.Var("k")), ok: true};
+      return {result: opt, ok: true};
     } catch (e) {
       return {text: () => e.toString(), ok: false};
     }

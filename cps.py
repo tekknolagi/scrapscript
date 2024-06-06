@@ -267,6 +267,7 @@ class AlphatiseTests(unittest.TestCase):
         self.assertEqual(alphatise_(exp, {"x": "v0", "y": "v1"}), App(Var("f"), [Var("v0"), Var("v1")]))
 
 
+# TODO(max): Freshen substituted terms in binders
 def subst(exp: CPSExpr, env: dict[str, CPSExpr]) -> CPSExpr:
     if isinstance(exp, Atom):
         return exp

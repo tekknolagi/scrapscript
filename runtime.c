@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #ifndef STATIC_HEAP
 #include <sys/mman.h>
@@ -24,6 +23,12 @@ struct gc_obj {
   uintptr_t tag;  // low bit is 0 if forwarding ptr
   uintptr_t payload[0];
 };
+
+const uword kKiB = 1024;
+const uword kMiB = kKiB * kKiB;
+const uword kGiB = kKiB * kKiB * kKiB;
+
+const uword kPageSize = 4 * kKiB;
 
 // The low bit of the pointer is 1 if it's a heap object and 0 if it's an
 // immediate integer
@@ -147,7 +152,7 @@ static char heap_inited = 0;
 #endif
 
 static struct gc_heap* make_heap(size_t size) {
-  size = align(size, getpagesize());
+  size = align(size, kPageSize);
   struct gc_heap* heap = malloc(sizeof(struct gc_heap));
 #ifdef STATIC_HEAP
   static char mem[MEMORY_SIZE];

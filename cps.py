@@ -1,8 +1,6 @@
 import dataclasses
 import itertools
 import unittest
-import operator
-from functools import reduce
 from collections import Counter
 from scrapscript import (
     parse,
@@ -392,31 +390,23 @@ def opt(exp: CPSExpr) -> CPSExpr:
         return exp
     if isinstance(exp, Var):
         return exp
-    if isinstance(exp, Prim):
-        args = [opt(arg) for arg in exp.args[:-1]]
-        cont = exp.args[-1]
-        if exp.op == "cons":
-            assert len(args) == 2
-            if all(isinstance(arg, Atom) for arg in args):
-                return App(cont, [Atom(args)])
-        if exp.op == "+":
-            if len(args) == 1:
-                return App(cont, args)
+    match exp:
+        # TODO(max): Only sum/multiply ints
+        case Prim("+" | "*", [Atom(int(x)), k]):
+            return App(k, [Atom(x)])
+        case Prim("+", [Atom(int(x)), Atom(int(y)), *args]):
+            return Prim("+", [Atom(x + y), *args])
+        case Prim("*", [Atom(int(x)), Atom(int(y)), *args]):
+            return Prim("*", [Atom(x * y), *args])
+        case Prim("+" | "*" as op, args):
+            # Move constants left
             consts = [arg for arg in args if isinstance(arg, Atom)]
             vars = [arg for arg in args if not isinstance(arg, Atom)]
-            if consts:
-                # TODO(max): Only sum ints
-                consts = [Atom(sum(c.value for c in consts))]  # type: ignore
-                args = consts + vars
-        if exp.op == "*":
-            if len(args) == 1:
-                return App(cont, args)
-            consts = [arg for arg in args if isinstance(arg, Atom)]
-            vars = [arg for arg in args if not isinstance(arg, Atom)]
-            if consts:
-                consts = [Atom(reduce(operator.mul, (c.value for c in consts), 1))]
-                args = consts + vars
-        return Prim(exp.op, args + [cont])
+            return Prim(op, consts + vars)
+        case Prim("cons", [Atom(_) as x, Atom(_) as y, k]):
+            return App(k, [Atom([x, y])])
+        case Prim(op, args):
+            return Prim(op, [opt(arg) for arg in args])
     if isinstance(exp, App) and isinstance(exp.fun, (Fun, Cont)):
         fun = opt(exp.fun)
         assert isinstance(fun, (Fun, Cont))
@@ -437,8 +427,9 @@ def opt(exp: CPSExpr) -> CPSExpr:
         args = [opt(arg) for arg in exp.args]
         return App(fun, args)
     if isinstance(exp, (Fun, Cont)):
+        ty = type(exp)
         body = opt(exp.body)
-        return Fun(exp.args, body)
+        return ty(exp.args, body)
     raise NotImplementedError(f"opt: {exp}")
     return exp
 
@@ -456,21 +447,17 @@ class OptTests(unittest.TestCase):
         global cps_counter
         cps_counter = itertools.count()
 
-    def test_prim(self) -> None:
-        exp = Prim("+", [Atom(1), Atom(2), Atom(3), Var("k")])
-        self.assertEqual(opt(exp), Prim("+", [Atom(6), Var("k")]))
-
-    def test_prim_spin(self) -> None:
+    def test_prim_add(self) -> None:
         exp = Prim("+", [Atom(1), Atom(2), Atom(3), Var("k")])
         self.assertEqual(spin_opt(exp), App(Var("k"), [Atom(6)]))
 
-    def test_prim_mul_spin(self) -> None:
+    def test_prim_mul(self) -> None:
         exp = Prim("*", [Atom(2), Atom(3), Atom(4), Var("k")])
         self.assertEqual(spin_opt(exp), App(Var("k"), [Atom(24)]))
 
     def test_prim_var(self) -> None:
         exp = Prim("+", [Atom(1), Var("x"), Atom(3), Var("k")])
-        self.assertEqual(opt(exp), Prim("+", [Atom(4), Var("x"), Var("k")]))
+        self.assertEqual(spin_opt(exp), Prim("+", [Atom(4), Var("x"), Var("k")]))
 
     def test_subst(self) -> None:
         exp = App(Fun([Var("x")], Prim("+", [Atom(1), Var("x"), Atom(2), Var("k")])), [Atom(3)])

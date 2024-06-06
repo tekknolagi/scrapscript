@@ -321,6 +321,10 @@ def is_simple(exp: CPSExpr) -> bool:
     return isinstance(exp, (Atom, Var, Fun)) or (isinstance(exp, Prim) and exp.op in {"clo", "tag"})
 
 
+def is_small(exp: CPSExpr) -> bool:
+    return isinstance(exp, (Atom, Var))
+
+
 def census(exp: CPSExpr) -> Counter[str]:
     if isinstance(exp, Atom):
         return Counter()
@@ -384,7 +388,10 @@ def opt(exp: CPSExpr) -> CPSExpr:
         actuals = [opt(arg) for arg in exp.args]
         if len(formals) != len(actuals):
             return App(fun, actuals)
-        if all(is_simple(arg) for arg in actuals):
+        cen = census(fun.body)
+        # Idea: only substitute if the substituting would not blow up the size
+        # of the expression
+        if all(cen[arg_name(formal)] < 2 or is_small(actual) for formal, actual in zip(formals, actuals)):
             new_env = {arg_name(formal): actual for formal, actual in zip(formals, actuals)}
             return subst(fun.body, new_env)
         return App(fun, actuals)
@@ -549,6 +556,28 @@ class OptTests(unittest.TestCase):
             spin_opt(cps(exp, Var("k"))),
             # ($tag 'a_tag' 123 k)
             Prim("tag", [Atom("a_tag"), Atom(123), Var("k")]),
+        )
+
+    def test_beta_reduce_fun_with_zero_uses(self) -> None:
+        exp = App(Fun([Var("x")], Atom(1)), [Fun([Var("y")], Var("y"))])
+        self.assertEqual(
+            spin_opt(exp),
+            Atom(1),
+        )
+
+    def test_beta_reduce_fun_with_one_use(self) -> None:
+        exp = App(Fun([Var("x")], Var("x")), [Fun([Var("y")], Var("y"))])
+        self.assertEqual(
+            spin_opt(exp),
+            Fun([Var("y")], Var("y")),
+        )
+
+    def test_does_not_beta_reduce_fun_with_two_uses(self) -> None:
+        exp = App(Fun([Var("x")], Prim("+", [Var("x"), Var("x"), Var("k")])), [Fun([Var("y")], Var("y"))])
+        self.assertEqual(
+            spin_opt(exp),
+            # ((fun (x) ($+ x x k)) (fun (y) y))
+            App(Fun([Var("x")], Prim("+", [Var("x"), Var("x"), Var("k")])), [Fun([Var("y")], Var("y"))]),
         )
 
 

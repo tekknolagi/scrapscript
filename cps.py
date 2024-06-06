@@ -1,6 +1,7 @@
 import dataclasses
 import itertools
 import unittest
+from collections import Counter
 from scrapscript import (
     parse,
     tokenize,
@@ -317,6 +318,40 @@ class SubstTests(unittest.TestCase):
 
 def is_simple(exp: CPSExpr) -> bool:
     return isinstance(exp, (Atom, Var, Fun)) or (isinstance(exp, Prim) and exp.op in {"clo", "tag"})
+
+
+def census(exp: CPSExpr) -> Counter[str]:
+    if isinstance(exp, Atom):
+        return Counter()
+    if isinstance(exp, Var):
+        return Counter({exp.name: 1})
+    if isinstance(exp, Prim):
+        return sum((census(arg) for arg in exp.args), Counter())
+    if isinstance(exp, Fun):
+        return census(exp.body)
+    if isinstance(exp, App):
+        return sum((census(arg) for arg in exp.args), census(exp.fun))
+    raise NotImplementedError(f"census: {exp}")
+
+
+class CensusTests(unittest.TestCase):
+    def test_atom(self) -> None:
+        self.assertEqual(census(Atom(42)), {})
+
+    def test_var(self) -> None:
+        self.assertEqual(census(Var("x")), {"x": 1})
+
+    def test_prim(self) -> None:
+        exp = Prim("+", [Var("x"), Var("y"), Var("x")])
+        self.assertEqual(census(exp), {"x": 2, "y": 1})
+
+    def test_fun(self) -> None:
+        exp = Fun([Var("x"), Var("y")], Prim("+", [Var("x"), Var("y"), Var("x")]))
+        self.assertEqual(census(exp), {"x": 2, "y": 1})
+
+    def test_app(self) -> None:
+        exp = App(Var("f"), [Var("x"), Var("y")])
+        self.assertEqual(census(exp), {"f": 1, "x": 1, "y": 1})
 
 
 def opt(exp: CPSExpr) -> CPSExpr:

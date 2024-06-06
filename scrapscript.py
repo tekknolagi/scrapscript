@@ -4607,9 +4607,9 @@ def discover_cflags(cc: typing.List[str], debug: bool = True) -> typing.List[str
         if "cosmo" not in cc[0]:
             # cosmocc does not support LTO
             default_cflags.append("-flto")
-        if "mingw" in cc[0]:
-            # Windows does not support mmap
-            default_cflags.append("-DSTATIC_HEAP")
+    if "mingw" in cc[0]:
+        # Windows does not support mmap
+        default_cflags.append("-DSTATIC_HEAP")
     return env_get_split("CFLAGS", default_cflags)
 
 

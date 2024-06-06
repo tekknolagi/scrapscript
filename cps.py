@@ -74,7 +74,8 @@ class Fun(CPSExpr):
 
     def __repr__(self) -> str:
         args = " ".join(map(repr, self.args))
-        return f"(fun ({args}) {self.body!r})"
+        annotations = f" {self.annotations}" if self.annotations else ""
+        return f"(fun ({args}){annotations} {self.body!r})"
 
 
 @dataclasses.dataclass

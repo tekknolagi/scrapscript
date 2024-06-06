@@ -9,9 +9,11 @@ RUN echo "file_server" >> /etc/caddy/Caddyfile
 FROM alpine:latest as build
 RUN printf -- '-m\nscrapscript\n...' > .args
 RUN wget https://cosmo.zip/pub/cosmos/bin/assimilate
+RUN wget https://cosmo.zip/pub/cosmos/bin/ape-x86_64.elf
 RUN wget https://cosmo.zip/pub/cosmos/bin/python
 RUN wget https://cosmo.zip/pub/cosmos/bin/zip
 RUN chmod +x assimilate
+RUN chmod +x ape-x86_64.elf
 RUN chmod +x python
 RUN chmod +x zip
 RUN mkdir Lib
@@ -19,12 +21,12 @@ COPY scrapscript.py Lib/
 COPY compiler.py Lib/
 COPY runtime.c Lib/
 COPY cli.c Lib/
-RUN sh -c "./python -m compileall -b Lib/scrapscript.py Lib/compiler.py"
+RUN ./ape-x86_64.elf ./python -m compileall -b Lib/scrapscript.py Lib/compiler.py
 RUN mv python scrapscript.com
-RUN sh -c "./zip -r scrapscript.com Lib .args"
+RUN ./ape-x86_64.elf ./zip -r scrapscript.com Lib .args
+RUN ./ape-x86_64.elf ./assimilate ./scrapscript.com
 RUN echo "Testing..."
-RUN sh -c './scrapscript.com apply "1+2"'
-RUN sh -c "./assimilate scrapscript.com"
+RUN ./scrapscript.com apply "1+2"
 
 # Set up the container
 FROM scratch as main

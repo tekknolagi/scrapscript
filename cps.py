@@ -79,6 +79,19 @@ class Fun(CPSExpr):
 
 
 @dataclasses.dataclass
+class Cont(CPSExpr):
+    args: list[Var]
+    body: CPSExpr
+    annotations: dict[str, object] = dataclasses.field(default_factory=dict)
+    id: int = dataclasses.field(default_factory=lambda: next(fun_counter), compare=False)
+
+    def __repr__(self) -> str:
+        args = " ".join(map(repr, self.args))
+        annotations = f" {self.annotations}" if self.annotations else ""
+        return f"(cont ({args}){annotations} {self.body!r})"
+
+
+@dataclasses.dataclass
 class App(CPSExpr):
     fun: CPSExpr
     args: list[CPSExpr]
@@ -95,7 +108,7 @@ def gensym() -> str:
 
 
 def cont(arg: Var, body: CPSExpr) -> CPSExpr:
-    return Fun([arg], body)
+    return Cont([arg], body)
 
 
 def cps(exp: Object, k: CPSExpr) -> CPSExpr:
@@ -150,12 +163,12 @@ class CPSTests(unittest.TestCase):
     def test_binop(self) -> None:
         self.assertEqual(
             cps(parse(tokenize("1 + 2")), Var("k")),
-            # ((fun (v0) ((fun (v1) (+ v0 v1 k)) 2)) 1)
+            # ((cont (v0) ((cont (v1) (+ v0 v1 k)) 2)) 1)
             App(
-                Fun(
+                Cont(
                     [Var("v0")],
                     App(
-                        Fun(
+                        Cont(
                             [Var("v1")],
                             Prim("+", [Var("v0"), Var("v1"), Var("k")]),
                         ),
@@ -170,18 +183,18 @@ class CPSTests(unittest.TestCase):
         exp = parse(tokenize("a + b . a = 1 . b = 2"))
         self.assertEqual(
             cps(exp, Var("k")),
-            # ((fun (b) ((fun (a) ((fun (v0) ((fun (v1) (+ v0 v1 k)) b)) a)) 1)) 2)
+            # ((cont (b) ((cont (a) ((cont (v0) ((cont (v1) (+ v0 v1 k)) b)) a)) 1)) 2)
             App(
-                Fun(
+                Cont(
                     [Var("b")],
                     App(
-                        Fun(
+                        Cont(
                             [Var("a")],
                             App(
-                                Fun(
+                                Cont(
                                     [Var("v0")],
                                     App(
-                                        Fun(
+                                        Cont(
                                             [Var("v1")],
                                             Prim("+", [Var("v0"), Var("v1"), Var("k")]),
                                         ),
@@ -204,8 +217,8 @@ class CPSTests(unittest.TestCase):
     def test_variant(self) -> None:
         self.assertEqual(
             cps(parse(tokenize("# a_tag 123")), Var("k")),
-            # ((fun (v0) ($tag 'a_tag' v0 k)) 123)
-            App(Fun([Var("v0")], Prim("tag", [Atom("a_tag"), Var("v0"), Var("k")])), [Atom(123)]),
+            # ((cont (v0) ($tag 'a_tag' v0 k)) 123)
+            App(Cont([Var("v0")], Prim("tag", [Atom("a_tag"), Var("v0"), Var("k")])), [Atom(123)]),
         )
 
 
@@ -221,10 +234,11 @@ def alphatise_(exp: CPSExpr, env: dict[str, str]) -> CPSExpr:
         return Var(env.get(exp.name, exp.name))
     if isinstance(exp, Prim):
         return Prim(exp.op, [alphatise_(arg, env) for arg in exp.args])
-    if isinstance(exp, Fun):
+    if isinstance(exp, (Fun, Cont)):
+        ty = type(exp)
         new_env = {arg_name(arg): gensym() for arg in exp.args}
         new_body = alphatise_(exp.body, {**env, **new_env})
-        return Fun([Var(new_env[arg_name(arg)]) for arg in exp.args], new_body)
+        return ty([Var(new_env[arg_name(arg)]) for arg in exp.args], new_body)
     if isinstance(exp, App):
         return App(alphatise_(exp.fun, env), [alphatise_(arg, env) for arg in exp.args])
     raise NotImplementedError(f"alphatise: {exp}")
@@ -262,6 +276,16 @@ class AlphatiseTests(unittest.TestCase):
             ),
         )
 
+    def test_cont(self) -> None:
+        exp = Cont([Var("x"), Var("y")], Prim("+", [Var("x"), Var("y"), Var("z")]))
+        self.assertEqual(
+            alphatise(exp),
+            Cont(
+                [Var("v0"), Var("v1")],
+                Prim("+", [Var("v0"), Var("v1"), Var("z")]),
+            ),
+        )
+
     def test_app(self) -> None:
         exp = App(Var("f"), [Var("x"), Var("y")])
         self.assertEqual(alphatise_(exp, {"x": "v0", "y": "v1"}), App(Var("f"), [Var("v0"), Var("v1")]))
@@ -275,10 +299,11 @@ def subst(exp: CPSExpr, env: dict[str, CPSExpr]) -> CPSExpr:
         return env.get(exp.name, exp)
     if isinstance(exp, Prim):
         return Prim(exp.op, [subst(arg, env) for arg in exp.args])
-    if isinstance(exp, Fun):
+    if isinstance(exp, (Fun, Cont)):
+        ty = type(exp)
         new_env = {arg_name(arg): Var(gensym()) for arg in exp.args}
         new_body = subst(exp.body, {**env, **new_env})
-        return Fun([Var(new_env[arg_name(arg)].name) for arg in exp.args], new_body)
+        return ty([Var(new_env[arg_name(arg)].name) for arg in exp.args], new_body)
     if isinstance(exp, App):
         return App(subst(exp.fun, env), [subst(arg, env) for arg in exp.args])
     raise NotImplementedError(f"subst: {exp}")
@@ -333,7 +358,7 @@ def census(exp: CPSExpr) -> Counter[str]:
         return Counter({exp.name: 1})
     if isinstance(exp, Prim):
         return sum((census(arg) for arg in exp.args), Counter())
-    if isinstance(exp, Fun):
+    if isinstance(exp, (Fun, Cont)):
         return census(exp.body)
     if isinstance(exp, App):
         return sum((census(arg) for arg in exp.args), census(exp.fun))
@@ -382,9 +407,9 @@ def opt(exp: CPSExpr) -> CPSExpr:
                 consts = [Atom(sum(c.value for c in consts))]  # type: ignore
                 args = consts + vars
         return Prim(exp.op, args + [cont])
-    if isinstance(exp, App) and isinstance(exp.fun, Fun):
+    if isinstance(exp, App) and isinstance(exp.fun, (Fun, Cont)):
         fun = opt(exp.fun)
-        assert isinstance(fun, Fun)
+        assert isinstance(fun, (Fun, Cont))
         formals = exp.fun.args
         actuals = [opt(arg) for arg in exp.args]
         if len(formals) != len(actuals):
@@ -401,9 +426,10 @@ def opt(exp: CPSExpr) -> CPSExpr:
         fun = opt(exp.fun)
         args = [opt(arg) for arg in exp.args]
         return App(fun, args)
-    if isinstance(exp, Fun):
+    if isinstance(exp, (Fun, Cont)):
         body = opt(exp.body)
         return Fun(exp.args, body)
+    raise NotImplementedError(f"opt: {exp}")
     return exp
 
 
@@ -440,7 +466,7 @@ class OptTests(unittest.TestCase):
         exp = parse(tokenize("1 + 2 + c"))
         self.assertEqual(
             spin_opt(cps(exp, Var("k"))),
-            Prim("+", [Atom(2), Var("c"), Fun([Var("v6")], Prim("+", [Atom(1), Var("v6"), Var("k")]))]),
+            Prim("+", [Atom(2), Var("c"), Cont([Var("v6")], Prim("+", [Atom(1), Var("v6"), Var("k")]))]),
         )
 
     def test_simple_fun(self) -> None:
@@ -545,13 +571,13 @@ class OptTests(unittest.TestCase):
         exp = parse(tokenize("[1+2, x, 3+4]"))
         self.assertEqual(
             spin_opt(cps(exp, Var("k"))),
-            # ($cons x [7, []] (fun (v46) ($cons 3 v46 k)))
+            # ($cons x [7, []] (cont (v46) ($cons 3 v46 k)))
             Prim(
                 "cons",
                 [
                     Var("x"),
                     Atom([Atom(7), Atom([])]),
-                    Fun([Var("v46")], Prim("cons", [Atom(3), Var("v46"), Var("k")])),
+                    Cont([Var("v46")], Prim("cons", [Atom(3), Var("v46"), Var("k")])),
                 ],
             ),
         )

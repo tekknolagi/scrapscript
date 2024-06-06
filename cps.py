@@ -379,8 +379,8 @@ def opt(exp: CPSExpr) -> CPSExpr:
                 # TODO(max): Only sum ints
                 consts = [Atom(sum(c.value for c in consts))]  # type: ignore
                 args = consts + vars
-        if len(args) == 1:
-            return App(cont, args)
+            if len(args) == 1:
+                return App(cont, args)
         return Prim(exp.op, args + [cont])
     if isinstance(exp, App) and isinstance(exp.fun, Fun):
         fun = opt(exp.fun)

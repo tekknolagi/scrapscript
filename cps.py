@@ -1,6 +1,8 @@
 import dataclasses
 import itertools
 import unittest
+import operator
+from functools import reduce
 from collections import Counter
 from scrapscript import (
     parse,
@@ -406,6 +408,14 @@ def opt(exp: CPSExpr) -> CPSExpr:
                 # TODO(max): Only sum ints
                 consts = [Atom(sum(c.value for c in consts))]  # type: ignore
                 args = consts + vars
+        if exp.op == "*":
+            if len(args) == 1:
+                return App(cont, args)
+            consts = [arg for arg in args if isinstance(arg, Atom)]
+            vars = [arg for arg in args if not isinstance(arg, Atom)]
+            if consts:
+                consts = [Atom(reduce(operator.mul, (c.value for c in consts), 1))]
+                args = consts + vars
         return Prim(exp.op, args + [cont])
     if isinstance(exp, App) and isinstance(exp.fun, (Fun, Cont)):
         fun = opt(exp.fun)
@@ -453,6 +463,10 @@ class OptTests(unittest.TestCase):
     def test_prim_spin(self) -> None:
         exp = Prim("+", [Atom(1), Atom(2), Atom(3), Var("k")])
         self.assertEqual(spin_opt(exp), App(Var("k"), [Atom(6)]))
+
+    def test_prim_mul_spin(self) -> None:
+        exp = Prim("*", [Atom(2), Atom(3), Atom(4), Var("k")])
+        self.assertEqual(spin_opt(exp), App(Var("k"), [Atom(24)]))
 
     def test_prim_var(self) -> None:
         exp = Prim("+", [Atom(1), Var("x"), Atom(3), Var("k")])

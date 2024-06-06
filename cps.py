@@ -373,14 +373,14 @@ def opt(exp: CPSExpr) -> CPSExpr:
             if all(isinstance(arg, Atom) for arg in args):
                 return App(cont, [Atom(args)])
         if exp.op == "+":
+            if len(args) == 1:
+                return App(cont, args)
             consts = [arg for arg in args if isinstance(arg, Atom)]
             vars = [arg for arg in args if not isinstance(arg, Atom)]
             if consts:
                 # TODO(max): Only sum ints
                 consts = [Atom(sum(c.value for c in consts))]  # type: ignore
                 args = consts + vars
-            if len(args) == 1:
-                return App(cont, args)
         return Prim(exp.op, args + [cont])
     if isinstance(exp, App) and isinstance(exp.fun, Fun):
         fun = opt(exp.fun)
@@ -422,7 +422,11 @@ class OptTests(unittest.TestCase):
 
     def test_prim(self) -> None:
         exp = Prim("+", [Atom(1), Atom(2), Atom(3), Var("k")])
-        self.assertEqual(opt(exp), App(Var("k"), [Atom(6)]))
+        self.assertEqual(opt(exp), Prim("+", [Atom(6), Var("k")]))
+
+    def test_prim_spin(self) -> None:
+        exp = Prim("+", [Atom(1), Atom(2), Atom(3), Var("k")])
+        self.assertEqual(spin_opt(exp), App(Var("k"), [Atom(6)]))
 
     def test_prim_var(self) -> None:
         exp = Prim("+", [Atom(1), Var("x"), Atom(3), Var("k")])

@@ -392,6 +392,7 @@ def opt(exp: CPSExpr) -> CPSExpr:
         cen = census(fun.body)
         # Idea: only substitute if the substituting would not blow up the size
         # of the expression
+        # TODO(max): Partial substitution for parameters that pass the guard
         if all(cen[arg_name(formal)] < 2 or is_small(actual) for formal, actual in zip(formals, actuals)):
             new_env = {arg_name(formal): actual for formal, actual in zip(formals, actuals)}
             return subst(fun.body, new_env)

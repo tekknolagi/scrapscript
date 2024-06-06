@@ -682,12 +682,12 @@ def classify_lambdas(exp: CPSExpr) -> None:
             return
         case Var(_):
             return
-        case App(Fun(_, body) as lam, args):
+        case App(Fun(_, body) | Cont(_, body) as lam, args):
             lam.annotations["kind"] = "open"
             classify_lambdas(body)
             for arg in args:
                 classify_lambdas(arg)
-        case Prim(_, [*args, Fun(_, _) as lam]):
+        case Prim(_, [*args, Fun(_, _) | Cont(_, _) as lam]):
             lam.annotations["kind"] = "open"
             for arg in args:
                 classify_lambdas(arg)
@@ -695,7 +695,7 @@ def classify_lambdas(exp: CPSExpr) -> None:
             classify_lambdas(f)
             for arg in args:
                 classify_lambdas(arg)
-        case Fun(_, body) as lam:
+        case Fun(_, body) | Cont(_, body) as lam:
             lam.annotations["kind"] = "closed"
             classify_lambdas(body)
         case Prim(_, args):

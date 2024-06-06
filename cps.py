@@ -74,7 +74,8 @@ class Fun(CPSExpr):
 
     def __repr__(self) -> str:
         args = " ".join(map(repr, self.args))
-        annotations = f" {self.annotations}" if self.annotations else ""
+        annotations = " ".join(f"[{k} {v}]" for k, v in self.annotations.items() if v)
+        annotations = f" {annotations}"  # if self.annotations else ""
         return f"(fun ({args}){annotations} {self.body!r})"
 
 
@@ -87,7 +88,8 @@ class Cont(CPSExpr):
 
     def __repr__(self) -> str:
         args = " ".join(map(repr, self.args))
-        annotations = f" {self.annotations}" if self.annotations else ""
+        annotations = " ".join(f"[{k} {v}]" for k, v in self.annotations.items() if v)
+        annotations = f" {annotations}"  # if self.annotations else ""
         return f"(cont ({args}){annotations} {self.body!r})"
 
 
@@ -622,7 +624,7 @@ def free_in(exp: CPSExpr) -> set[str]:
             return {name}
         case Prim(_, args):
             return {name for arg in args for name in free_in(arg)}
-        case Fun(args, body):
+        case Fun(args, body) | Cont(args, body):
             return free_in(body) - {arg_name(arg) for arg in args}
         case App(fun, args):
             return free_in(fun) | {name for arg in args for name in free_in(arg)}
@@ -663,6 +665,10 @@ class FreeInTests(unittest.TestCase):
 
     def test_fun(self) -> None:
         exp = Fun([Var("x"), Var("y")], Prim("+", [Var("x"), Var("y"), Var("z")]))
+        self.assertEqual(free_in(exp), {"z"})
+
+    def test_cont(self) -> None:
+        exp = Cont([Var("x"), Var("y")], Prim("+", [Var("x"), Var("y"), Var("z")]))
         self.assertEqual(free_in(exp), {"z"})
 
     def test_fun_annotate(self) -> None:

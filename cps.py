@@ -645,6 +645,7 @@ class FreeInTests(unittest.TestCase):
 
 
 def classify_lambdas(exp: CPSExpr) -> None:
+    # TODO(max): Find first-order lambdas
     match exp:
         case Atom(_):
             return

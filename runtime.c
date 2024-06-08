@@ -581,40 +581,33 @@ void variant_set(struct object* variant, struct object* value) {
   as_variant(variant)->value = value;
 }
 
-#define MAX_HANDLES 20
+#define MAX_HANDLES 1024
 
-struct handles {
-  // TODO(max): Figure out how to make this a flat linked list with whole
-  // chunks popped off at function return
-  struct object** stack[MAX_HANDLES];
-  size_t stack_pointer;
-  struct handles* next;
+struct handle_scope {
+  struct object*** base;
 };
 
-static struct handles* handles = NULL;
+static struct object** handle_stack[MAX_HANDLES];
+static struct object*** handles = handle_stack;
+static struct object*** handles_end = &handle_stack[MAX_HANDLES];
 
 void pop_handles(void* local_handles) {
-  (void)local_handles;
-  handles = handles->next;
+  handles = ((struct handle_scope*)local_handles)->base;
 }
 
 #define HANDLES()                                                              \
-  struct handles local_handles __attribute__((__cleanup__(pop_handles)));      \
-  local_handles.next = handles;                                                \
-  local_handles.stack_pointer = 0;                                             \
-  handles = &local_handles
+  struct handle_scope local_handles __attribute__((__cleanup__(pop_handles))); \
+  local_handles.base = handles;
 #define GC_PROTECT(x)                                                          \
-  assert(local_handles.stack_pointer < MAX_HANDLES);                           \
-  local_handles.stack[local_handles.stack_pointer++] = (struct object**)(&x)
+  assert(handles != handles_end);                                              \
+  (*handles++) = (struct object**)(&x)
 #define GC_HANDLE(type, name, val)                                             \
   type name = val;                                                             \
   GC_PROTECT(name)
 
 void trace_roots(struct gc_heap* heap, VisitFn visit) {
-  for (struct handles* h = handles; h; h = h->next) {
-    for (size_t i = 0; i < h->stack_pointer; i++) {
-      visit(h->stack[i], heap);
-    }
+  for (struct object*** h = handle_stack; h != handles; h++) {
+    visit(*h, heap);
   }
 }
 

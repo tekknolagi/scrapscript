@@ -92,6 +92,9 @@ static ALWAYS_INLINE struct object* mksmallstring(const char* data,
   assert(small_string_length(result_obj) == length);
   return result_obj;
 }
+bool is_empty_string(struct object* obj) {
+  return obj == mksmallstring("", 0);
+}
 static ALWAYS_INLINE char small_string_at(struct object* obj, uword index) {
   assert(is_small_string(obj));
   assert(index < small_string_length(obj));
@@ -674,15 +677,15 @@ static ALWAYS_INLINE struct object* small_string_concat(struct object* a,
   return mksmallstring(data, a_size + b_size);
 }
 
-struct object* string_concat(struct object* a, struct object* b) {
-  uword a_size = string_length(a);
-  if (a_size == 0) {
+ALWAYS_INLINE struct object* string_concat(struct object* a, struct object* b) {
+  if (is_empty_string(a)) {
     return b;
   }
-  uword b_size = string_length(b);
-  if (b_size == 0) {
+  if (is_empty_string(b)) {
     return a;
   }
+  uword a_size = string_length(a);
+  uword b_size = string_length(b);
   if (a_size + b_size <= kMaxSmallStringLength) {
     return small_string_concat(a, b);
   }

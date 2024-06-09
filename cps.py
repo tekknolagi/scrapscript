@@ -105,8 +105,8 @@ class App(CPSExpr):
 cps_counter = itertools.count()
 
 
-def gensym() -> str:
-    return f"v{next(cps_counter)}"
+def gensym(stem="v") -> str:
+    return f"{stem}{next(cps_counter)}"
 
 
 def cont(arg: Var, body: CPSExpr) -> CPSExpr:
@@ -136,7 +136,7 @@ def cps(exp: Object, k: CPSExpr) -> CPSExpr:
     if isinstance(exp, Function):
         assert isinstance(exp.arg, ScrapVar)
         arg = Var(exp.arg.name)
-        subk = Var(gensym())
+        subk = Var(gensym("k"))
         return App(k, [Fun([arg, subk], cps(exp.body, subk))])
     if isinstance(exp, List) and not exp.items:
         return App(k, [Atom([])])
@@ -476,13 +476,13 @@ class OptTests(unittest.TestCase):
         exp = cps(parse(tokenize("_ -> 1")), Var("k"))
         self.assertEqual(
             spin_opt(exp),
-            # (k (fun (_ v0) (v0 1)))
+            # (k (fun (_ k0) (k0 1)))
             App(
                 Var("k"),
                 [
                     Fun(
-                        [Var("_"), Var("v0")],
-                        App(Var("v0"), [Atom(1)]),
+                        [Var("_"), Var("k0")],
+                        App(Var("k0"), [Atom(1)]),
                     )
                 ],
             ),
@@ -492,13 +492,13 @@ class OptTests(unittest.TestCase):
         exp = cps(parse(tokenize("_ -> 1 + 2 + 3")), Var("k"))
         self.assertEqual(
             spin_opt(exp),
-            # (k (fun (_ v0) (v0 6)))
+            # (k (fun (_ k0) (k0 6)))
             App(
                 Var("k"),
                 [
                     Fun(
-                        [Var("_"), Var("v0")],
-                        App(Var("v0"), [Atom(6)]),
+                        [Var("_"), Var("k0")],
+                        App(Var("k0"), [Atom(6)]),
                     )
                 ],
             ),
@@ -508,18 +508,18 @@ class OptTests(unittest.TestCase):
         exp = parse(tokenize("x -> y -> x + y"))
         self.assertEqual(
             spin_opt(cps(exp, Var("k"))),
-            # (k (fun (x v0) (v0 (fun (y v1) ($+ x y v1)))))
+            # (k (fun (x k0) (k0 (fun (y k1) ($+ x y k1)))))
             App(
                 Var("k"),
                 [
                     Fun(
-                        [Var("x"), Var("v0")],
+                        [Var("x"), Var("k0")],
                         App(
-                            Var("v0"),
+                            Var("k0"),
                             [
                                 Fun(
-                                    [Var("y"), Var("v1")],
-                                    Prim("+", [Var("x"), Var("y"), Var("v1")]),
+                                    [Var("y"), Var("k1")],
+                                    Prim("+", [Var("x"), Var("y"), Var("k1")]),
                                 )
                             ],
                         ),
@@ -736,9 +736,17 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(exp.kind(), "closed")
 
 
+def is_cont_var(name: str) -> bool:
+    return name.startswith("k")
+
+
 def make_closures_explicit(exp: CPSExpr, replacements: dict[str, CPSExpr]) -> CPSExpr:
     def rec(exp: CPSExpr) -> CPSExpr:
         return make_closures_explicit(exp, replacements)
+
+    # def process_arg(arg: CPSExpr) -> CPSExpr:
+    #     match arg:
+    #         case Fun
 
     match exp:
         case Atom(_):
@@ -749,12 +757,17 @@ def make_closures_explicit(exp: CPSExpr, replacements: dict[str, CPSExpr]) -> CP
             return exp
         case Prim(op, args):
             return Prim(op, [rec(arg) for arg in args])
-        case Fun(args, body):
-            freevars = sorted(free_in(exp))
-            this = Var("this")
-            new_replacements = {fv: Prim("clo", [this, Atom(idx)]) for idx, fv in enumerate(freevars)}
-            body = make_closures_explicit(body, {**replacements, **new_replacements})
-            return Fun([this] + args, body)
+        # case Fun(args, body):
+        #     freevars = sorted(free_in(exp))
+        #     this = Var("this")
+        #     new_replacements = {fv: Prim("clo", [this, Atom(idx)]) for idx, fv in enumerate(freevars)}
+        #     body = make_closures_explicit(body, {**replacements, **new_replacements})
+        #     return Fun([this] + args, body)
+        case App(Var(cont), args) if is_cont_var(cont):
+            return Prim("return", [Prim("return-address", [Var(cont)])]+[rec(arg) for arg in args])
+        case App(Var(_) as clo, args):
+            return App(Prim("clo-fn", [clo]), [clo] + [rec(arg) for arg in args])
+            return App(rec(fun), [rec(arg) for arg in args])
         case App(fun, args):
             return App(rec(fun), [rec(arg) for arg in args])
     raise NotImplementedError(f"make_closures_explicit: {exp}")
@@ -795,33 +808,18 @@ class ClosureTests(unittest.TestCase):
     def test_app(self) -> None:
         exp = App(Var("f"), [Atom(42)])
         # (f 42)
-        self.assertEqual(make_closures_explicit(exp, {}), App(Var("f"), [Atom(42)]))
+        self.assertEqual(
+            make_closures_explicit(exp, {}),
+            # (($clo-fn f) f 42)
+            App(Prim("clo-fn", [Var("f")]), [Var("f"), Atom(42)]),
+        )
 
     def test_add_function(self) -> None:
         exp = cps(parse(tokenize("x -> y -> x + y")), Var("k"))
         exp = spin_opt(exp)
-        # (k (fun (this x v2)
-        #      (v2 (fun (this y v3)
-        #            ($+ ($clo this 0) y v3)))))
         self.assertEqual(
             make_closures_explicit(exp, {}),
-            App(
-                Var("k"),
-                [
-                    Fun(
-                        [Var("this"), Var("x"), Var("v2")],
-                        App(
-                            Var("v2"),
-                            [
-                                Fun(
-                                    [Var("this"), Var("y"), Var("v3")],
-                                    Prim("+", [Prim("clo", [Var("this"), Atom(0)]), Var("y"), Var("v3")]),
-                                )
-                            ],
-                        ),
-                    )
-                ],
-            ),
+            1,
         )
 
 
@@ -934,6 +932,18 @@ class ClosureTests(unittest.TestCase):
 #         self.assertEqual(code, "return mkclosure(fun0);")
 
 
+def compile_exp(exp: Object) -> CPSExpr:
+    prog = spin_opt(alphatise(cps(exp, Var("k"))))
+    annotate_free_in(prog)
+    classify_lambdas(prog)
+    return prog
+
+
 if __name__ == "__main__":
     __import__("sys").modules["unittest.util"]._MAX_LENGTH = 999999999
     unittest.main()
+    with open("examples/0_home/combinators.scrap", "r") as f:
+        source = f.read()
+
+    exp = parse(tokenize(source))
+    print(compile_exp(exp))

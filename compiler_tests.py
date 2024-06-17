@@ -54,8 +54,14 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_record(self) -> None:
         self.assertEqual(self._run("{a = 1, b = 2}"), "{a = 1, b = 2}\n")
 
+    def test_record_builder(self) -> None:
+        self.assertEqual(self._run("f 1 2 . f = x -> y -> {a = x, b = y}"), "{a = 1, b = 2}\n")
+
     def test_record_access(self) -> None:
         self.assertEqual(self._run("rec@a . rec = {a = 1, b = 2}"), "1\n")
+
+    def test_record_builder_access(self) -> None:
+        self.assertEqual(self._run("(f 1 2)@a . f = x -> y -> {a = x, b = y}"), "1\n")
 
     def test_hole(self) -> None:
         self.assertEqual(self._run("()"), "()\n")

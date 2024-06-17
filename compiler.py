@@ -305,6 +305,10 @@ class Compiler:
             self.variant_tag(exp.tag)
             value = self._emit_const(exp.value)
             return self._const_obj("variant", "TAG_VARIANT", f".tag=Tag_{exp.tag}, .value={value}")
+        if isinstance(exp, Record):
+            values = {self.record_key(key): self._emit_const(value) for key, value in exp.data.items()}
+            fields = ",\n".join(f"{{.key={key}, .value={value} }}" for key, value in values.items())
+            return self._const_obj("record", "TAG_RECORD", f".size={len(values)}, .fields={{ {fields} }}")
         raise NotImplementedError(f"const {exp}")
 
     def compile(self, env: Env, exp: Object) -> str:

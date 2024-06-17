@@ -367,21 +367,53 @@ def compile_to_string(source: str, debug: bool) -> str:
     main_fn.code.append(f"return {result};")
 
     f = io.StringIO()
+    constants = [
+        ("uword", "kKiB", 1024),
+        ("uword", "kMiB", "kKiB * kKiB"),
+        ("uword", "kGiB", "kKiB * kKiB * kKiB"),
+        ("uword", "kPageSize", "4 * kKiB"),
+        ("uword", "kSmallIntTagBits", 1),
+        ("uword", "kPrimaryTagBits", 3),
+        ("uword", "kImmediateTagBits", 5),
+        ("uword", "kSmallIntTagMask", "(1 << kSmallIntTagBits) - 1"),
+        ("uword", "kPrimaryTagMask", "(1 << kPrimaryTagBits) - 1"),
+        ("uword", "kImmediateTagMask", "(1 << kImmediateTagBits) - 1"),
+        ("uword", "kWordSize", "sizeof(word)"),
+        ("uword", "kMaxSmallStringLength", "kWordSize - 1"),
+        ("uword", "kBitsPerByte", 8),
+        # Up to the five least significant bits are used to tag the object's layout.
+        # The three low bits make up a primary tag, used to differentiate gc_obj
+        # from immediate objects. All even tags map to SmallInt, which is
+        # optimized by checking only the lowest bit for parity.
+        ("uword", "kSmallIntTag", 0),  # 0b****0
+        ("uword", "kHeapObjectTag", 1),  # 0b**001
+        ("uword", "kEmptyListTag", 5),  # 0b00101
+        ("uword", "kHoleTag", 7),  # 0b00111
+        ("uword", "kSmallStringTag", 13),  # 0b01101
+        ("uword", "kBitsPerPointer", "kBitsPerByte * kWordSize"),
+        ("word", "kSmallIntBits", "kBitsPerPointer - kSmallIntTagBits"),
+        ("word", "kSmallIntMinValue", "-(((word)1) << (kSmallIntBits - 1))"),
+        ("word", "kSmallIntMaxValue", "(((word)1) << (kSmallIntBits - 1)) - 1"),
+    ]
+    for type_, name, value in constants:
+        print(f"#define {name} ({type_})({value})", file=f)
     # The runtime is in the same directory as this file
     dirname = os.path.dirname(__file__)
     with open(os.path.join(dirname, "runtime.c"), "r") as runtime:
         print(runtime.read(), file=f)
     print("#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct object*, name, exp)", file=f)
-    # Declare all functions
-    print("const char* record_keys[] = {", file=f)
-    for key in compiler.record_keys:
-        print(f'"{key}",', file=f)
-    print("};", file=f)
     if compiler.record_keys:
+        print("const char* record_keys[] = {", file=f)
+        for key in compiler.record_keys:
+            print(f'"{key}",', file=f)
+        print("};", file=f)
         print("enum {", file=f)
         for key, idx in compiler.record_keys.items():
             print(f"Record_{key} = {idx},", file=f)
         print("};", file=f)
+    else:
+        # Pacify the C compiler
+        print("const char* record_keys[] = { NULL };", file=f)
     if compiler.variant_tags:
         print("const char* variant_names[] = {", file=f)
         for key in compiler.variant_tags:
@@ -394,6 +426,7 @@ def compile_to_string(source: str, debug: bool) -> str:
     else:
         # Pacify the C compiler
         print("const char* variant_names[] = { NULL };", file=f)
+    # Declare all functions
     for function in compiler.functions:
         print(function.decl() + ";", file=f)
     for function in compiler.functions:

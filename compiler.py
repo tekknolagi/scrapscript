@@ -301,6 +301,10 @@ class Compiler:
             return self._const_obj(
                 "heap_string", "TAG_STRING", f".size={len(exp.value)}, .data={json.dumps(exp.value)}"
             )
+        if isinstance(exp, Variant):
+            self.variant_tag(exp.tag)
+            value = self._emit_const(exp.value)
+            return self._const_obj("variant", "TAG_VARIANT", f".tag=Tag_{exp.tag}, .value={value}")
         raise NotImplementedError(f"const {exp}")
 
     def compile(self, env: Env, exp: Object) -> str:

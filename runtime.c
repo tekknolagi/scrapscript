@@ -670,7 +670,7 @@ static ALWAYS_INLINE struct object* small_string_concat(struct object* a,
   return mksmallstring(data, a_size + b_size);
 }
 
-ALWAYS_INLINE struct object* string_concat(struct object* a, struct object* b) {
+ALWAYS_INLINE static struct object* string_concat(struct object* a, struct object* b) {
   if (is_empty_string(a)) {
     return b;
   }

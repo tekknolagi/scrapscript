@@ -24,36 +24,9 @@ struct gc_obj {
   uintptr_t payload[0];
 };
 
-const uword kKiB = 1024;
-const uword kMiB = kKiB * kKiB;
-const uword kGiB = kKiB * kKiB * kKiB;
-
-const uword kPageSize = 4 * kKiB;
-
 // The low bit of the pointer is 1 if it's a heap object and 0 if it's an
 // immediate integer
-struct object {};
-
-// Up to the five least significant bits are used to tag the object's layout.
-// The three low bits make up a primary tag, used to differentiate gc_obj
-// from immediate objects. All even tags map to SmallInt, which is
-// optimized by checking only the lowest bit for parity.
-static const uword kSmallIntTagBits = 1;
-static const uword kPrimaryTagBits = 3;
-static const uword kImmediateTagBits = 5;
-static const uword kSmallIntTagMask = (1 << kSmallIntTagBits) - 1;
-static const uword kPrimaryTagMask = (1 << kPrimaryTagBits) - 1;
-static const uword kImmediateTagMask = (1 << kImmediateTagBits) - 1;
-
-static const uword kWordSize = sizeof(word);
-static const uword kMaxSmallStringLength = kWordSize - 1;
-static const uword kBitsPerByte = 8;
-
-static const uword kSmallIntTag = 0;      // 0b****0
-static const uword kHeapObjectTag = 1;    // 0b**001
-static const uword kEmptyListTag = 5;     // 0b00101
-static const uword kHoleTag = 7;          // 0b00111
-static const uword kSmallStringTag = 13;  // 0b01101
+struct object;
 
 bool is_small_int(struct object* obj) {
   return (((uword)obj) & kSmallIntTagMask) == kSmallIntTag;
@@ -229,8 +202,13 @@ void collect(struct gc_heap* heap) {
 #endif
 }
 
+#if defined(__builtin_expect)
 #define LIKELY(x) __builtin_expect(!!(x), 1)
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
+#else
+#define LIKELY(x) x
+#define UNLIKELY(x) x
+#endif
 #define ALLOCATOR __attribute__((__malloc__))
 
 static NEVER_INLINE ALLOCATOR struct object* allocate_slow_path(
@@ -375,11 +353,6 @@ size_t trace_heap_object(struct gc_obj* obj, struct gc_heap* heap,
   }
   return heap_object_size(obj);
 }
-
-static const uword kBitsPerPointer = kBitsPerByte * kWordSize;
-static const word kSmallIntBits = kBitsPerPointer - kSmallIntTagBits;
-static const word kSmallIntMinValue = -(((word)1) << (kSmallIntBits - 1));
-static const word kSmallIntMaxValue = (((word)1) << (kSmallIntBits - 1)) - 1;
 
 bool smallint_is_valid(word value) {
   return (value >= kSmallIntMinValue) && (value <= kSmallIntMaxValue);

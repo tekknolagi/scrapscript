@@ -272,6 +272,8 @@ class Compiler:
             return all(self._is_const(value) for value in exp.data.values())
         if isinstance(exp, List):
             return all(self._is_const(item) for item in exp.items)
+        if isinstance(exp, Hole):
+            return True
         return False
 
     def _const_obj(self, type: str, tag: str, contents: str) -> str:
@@ -286,6 +288,8 @@ class Compiler:
 
     def _emit_const(self, exp: Object) -> str:
         assert self._is_const(exp), f"not a constant {exp}"
+        if isinstance(exp, Hole):
+            return "((struct object*)kHoleTag)"
         if isinstance(exp, Int):
             # TODO(max): Bignum
             return f"(struct object*)(((uword){exp.value} << kSmallIntTagBits))"

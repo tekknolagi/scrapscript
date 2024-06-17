@@ -75,6 +75,12 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_function(self) -> None:
         self.assertEqual(self._run("f 1 . f = x -> x + 1"), "2\n")
 
+    def test_anonymous_function_as_value(self) -> None:
+        self.assertEqual(self._run("x -> x"), "<closure>\n")
+
+    def test_anonymous_function(self) -> None:
+        self.assertEqual(self._run("((x -> x + 1) 1)"), "2\n")
+
     def test_match_int(self) -> None:
         self.assertEqual(self._run("f 3 . f = | 1 -> 2 | 3 -> 4"), "4\n")
 

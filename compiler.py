@@ -66,6 +66,7 @@ class Compiler:
         self.record_builders: Dict[Tuple[str, ...], CompiledFunction] = {}
         self.variant_tags: Dict[str, int] = {}
         self.debug: bool = False
+        self.const_heap: typing.List[str] = []
 
     def record_key(self, key: str) -> str:
         if key not in self.record_keys:
@@ -260,7 +261,50 @@ class Compiler:
         self._debug("collect(heap);")
         return name
 
+    def _is_const(self, exp: Object) -> bool:
+        if isinstance(exp, Int):
+            return True
+        if isinstance(exp, String):
+            return True
+        if isinstance(exp, Variant):
+            return self._is_const(exp.value)
+        if isinstance(exp, Record):
+            return all(self._is_const(value) for value in exp.data.values())
+        if isinstance(exp, List):
+            return all(self._is_const(item) for item in exp.items)
+        return False
+
+    def _const_obj(self, type: str, tag: str, contents: str) -> str:
+        result = self.gensym("const")
+        section = '__attribute__((section("const_heap")))'
+        self.const_heap.append(f"{section} struct {type} {result} = {{.HEAD.tag={tag}, {contents} }};")
+        self.const_heap.append(f"struct object* const {result}_ptr = (struct object*)((uword)&{result} + 1);")
+        return f"{result}_ptr"
+
+    def _const_cons(self, first: str, rest: str) -> str:
+        return self._const_obj("list", "TAG_LIST", f".first={first}, .rest={rest}")
+
+    def _emit_const(self, exp: Object) -> str:
+        assert self._is_const(exp), f"not a constant {exp}"
+        if isinstance(exp, Int):
+            return f"(struct object*)(((uword){exp.value} << kSmallIntTagBits))"
+        if isinstance(exp, List):
+            items = [self._emit_const(item) for item in exp.items]
+            result = "((struct object*)kEmptyListTag)"
+            for item in reversed(items):
+                result = self._const_cons(item, result)
+            return result
+        if isinstance(exp, String):
+            if len(exp.value) < 8:
+                raise NotImplementedError("small strings")
+            return self._const_obj(
+                "heap_string", "TAG_STRING", f".size={len(exp.value)}, .data={json.dumps(exp.value)}"
+            )
+        raise NotImplementedError(f"const {exp}")
+
     def compile(self, env: Env, exp: Object) -> str:
+        if self._is_const(exp):
+            return self._emit_const(exp)
         if isinstance(exp, Int):
             # TODO(max): Bignum
             self._debug("collect(heap);")
@@ -429,6 +473,9 @@ def compile_to_string(source: str, debug: bool) -> str:
     # Declare all functions
     for function in compiler.functions:
         print(function.decl() + ";", file=f)
+    # Emit the const heap
+    for line in compiler.const_heap:
+        print(line, file=f)
     for function in compiler.functions:
         print(f"{function.decl()} {{", file=f)
         for line in function.code:

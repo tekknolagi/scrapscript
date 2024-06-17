@@ -287,6 +287,7 @@ class Compiler:
     def _emit_const(self, exp: Object) -> str:
         assert self._is_const(exp), f"not a constant {exp}"
         if isinstance(exp, Int):
+            # TODO(max): Bignum
             return f"(struct object*)(((uword){exp.value} << kSmallIntTagBits))"
         if isinstance(exp, List):
             items = [self._emit_const(item) for item in exp.items]

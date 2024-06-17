@@ -147,7 +147,7 @@ static uintptr_t align_size(uintptr_t size) {
 }
 
 #ifndef MEMORY_SIZE
-#define MEMORY_SIZE 1024
+#define MEMORY_SIZE 4096
 #endif
 
 #ifdef STATIC_HEAP
@@ -159,6 +159,11 @@ static struct gc_heap* make_heap(size_t size) {
   struct gc_heap* heap = malloc(sizeof(struct gc_heap));
 #ifdef STATIC_HEAP
   static char mem[MEMORY_SIZE];
+  size_t aligned = align(MEMORY_SIZE, kPageSize);
+  if (aligned != MEMORY_SIZE) {
+    fprintf(stderr, "static heap size must be a multiple of %lu\n", kPageSize);
+    abort();
+  }
   if (heap_inited) {
     fprintf(stderr, "heap already initialized\n");
     abort();

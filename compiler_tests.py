@@ -69,6 +69,9 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_variant(self) -> None:
         self.assertEqual(self._run("# foo 123"), "#foo 123\n")
 
+    def test_variant_builder(self) -> None:
+        self.assertEqual(self._run("f 123 . f = x -> # foo x"), "#foo 123\n")
+
     def test_function(self) -> None:
         self.assertEqual(self._run("f 1 . f = x -> x + 1"), "2\n")
 

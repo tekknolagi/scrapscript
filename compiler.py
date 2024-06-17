@@ -280,6 +280,8 @@ class Compiler:
             return all(self._is_const(item) for item in exp.items)
         if isinstance(exp, Hole):
             return True
+        if isinstance(exp, Function) and len(free_in(exp)) == 0:
+            return True
         return False
 
     def _const_obj(self, type: str, tag: str, contents: str) -> str:
@@ -323,6 +325,9 @@ class Compiler:
             values = {self.record_key(key): self._emit_const(value) for key, value in exp.data.items()}
             fields = ",\n".join(f"{{.key={key}, .value={value} }}" for key, value in values.items())
             return self._const_obj("record", "TAG_RECORD", f".size={len(values)}, .fields={{ {fields} }}")
+        if isinstance(exp, Function):
+            assert len(free_in(exp)) == 0, "only constant functions can be constified"
+            return self.compile_function({}, exp, name=None)
         raise NotImplementedError(f"const {exp}")
 
     def compile(self, env: Env, exp: Object) -> str:

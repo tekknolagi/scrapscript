@@ -285,7 +285,7 @@ class Compiler:
         return False
 
     def _const_obj(self, type: str, tag: str, contents: str) -> str:
-        result = self.gensym("const")
+        result = self.gensym(f"const_{type}")
         section = '__attribute__((section("const_heap")))'
         self.const_heap.append(f"{section} struct {type} {result} = {{.HEAD.tag={tag}, {contents} }};")
         self.const_heap.append(f"struct object* const {result}_ptr = (struct object*)((uword)&{result} + 1);")

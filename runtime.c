@@ -675,8 +675,8 @@ bool string_equal_cstr_len(struct object* string, const char* cstr, uword len) {
   return true;
 }
 
-const char* record_keys[];
-const char* variant_names[];
+extern const char* record_keys[];
+extern const char* variant_names[];
 
 struct object* print(struct object* obj) {
   if (is_num(obj)) {

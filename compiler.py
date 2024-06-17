@@ -173,6 +173,9 @@ class Compiler:
         val = self.compile(funcenv, exp.body)
         fn.code.append(f"return {val};")
         self.function = cur
+        if not fn.fields:
+            # TODO(max): Closure over freevars but only consts
+            return self._const_closure(fn)
         return self.make_closure(env, fn)
 
     def try_match(self, env: Env, arg: str, pattern: Object, fallthrough: str) -> Env:
@@ -252,6 +255,9 @@ class Compiler:
         # Pacify the C compiler
         self._emit("return NULL;")
         self.function = cur
+        if not fn.fields:
+            # TODO(max): Closure over freevars but only consts
+            return self._const_closure(fn)
         return self.make_closure(env, fn)
 
     def make_closure(self, env: Env, fn: CompiledFunction) -> str:
@@ -285,6 +291,10 @@ class Compiler:
 
     def _const_cons(self, first: str, rest: str) -> str:
         return self._const_obj("list", "TAG_LIST", f".first={first}, .rest={rest}")
+
+    def _const_closure(self, fn: CompiledFunction) -> str:
+        assert len(fn.fields) == 0
+        return self._const_obj("closure", "TAG_CLOSURE", f".fn={fn.name}, .size=0")
 
     def _emit_const(self, exp: Object) -> str:
         assert self._is_const(exp), f"not a constant {exp}"

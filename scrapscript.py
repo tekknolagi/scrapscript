@@ -4599,7 +4599,10 @@ def env_get_split(key: str, default: Optional[typing.List[str]] = None) -> typin
 
 
 def discover_cflags(cc: typing.List[str], debug: bool = True) -> typing.List[str]:
-    default_cflags = ["-Wall", "-Wextra", "-fno-strict-aliasing"]
+    default_cflags = ["-Wall", "-Wextra", "-fno-strict-aliasing", "-Wno-unused-function"]
+    # -fno-strict-aliasing is needed because we do pointer casting a bunch
+    # -Wno-unused-function is needed because we have a bunch of unused
+    # functions depending on what code is compiled
     if debug:
         default_cflags += ["-O0", "-ggdb"]
     else:

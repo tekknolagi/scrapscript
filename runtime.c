@@ -179,8 +179,8 @@ struct object* heap_tag(uintptr_t addr) {
   return (struct object*)(addr | (uword)1ULL);
 }
 
-extern char* __start_const_heap;
-extern char* __stop_const_heap;
+char* __start_const_heap;
+char* __stop_const_heap;
 
 bool in_const_heap(struct object* obj) {
   assert(is_heap_object(obj));

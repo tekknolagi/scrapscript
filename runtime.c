@@ -756,3 +756,19 @@ struct object* println(struct object* obj) {
 __attribute__((section("const_heap"), used)) struct heap_string private_unused_const_heap = {
     .HEAD.tag = TAG_STRING, .size = 11, .data = "hello world"
 };
+
+#define smallstrN(n) ((n << kImmediateTagBits) | kSmallStringTag)
+#define smallstr0(n) smallstrN(n)
+#define smallstr1(n, c) (((uword)(c) << kBitsPerByte) | smallstr0(n))
+#define smallstr2(n, c1, c2)                                                   \
+  ((uword)(c2) << (kBitsPerByte * 2) | smallstr1(n, c1))
+#define smallstr3(n, c1, c2, c3)                                               \
+  ((uword)(c3) << (kBitsPerByte * 3) | smallstr2(n, c1, c2))
+#define smallstr4(n, c1, c2, c3, c4)                                           \
+  ((uword)(c4) << (kBitsPerByte * 4) | smallstr3(n, c1, c2, c3))
+#define smallstr5(n, c1, c2, c3, c4, c5)                                       \
+  ((uword)(c5) << (kBitsPerByte * 5) | smallstr4(n, c1, c2, c3, c4))
+#define smallstr6(n, c1, c2, c3, c4, c5, c6)                                   \
+  ((uword)(c6) << (kBitsPerByte * 6) | smallstr5(n, c1, c2, c3, c4, c5))
+#define smallstr7(n, c1, c2, c3, c4, c5, c6, c7)                               \
+  ((uword)(c7) << (kBitsPerByte * 7) | smallstr6(n, c1, c2, c3, c4, c5, c6))

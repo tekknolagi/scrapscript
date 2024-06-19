@@ -297,15 +297,9 @@ class Compiler:
         return self._const_obj("closure", "TAG_CLOSURE", f".fn={fn.name}, .size=0")
 
     def _emit_small_string(self, value_str: str) -> str:
-        value = value_str.encode("utf-8")
-        length = len(value)
+        length = len(value_str)
         assert length < 8, "small string must be less than 8 bytes"
-        kImmediateTagBits = 5
-        kSmallStringTag = 13
-        tag = (length << kImmediateTagBits) | kSmallStringTag
-        encoded = value[::-1] + bytes([tag])
-        value_int = int.from_bytes(encoded, "big")
-        return f"(struct object*)({hex(value_int)}ULL /* {value_str!r} */)"
+        return f"(struct object*)smallstr{length}({length}, {', '.join(map(repr, value_str))})"
 
     def _emit_const(self, exp: Object) -> str:
         assert self._is_const(exp), f"not a constant {exp}"

@@ -286,8 +286,7 @@ class Compiler:
 
     def _const_obj(self, type: str, tag: str, contents: str) -> str:
         result = self.gensym(f"const_{type}")
-        section = '__attribute__((section("const_heap")))'
-        self.const_heap.append(f"{section} struct {type} {result} = {{.HEAD.tag={tag}, {contents} }};")
+        self.const_heap.append(f"CONST_HEAP struct {type} {result} = {{.HEAD.tag={tag}, {contents} }};")
         return f"ptrto({result})"
 
     def _const_cons(self, first: str, rest: str) -> str:
@@ -502,6 +501,7 @@ def compile_to_string(source: str, debug: bool) -> str:
         print(function.decl() + ";", file=f)
     # Emit the const heap
     print("#define ptrto(obj) ((struct object*)((uword)&(obj) + 1))", file=f)
+    print('#define CONST_HEAP __attribute__((section("const_heap")))', file=f)
     for line in compiler.const_heap:
         print(line, file=f)
     for function in compiler.functions:

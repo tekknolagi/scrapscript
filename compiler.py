@@ -300,7 +300,7 @@ class Compiler:
         value = value_str.encode("utf-8")
         length = len(value)
         assert length < 8, "small string must be less than 8 bytes"
-        return f"(struct object*)smallstr{length}({length}, {', '.join(map(repr, value))})"
+        return f"(/* {value_str!r} */(struct object*)smallstr{length}({length}, {', '.join(map(repr, value))}))"
 
     def _emit_const(self, exp: Object) -> str:
         assert self._is_const(exp), f"not a constant {exp}"

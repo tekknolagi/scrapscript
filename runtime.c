@@ -179,11 +179,31 @@ struct object* heap_tag(uintptr_t addr) {
   return (struct object*)(addr | (uword)1ULL);
 }
 
+#ifdef __TINYC__
+// libc defines __attribute__ as an empty macro if the compiler is not GCC or
+// GCC < 2. We know tcc has supported __attribute__(section(...)) for 20+ years
+// so we can undefine it.
+// See tinycc-devel: https://lists.nongnu.org/archive/html/tinycc-devel/2018-04/msg00008.html
+// and my StackOverflow question: https://stackoverflow.com/q/78638571/569183
+#undef __attribute__
+#endif
+
+extern char __start_const_heap[];
+extern char __stop_const_heap[];
+
+bool in_const_heap(struct gc_obj* obj) {
+  return (uword)obj >= (uword)__start_const_heap &&
+         (uword)obj < (uword)__stop_const_heap;
+}
+
 void visit_field(struct object** pointer, struct gc_heap* heap) {
   if (!is_heap_object(*pointer)) {
     return;
   }
   struct gc_obj* from = as_heap_object(*pointer);
+  if (in_const_heap(from)) {
+    return;
+  }
   struct gc_obj* to = is_forwarded(from) ? forwarded(from) : copy(heap, from);
   *pointer = heap_tag((uintptr_t)to);
 }
@@ -730,3 +750,9 @@ struct object* println(struct object* obj) {
   putchar('\n');
   return obj;
 }
+
+// Put something in the const heap so that __start_const_heap and
+// __stop_const_heap are defined by the linker.
+__attribute__((section("const_heap"), used)) struct heap_string private_unused_const_heap = {
+    .HEAD.tag = TAG_STRING, .size = 11, .data = "hello world"
+};

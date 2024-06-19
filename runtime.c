@@ -179,12 +179,21 @@ struct object* heap_tag(uintptr_t addr) {
   return (struct object*)(addr | (uword)1ULL);
 }
 
-char* __start_const_heap;
-char* __stop_const_heap;
+#ifdef __TINYC__
+// libc defines __attribute__ as an empty macro if the compiler is not GCC or
+// GCC < 2. We know tcc has supported __attribute__(section(...)) for 20+ years
+// so we can undefine it.
+// See tinycc-devel: https://lists.nongnu.org/archive/html/tinycc-devel/2018-04/msg00008.html
+// and my StackOverflow question: https://stackoverflow.com/q/78638571/569183
+#undef __attribute__
+#endif
+
+extern char __start_const_heap[];
+extern char __stop_const_heap[];
 
 bool in_const_heap(struct gc_obj* obj) {
-  return (uword)obj >= (uword)&__start_const_heap &&
-         (uword)obj < (uword)&__stop_const_heap;
+  return (uword)obj >= (uword)__start_const_heap &&
+         (uword)obj < (uword)__stop_const_heap;
 }
 
 void visit_field(struct object** pointer, struct gc_heap* heap) {

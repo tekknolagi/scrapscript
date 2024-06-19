@@ -36,6 +36,18 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_int(self) -> None:
         self.assertEqual(self._run("1"), "1\n")
 
+    def test_small_string(self) -> None:
+        self.assertEqual(self._run('"hello"'), '"hello"\n')
+
+    def test_heap_string(self) -> None:
+        self.assertEqual(self._run('"hello world"'), '"hello world"\n')
+
+    def test_const_list(self) -> None:
+        self.assertEqual(
+            self._run("""[1, "2", [3, 4], {a=1}, #foo ()]"""),
+            """[1, "2", [3, 4], {a = 1}, #foo ()]\n""",
+        )
+
     def test_add(self) -> None:
         self.assertEqual(self._run("1 + 2"), "3\n")
 

@@ -271,6 +271,8 @@ class Compiler:
         if isinstance(exp, Int):
             return True
         if isinstance(exp, String):
+            if len(exp.value) < 8:
+                return False
             return True
         if isinstance(exp, Variant):
             return self._is_const(exp.value)

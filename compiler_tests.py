@@ -54,14 +54,12 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_record(self) -> None:
         self.assertEqual(self._run("{a = 1, b = 2}"), "{a = 1, b = 2}\n")
 
-    @unittest.skipIf("tcc" in os.environ.get("CC", ""), "TODO(max): Fix; TCC emits crashy code")
     def test_record_builder(self) -> None:
         self.assertEqual(self._run("f 1 2 . f = x -> y -> {a = x, b = y}"), "{a = 1, b = 2}\n")
 
     def test_record_access(self) -> None:
         self.assertEqual(self._run("rec@a . rec = {a = 1, b = 2}"), "1\n")
 
-    @unittest.skipIf("tcc" in os.environ.get("CC", ""), "TODO(max): Fix; TCC emits crashy code")
     def test_record_builder_access(self) -> None:
         self.assertEqual(self._run("(f 1 2)@a . f = x -> y -> {a = x, b = y}"), "1\n")
 
@@ -86,7 +84,6 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_match_int(self) -> None:
         self.assertEqual(self._run("f 3 . f = | 1 -> 2 | 3 -> 4"), "4\n")
 
-    @unittest.skipIf("tcc" in os.environ.get("CC", ""), "TODO(max): Fix; TCC emits crashy code")
     def test_match_list(self) -> None:
         self.assertEqual(self._run("f [4, 5] . f = | [1, 2] -> 3 | [4, 5] -> 6"), "6\n")
 

@@ -305,7 +305,7 @@ class Compiler:
         tag = (length << kImmediateTagBits) | kSmallStringTag
         encoded = value[::-1] + bytes([tag])
         value_int = int.from_bytes(encoded, "big")
-        return f"(struct object*)((uword){hex(value_int)})"
+        return f"(struct object*)({hex(value_int)}ULL /* {value_str!r} */)"
 
     def _emit_const(self, exp: Object) -> str:
         assert self._is_const(exp), f"not a constant {exp}"

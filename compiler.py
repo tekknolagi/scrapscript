@@ -297,9 +297,10 @@ class Compiler:
         return self._const_obj("closure", "TAG_CLOSURE", f".fn={fn.name}, .size=0")
 
     def _emit_small_string(self, value_str: str) -> str:
-        length = len(value_str)
+        value = value_str.encode("utf-8")
+        length = len(value)
         assert length < 8, "small string must be less than 8 bytes"
-        return f"(struct object*)smallstr{length}({length}, {', '.join(map(repr, value_str))})"
+        return f"(struct object*)smallstr{length}({length}, {', '.join(map(repr, value))})"
 
     def _emit_const(self, exp: Object) -> str:
         assert self._is_const(exp), f"not a constant {exp}"

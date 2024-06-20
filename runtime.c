@@ -21,7 +21,6 @@ typedef uintptr_t uword;
 
 struct gc_obj {
   uintptr_t tag;  // low bit is 0 if forwarding ptr
-  uintptr_t payload[0];
 };
 
 // The low bit of the pointer is 1 if it's a heap object and 0 if it's an

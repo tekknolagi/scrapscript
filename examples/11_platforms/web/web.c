@@ -61,5 +61,6 @@ int main(int argc, const char * argv[])
     }
     wby_stop(&server);
     free(memory);
+    destroy_heap(heap);
 }
 

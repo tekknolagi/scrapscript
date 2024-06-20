@@ -101,10 +101,6 @@ size_t trace_heap_object(struct gc_obj* obj, struct gc_heap* heap,
                          VisitFn visit);
 void trace_roots(struct gc_heap* heap, VisitFn visit);
 
-#ifndef MEMORY_SIZE
-#define MEMORY_SIZE 4096
-#endif
-
 struct space {
   uintptr_t start;
   uintptr_t size;
@@ -752,6 +748,10 @@ struct object* println(struct object* obj) {
   putchar('\n');
   return obj;
 }
+
+#ifndef MEMORY_SIZE
+#define MEMORY_SIZE 4096
+#endif
 
 // Put something in the const heap so that __start_const_heap and
 // __stop_const_heap are defined by the linker.

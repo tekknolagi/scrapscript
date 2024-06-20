@@ -33,8 +33,13 @@ dispatch(struct wby_con *connection, void *userdata)
 int main(int argc, const char * argv[])
 {
     /* boot scrapscript */
-    heap = make_heap(MEMORY_SIZE);
-    init_heap(heap, MEMORY_SIZE);
+#ifdef STATIC_HEAP
+    char memory[MEMORY_SIZE] = {0};
+    struct space space = make_space(memory, MEMORY_SIZE);
+#else
+    struct space space = make_space(MEMORY_SIZE);
+#endif
+    init_heap(heap, space);
     HANDLES();
     GC_HANDLE(struct object*, handler, scrap_main());
     assert(is_closure(handler));
@@ -62,6 +67,6 @@ int main(int argc, const char * argv[])
     }
     wby_stop(&server);
     free(memory);
-    destroy_heap(heap);
+    destroy_space(space);
 }
 

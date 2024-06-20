@@ -105,15 +105,17 @@ void trace_roots(struct gc_heap* heap, VisitFn visit);
 #define MEMORY_SIZE 4096
 #endif
 
+struct space {
+  uintptr_t start;
+  uintptr_t size;
+};
+
 struct gc_heap {
   uintptr_t hp;
   uintptr_t limit;
   uintptr_t from_space;
   uintptr_t to_space;
   size_t size;
-#ifdef STATIC_HEAP
-  char mem[];
-#endif
 };
 
 static uintptr_t align(uintptr_t val, uintptr_t alignment) {
@@ -124,27 +126,21 @@ static uintptr_t align_size(uintptr_t size) {
 }
 
 #ifdef STATIC_HEAP
-#define make_heap(size) ((struct gc_heap*)(char[sizeof(struct gc_heap) + size]){0})
-void init_heap(struct gc_heap* heap, size_t size) {
-  if (align(size, kPageSize) != size) {
-    fprintf(stderr, "static heap size (%lu) must be a multiple of %lu\n", size, kPageSize);
+#define make_space(mem, sz)                                                    \
+  (struct space) { .start = (uintptr_t)mem, .size = sz }
+void init_heap(struct gc_heap* heap, struct space space) {
+  if (align(space.size, kPageSize) != space.size) {
+    fprintf(stderr, "static heap size (%lu) must be a multiple of %lu\n",
+            space.size, kPageSize);
     abort();
   }
-  heap->size = size;
-  heap->to_space = heap->hp = (uintptr_t)heap->mem;
-  heap->from_space = heap->limit = heap->hp + heap->size / 2;
+  heap->size = space.size;
+  heap->to_space = heap->hp = space.start;
+  heap->from_space = heap->limit = heap->hp + space.size / 2;
 }
-void destroy_heap(struct gc_heap* heap) {}
+void destroy_space(struct space space) {}
 #else
-struct gc_heap* make_heap(size_t size) {
-  struct gc_heap* heap = malloc(sizeof(struct gc_heap));
-  if (heap == NULL) {
-    fprintf(stderr, "malloc failed\n");
-    abort();
-  }
-  return heap;
-}
-void init_heap(struct gc_heap* heap, size_t size) {
+struct space make_space(uintptr_t size) {
   size = align(size, kPageSize);
   void* mem = mmap(NULL, size, PROT_READ | PROT_WRITE,
                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -152,13 +148,15 @@ void init_heap(struct gc_heap* heap, size_t size) {
     fprintf(stderr, "mmap failed\n");
     abort();
   }
-  heap->to_space = heap->hp = (uintptr_t)mem;
-  heap->from_space = heap->limit = heap->hp + size / 2;
-  heap->size = size;
+  return (struct space){(uintptr_t)mem, size};
 }
-void destroy_heap(struct gc_heap* heap) {
-  munmap((void*)heap->to_space, heap->size);
-  free(heap);
+void init_heap(struct gc_heap* heap, struct space space) {
+  heap->size = space.size;
+  heap->to_space = heap->hp = space.start;
+  heap->from_space = heap->limit = heap->hp + space.size / 2;
+}
+void destroy_space(struct space space) {
+  munmap((void*)space.start, space.size);
 }
 #endif
 
@@ -610,7 +608,8 @@ void trace_roots(struct gc_heap* heap, VisitFn visit) {
   }
 }
 
-static struct gc_heap* heap = NULL;
+struct gc_heap heap_object;
+struct gc_heap* heap = &heap_object;
 
 struct object* num_add(struct object* a, struct object* b) {
   // NB: doesn't use pointers after allocating

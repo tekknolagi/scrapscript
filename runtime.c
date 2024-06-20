@@ -113,7 +113,7 @@ struct gc_heap {
   uintptr_t to_space;
   size_t size;
 #ifdef STATIC_HEAP
-  char mem[MEMORY_SIZE];
+  char mem[];
 #endif
 };
 
@@ -124,36 +124,44 @@ static uintptr_t align_size(uintptr_t size) {
   return align(size, sizeof(uintptr_t));
 }
 
-static struct gc_heap* make_heap(size_t size) {
-  size = align(size, kPageSize);
-  struct gc_heap* heap = malloc(sizeof(struct gc_heap));
 #ifdef STATIC_HEAP
-  size_t aligned = align(MEMORY_SIZE, kPageSize);
-  if (aligned != MEMORY_SIZE) {
-    fprintf(stderr, "static heap size must be a multiple of %lu\n", kPageSize);
+#define make_heap(size) ((struct gc_heap*)(char[sizeof(struct gc_heap) + size]){0})
+void init_heap(struct gc_heap* heap, size_t size) {
+  if (align(size, kPageSize) != size) {
+    fprintf(stderr, "static heap size (%lu) must be a multiple of %lu\n", size, kPageSize);
     abort();
   }
-  void* mem = heap->mem;
+  heap->size = size;
+  heap->to_space = heap->hp = (uintptr_t)heap->mem;
+  heap->from_space = heap->limit = heap->hp + heap->size / 2;
+}
+void destroy_heap(struct gc_heap* heap) {}
 #else
+struct gc_heap* make_heap(size_t size) {
+  struct gc_heap* heap = malloc(sizeof(struct gc_heap));
+  if (heap == NULL) {
+    fprintf(stderr, "malloc failed\n");
+    abort();
+  }
+  return heap;
+}
+void init_heap(struct gc_heap* heap, size_t size) {
+  size = align(size, kPageSize);
   void* mem = mmap(NULL, size, PROT_READ | PROT_WRITE,
                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   if (mem == MAP_FAILED) {
     fprintf(stderr, "mmap failed\n");
     abort();
   }
-#endif
   heap->to_space = heap->hp = (uintptr_t)mem;
   heap->from_space = heap->limit = heap->hp + size / 2;
   heap->size = size;
-  return heap;
 }
-
 void destroy_heap(struct gc_heap* heap) {
-#ifndef STATIC_HEAP
   munmap((void*)heap->to_space, heap->size);
-#endif
   free(heap);
 }
+#endif
 
 struct gc_obj* copy(struct gc_heap* heap, struct gc_obj* obj) {
   size_t size = heap_object_size(obj);

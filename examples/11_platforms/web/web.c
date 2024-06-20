@@ -34,6 +34,7 @@ int main(int argc, const char * argv[])
 {
     /* boot scrapscript */
     heap = make_heap(MEMORY_SIZE);
+    init_heap(heap, MEMORY_SIZE);
     HANDLES();
     GC_HANDLE(struct object*, handler, scrap_main());
     assert(is_closure(handler));

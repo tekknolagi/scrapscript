@@ -4680,7 +4680,7 @@ def main() -> None:
     comp.add_argument("-o", "--output", default="output.c")
     comp.add_argument("--format", action="store_true")
     comp.add_argument("--compile", action="store_true")
-    comp.add_argument("--memory", type=int, default=1024)
+    comp.add_argument("--memory", type=int, default=4096)
     comp.add_argument("--run", action="store_true")
     comp.add_argument("--debug", action="store_true", default=False)
     # The platform is in the same directory as this file

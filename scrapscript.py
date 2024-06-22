@@ -4641,7 +4641,8 @@ def compile_command(args: argparse.Namespace) -> None:
 
         cc = env_get_split("CC", ["clang"])
         cflags = discover_cflags(cc, args.debug)
-        cflags += [f"-DMEMORY_SIZE={args.memory}"]
+        if args.memory:
+            cflags += [f"-DMEMORY_SIZE={args.memory}"]
         ldflags = env_get_split("LDFLAGS")
         subprocess.run([*cc, "-o", "a.out", *cflags, args.output, *ldflags], check=True)
 
@@ -4680,7 +4681,7 @@ def main() -> None:
     comp.add_argument("-o", "--output", default="output.c")
     comp.add_argument("--format", action="store_true")
     comp.add_argument("--compile", action="store_true")
-    comp.add_argument("--memory", type=int, default=1024)
+    comp.add_argument("--memory", type=int)
     comp.add_argument("--run", action="store_true")
     comp.add_argument("--debug", action="store_true", default=False)
     # The platform is in the same directory as this file

@@ -21,7 +21,6 @@ typedef uintptr_t uword;
 
 struct gc_obj {
   uintptr_t tag;  // low bit is 0 if forwarding ptr
-  uintptr_t payload[0];
 };
 
 // The low bit of the pointer is 1 if it's a heap object and 0 if it's an
@@ -102,6 +101,11 @@ size_t trace_heap_object(struct gc_obj* obj, struct gc_heap* heap,
                          VisitFn visit);
 void trace_roots(struct gc_heap* heap, VisitFn visit);
 
+struct space {
+  uintptr_t start;
+  uintptr_t size;
+};
+
 struct gc_heap {
   uintptr_t hp;
   uintptr_t limit;
@@ -117,47 +121,40 @@ static uintptr_t align_size(uintptr_t size) {
   return align(size, sizeof(uintptr_t));
 }
 
-#ifndef MEMORY_SIZE
-#define MEMORY_SIZE 4096
-#endif
-
 #ifdef STATIC_HEAP
-static char heap_inited = 0;
-#endif
-
-static struct gc_heap* make_heap(size_t size) {
-  size = align(size, kPageSize);
-  struct gc_heap* heap = malloc(sizeof(struct gc_heap));
-#ifdef STATIC_HEAP
-  static char mem[MEMORY_SIZE];
-  size_t aligned = align(MEMORY_SIZE, kPageSize);
-  if (aligned != MEMORY_SIZE) {
-    fprintf(stderr, "static heap size must be a multiple of %lu\n", kPageSize);
+#define make_space(mem, sz)                                                    \
+  (struct space) { .start = (uintptr_t)mem, .size = sz }
+void init_heap(struct gc_heap* heap, struct space space) {
+  if (align(space.size, kPageSize) != space.size) {
+    fprintf(stderr, "static heap size (%lu) must be a multiple of %lu\n",
+            space.size, kPageSize);
     abort();
   }
-  if (heap_inited) {
-    fprintf(stderr, "heap already initialized\n");
-    abort();
-  }
-  heap_inited = 1;
+  heap->size = space.size;
+  heap->to_space = heap->hp = space.start;
+  heap->from_space = heap->limit = heap->hp + space.size / 2;
+}
+void destroy_space(struct space space) {}
 #else
+struct space make_space(uintptr_t size) {
+  size = align(size, kPageSize);
   void* mem = mmap(NULL, size, PROT_READ | PROT_WRITE,
                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-#endif
-  heap->to_space = heap->hp = (uintptr_t)mem;
-  heap->from_space = heap->limit = heap->hp + size / 2;
-  heap->size = size;
-  return heap;
+  if (mem == MAP_FAILED) {
+    fprintf(stderr, "mmap failed\n");
+    abort();
+  }
+  return (struct space){(uintptr_t)mem, size};
 }
-
-void destroy_heap(struct gc_heap* heap) {
-#ifdef STATIC_HEAP
-  heap_inited = 0;
-#else
-  munmap((void*)heap->to_space, heap->size);
-#endif
-  free(heap);
+void init_heap(struct gc_heap* heap, struct space space) {
+  heap->size = space.size;
+  heap->to_space = heap->hp = space.start;
+  heap->from_space = heap->limit = heap->hp + space.size / 2;
 }
+void destroy_space(struct space space) {
+  munmap((void*)space.start, space.size);
+}
+#endif
 
 struct gc_obj* copy(struct gc_heap* heap, struct gc_obj* obj) {
   size_t size = heap_object_size(obj);
@@ -607,7 +604,8 @@ void trace_roots(struct gc_heap* heap, VisitFn visit) {
   }
 }
 
-static struct gc_heap* heap = NULL;
+struct gc_heap heap_object;
+struct gc_heap* heap = &heap_object;
 
 struct object* num_add(struct object* a, struct object* b) {
   // NB: doesn't use pointers after allocating
@@ -750,6 +748,10 @@ struct object* println(struct object* obj) {
   putchar('\n');
   return obj;
 }
+
+#ifndef MEMORY_SIZE
+#define MEMORY_SIZE 4096
+#endif
 
 // Put something in the const heap so that __start_const_heap and
 // __stop_const_heap are defined by the linker.

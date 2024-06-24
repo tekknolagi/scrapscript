@@ -1043,6 +1043,7 @@ def ref(tag):
 
 tags = tags + [ref(v) for v in tags]
 assert len(tags) == len(set(tags)), "Duplicate tags"
+assert all(len(v) == 1 for v in tags), "Tags must be 1 byte"
 
 
 COUNT_NBYTES = 4

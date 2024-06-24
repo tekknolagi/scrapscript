@@ -1022,6 +1022,9 @@ tags = [
     TYPE_LIST := b"[",
     TYPE_RECORD := b"{",
     TYPE_VARIANT := b"#",
+    TYPE_VAR := b"v",
+    TYPE_FUNCTION := b"f",
+    TYPE_CLOSURE := b"c",
 ]
 FLAG_REF = 0x80
 
@@ -1105,6 +1108,19 @@ class Serializer:
                 self.emit(self._string(key))
                 self.serialize(value)
             return
+        if isinstance(obj, Var):
+            return self.emit(TYPE_VAR + self._string(obj.name))
+        if isinstance(obj, Function):
+            self.emit(TYPE_FUNCTION)
+            self.serialize(obj.arg)
+            return self.serialize(obj.body)
+        if isinstance(obj, Closure):
+            self.add_ref(TYPE_CLOSURE, obj)
+            self.emit(self._count(len(obj.env)))
+            for key, value in obj.env.items():
+                self.emit(self._string(key))
+                self.serialize(value)
+            return self.serialize(obj.func)
         raise NotImplementedError(type(obj))
 
 
@@ -4444,6 +4460,29 @@ class SerializerTests(unittest.TestCase):
         obj = Record({"x": Int(1), "y": Int(2)})
         self.assertEqual(
             self._serialize(obj), TYPE_RECORD + b"\x02\x00\x00\x00\x01\x00\x00\x00x1\x01\x01\x00\x00\x00y1\x02"
+        )
+
+    def test_var(self) -> None:
+        obj = Var("x")
+        self.assertEqual(self._serialize(obj), TYPE_VAR + b"\x01\x00\x00\x00x")
+
+    def test_function(self) -> None:
+        obj = Function(Var("x"), Var("x"))
+        self.assertEqual(self._serialize(obj), TYPE_FUNCTION + b"v\x01\x00\x00\x00xv\x01\x00\x00\x00x")
+
+    def test_closure(self) -> None:
+        obj = Closure({}, Function(Var("x"), Var("x")))
+        self.assertEqual(
+            self._serialize(obj), ref(TYPE_CLOSURE) + b"\x00\x00\x00\x00fv\x01\x00\x00\x00xv\x01\x00\x00\x00x"
+        )
+
+    def test_self_referential_closure(self) -> None:
+        obj = Closure({}, Function(Var("x"), Var("x")))
+        obj.env["self"] = obj
+        self.assertEqual(
+            self._serialize(obj),
+            ref(TYPE_CLOSURE)
+            + b"\x01\x00\x00\x00\x04\x00\x00\x00selfr\x00\x00\x00\x00fv\x01\x00\x00\x00xv\x01\x00\x00\x00x",
         )
 
 

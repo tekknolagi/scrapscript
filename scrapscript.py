@@ -1035,6 +1035,8 @@ tags = [
     TYPE_APPLY := b" ",
     TYPE_WHERE := b".",
     TYPE_ACCESS := b"@",
+    TYPE_SPREAD := b"S",
+    TYPE_NAMED_SPREAD := b"R",
 ]
 FLAG_REF = 0x80
 
@@ -1180,6 +1182,13 @@ class Serializer:
             self.serialize(obj.obj)
             self.serialize(obj.at)
             return
+        if isinstance(obj, Spread):
+            if obj.name is not None:
+                self.emit(TYPE_NAMED_SPREAD)
+                self.emit(self._string(obj.name))
+                return
+            self.emit(TYPE_SPREAD)
+            return
         raise NotImplementedError(type(obj))
 
 
@@ -1317,6 +1326,10 @@ class Deserializer:
             obj = self.parse()
             at = self.parse()
             return Access(obj, at)
+        if ty == TYPE_SPREAD:
+            return Spread()
+        if ty == TYPE_NAMED_SPREAD:
+            return Spread(self._string())
         raise NotImplementedError(bytes(ty))
 
 
@@ -4650,6 +4663,10 @@ class SerializerTests(unittest.TestCase):
         obj = Access(Var("a"), Var("b"))
         self.assertEqual(self._serialize(obj), TYPE_ACCESS + b"v\x01\x00\x00\x00av\x01\x00\x00\x00b")
 
+    def test_spread(self) -> None:
+        self.assertEqual(self._serialize(Spread()), TYPE_SPREAD)
+        self.assertEqual(self._serialize(Spread("rest")), TYPE_NAMED_SPREAD + b"\x04\x00\x00\x00rest")
+
 
 class RoundTripSerializationTests(unittest.TestCase):
     def _serialize(self, obj: Object) -> bytes:
@@ -4757,6 +4774,10 @@ class RoundTripSerializationTests(unittest.TestCase):
 
     def test_access(self) -> None:
         self._rt(Access(Var("a"), Var("b")))
+
+    def test_spread(self) -> None:
+        self._rt(Spread())
+        self._rt(Spread("rest"))
 
 
 class ScrapMonadTests(unittest.TestCase):

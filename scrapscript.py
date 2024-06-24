@@ -1029,6 +1029,7 @@ tags = [
     TYPE_MATCH_FUNCTION := b"m",
     TYPE_CLOSURE := b"c",
     TYPE_BYTES := b"b",
+    TYPE_HOLE := b"(",
 ]
 FLAG_REF = 0x80
 
@@ -1067,6 +1068,7 @@ class Serializer:
         self.output.extend(obj)
 
     def _long(self, obj: int) -> None:
+        # TODO(max): Run-length encoding?
         types = [TYPE_I8, TYPE_I16, TYPE_I32, TYPE_I64]
         for idx, ty in enumerate(types):
             numbytes = 2**idx
@@ -1141,6 +1143,9 @@ class Serializer:
         if isinstance(obj, Float):
             self.emit(TYPE_FLOAT)
             self.emit(struct.pack("<d", obj.value))
+            return
+        if isinstance(obj, Hole):
+            self.emit(TYPE_HOLE)
             return
         raise NotImplementedError(type(obj))
 
@@ -1250,6 +1255,9 @@ class Deserializer:
         if ty == TYPE_FLOAT:
             assert not is_ref
             return Float(struct.unpack("<d", self.read(8))[0])
+        if ty == TYPE_HOLE:
+            assert not is_ref
+            return Hole()
         raise NotImplementedError(bytes(ty))
 
 
@@ -4560,6 +4568,9 @@ class SerializerTests(unittest.TestCase):
         obj = Float(3.14)
         self.assertEqual(self._serialize(obj), TYPE_FLOAT + b"\x1f\x85\xebQ\xb8\x1e\t@")
 
+    def test_hole(self) -> None:
+        self.assertEqual(self._serialize(Hole()), TYPE_HOLE)
+
 
 class RoundTripSerializationTests(unittest.TestCase):
     def _serialize(self, obj: Object) -> bytes:
@@ -4649,6 +4660,9 @@ class RoundTripSerializationTests(unittest.TestCase):
 
     def test_float(self) -> None:
         self._rt(Float(3.14))
+
+    def test_hole(self) -> None:
+        self._rt(Hole())
 
 
 class ScrapMonadTests(unittest.TestCase):

@@ -1030,6 +1030,7 @@ tags = [
     TYPE_CLOSURE := b"c",
     TYPE_BYTES := b"b",
     TYPE_HOLE := b"(",
+    TYPE_ASSIGN := b"=",
 ]
 FLAG_REF = 0x80
 
@@ -1147,6 +1148,11 @@ class Serializer:
         if isinstance(obj, Hole):
             self.emit(TYPE_HOLE)
             return
+        if isinstance(obj, Assign):
+            self.emit(TYPE_ASSIGN)
+            self.serialize(obj.name)
+            self.serialize(obj.value)
+            return
         raise NotImplementedError(type(obj))
 
 
@@ -1258,6 +1264,11 @@ class Deserializer:
         if ty == TYPE_HOLE:
             assert not is_ref
             return Hole()
+        if ty == TYPE_ASSIGN:
+            assert not is_ref
+            name = self.parse()
+            value = self.parse()
+            return Assign(name, value)
         raise NotImplementedError(bytes(ty))
 
 
@@ -4571,6 +4582,10 @@ class SerializerTests(unittest.TestCase):
     def test_hole(self) -> None:
         self.assertEqual(self._serialize(Hole()), TYPE_HOLE)
 
+    def test_assign(self) -> None:
+        obj = Assign(Var("x"), Int(123))
+        self.assertEqual(self._serialize(obj), TYPE_ASSIGN + b"v\x01\x00\x00\x00x1{")
+
 
 class RoundTripSerializationTests(unittest.TestCase):
     def _serialize(self, obj: Object) -> bytes:
@@ -4663,6 +4678,9 @@ class RoundTripSerializationTests(unittest.TestCase):
 
     def test_hole(self) -> None:
         self._rt(Hole())
+
+    def test_assign(self) -> None:
+        self._rt(Assign(Var("x"), Int(123)))
 
 
 class ScrapMonadTests(unittest.TestCase):

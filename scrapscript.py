@@ -1031,6 +1031,7 @@ tags = [
     TYPE_BYTES := b"b",
     TYPE_HOLE := b"(",
     TYPE_ASSIGN := b"=",
+    TYPE_BINOP := b"+",
 ]
 FLAG_REF = 0x80
 
@@ -1153,6 +1154,12 @@ class Serializer:
             self.serialize(obj.name)
             self.serialize(obj.value)
             return
+        if isinstance(obj, Binop):
+            self.emit(TYPE_BINOP)
+            self.emit(self._string(BinopKind.to_str(obj.op)))
+            self.serialize(obj.left)
+            self.serialize(obj.right)
+            return
         raise NotImplementedError(type(obj))
 
 
@@ -1269,6 +1276,12 @@ class Deserializer:
             name = self.parse()
             value = self.parse()
             return Assign(name, value)
+        if ty == TYPE_BINOP:
+            assert not is_ref
+            op = BinopKind.from_str(self._string())
+            left = self.parse()
+            right = self.parse()
+            return Binop(op, left, right)
         raise NotImplementedError(bytes(ty))
 
 
@@ -4586,6 +4599,10 @@ class SerializerTests(unittest.TestCase):
         obj = Assign(Var("x"), Int(123))
         self.assertEqual(self._serialize(obj), TYPE_ASSIGN + b"v\x01\x00\x00\x00x1{")
 
+    def test_binop(self) -> None:
+        obj = Binop(BinopKind.ADD, Int(3), Int(4))
+        self.assertEqual(self._serialize(obj), TYPE_BINOP + b"\x01\x00\x00\x00+1\x031\x04")
+
 
 class RoundTripSerializationTests(unittest.TestCase):
     def _serialize(self, obj: Object) -> bytes:
@@ -4681,6 +4698,9 @@ class RoundTripSerializationTests(unittest.TestCase):
 
     def test_assign(self) -> None:
         self._rt(Assign(Var("x"), Int(123)))
+
+    def test_binop(self) -> None:
+        self._rt(Binop(BinopKind.ADD, Int(3), Int(4)))
 
 
 class ScrapMonadTests(unittest.TestCase):

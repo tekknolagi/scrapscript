@@ -1011,6 +1011,10 @@ class Variant(Object):
         return f"#{self.tag} {self.value}"
 
 
+TYPE_I8 = b"1"
+TYPE_I16 = b"2"
+TYPE_I32 = b"4"
+TYPE_I64 = b"8"
 TYPE_LONG = b"l"
 TYPE_STRING = b"s"
 TYPE_REF = b"r"
@@ -1042,9 +1046,19 @@ class Serializer:
     def emit(self, obj: bytes) -> None:
         self.output.extend(obj)
 
-    def _long(self, obj: int) -> bytes:
-        # TODO(max): Scale down to u8/u16/u32/u64 as appropriate
-        return obj.to_bytes(4, "little", signed=True)
+    def _long(self, obj: int) -> None:
+        types = [TYPE_I8, TYPE_I16, TYPE_I32, TYPE_I64]
+        for idx, ty in enumerate(types):
+            numbytes = 2**idx
+            try:
+                return self.emit(ty + obj.to_bytes(numbytes, "little", signed=True))
+            except OverflowError:
+                continue
+        # TODO(max): big integers
+        raise ValueError(f"integer {obj} is too large to serialize")
+
+    def _count(self, obj: int) -> bytes:
+        return obj.to_bytes(4, "little")
 
     def _string(self, obj: str) -> bytes:
         return obj.encode("utf-8")
@@ -1052,14 +1066,15 @@ class Serializer:
     def serialize(self, obj: Object) -> None:
         assert isinstance(obj, Object), type(obj)
         if (ref := self.ref(obj)) is not None:
-            return self.emit(TYPE_REF + self._long(ref))
+            self.emit(TYPE_REF)
+            return self.emit(TYPE_REF + self._count(ref))
         if isinstance(obj, Int):
-            return self.emit(TYPE_LONG + self._long(obj.value))
+            return self._long(obj.value)
         if isinstance(obj, String):
             return self.emit(TYPE_STRING + self._string(obj.value))
         if isinstance(obj, List):
             self.add_ref(TYPE_LIST, obj)
-            self.emit(self._long(len(obj.items)))
+            self.emit(self._count(len(obj.items)))
             for item in obj.items:
                 self.serialize(item)
             return
@@ -4297,8 +4312,17 @@ class SerializerTests(unittest.TestCase):
         serializer.serialize(obj)
         return bytes(serializer.output)
 
-    def test_int(self) -> None:
-        self.assertEqual(self._serialize(Int(1234)), b"l\xd2\x04\x00\x00")
+    def test_int8(self) -> None:
+        self.assertEqual(self._serialize(Int(1)), TYPE_I8 + b"\x01")
+
+    def test_int16(self) -> None:
+        self.assertEqual(self._serialize(Int(2**8 + 1)), TYPE_I16 + b"\x01\x01")
+
+    def test_int32(self) -> None:
+        self.assertEqual(self._serialize(Int(2**16 + 1)), TYPE_I32 + b"\x01\x00\x01\x00")
+
+    def test_int64(self) -> None:
+        self.assertEqual(self._serialize(Int(2**32 + 1)), TYPE_I64 + b"\x01\x00\x00\x00\x01\x00\x00\x00")
 
     def test_string(self) -> None:
         self.assertEqual(self._serialize(String("hello")), b"shello")
@@ -4309,16 +4333,16 @@ class SerializerTests(unittest.TestCase):
 
     def test_list(self) -> None:
         obj = List([Int(123), Int(456)])
-        self.assertEqual(self._serialize(obj), b"\xdb\x02\x00\x00\x00l{\x00\x00\x00l\xc8\x01\x00\x00")
+        self.assertEqual(self._serialize(obj), b"\xdb\x02\x00\x00\x001{2\xc8\x01")
 
     def test_self_referential_list(self) -> None:
         obj = List([])
         obj.items.append(obj)
-        self.assertEqual(self._serialize(obj), b"\xdb\x01\x00\x00\x00r\x00\x00\x00\x00")
+        self.assertEqual(self._serialize(obj), b"\xdb\x01\x00\x00\x00rr\x00\x00\x00\x00")
 
     def test_variant(self) -> None:
         obj = Variant("abc", Int(123))
-        self.assertEqual(self._serialize(obj), b"#sabcl{\x00\x00\x00")
+        self.assertEqual(self._serialize(obj), b"#sabc1{")
 
 
 class ScrapMonadTests(unittest.TestCase):

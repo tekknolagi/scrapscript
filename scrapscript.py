@@ -1080,7 +1080,6 @@ class Serializer:
     def serialize(self, obj: Object) -> None:
         assert isinstance(obj, Object), type(obj)
         if (ref := self.ref(obj)) is not None:
-            self.emit(TYPE_REF)
             return self.emit(TYPE_REF + self._count(ref))
         if isinstance(obj, Int):
             return self._long(obj.value)
@@ -4394,7 +4393,7 @@ class SerializerTests(unittest.TestCase):
     def test_self_referential_list(self) -> None:
         obj = List([])
         obj.items.append(obj)
-        self.assertEqual(self._serialize(obj), ref(TYPE_LIST) + b"\x01\x00\x00\x00rr\x00\x00\x00\x00")
+        self.assertEqual(self._serialize(obj), ref(TYPE_LIST) + b"\x01\x00\x00\x00r\x00\x00\x00\x00")
 
     def test_variant(self) -> None:
         obj = Variant("abc", Int(123))

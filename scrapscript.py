@@ -1011,17 +1011,21 @@ class Variant(Object):
         return f"#{self.tag} {self.value}"
 
 
-TYPE_I8 = b"1"
-TYPE_I16 = b"2"
-TYPE_I32 = b"4"
-TYPE_I64 = b"8"
-TYPE_LONG = b"l"
-TYPE_STRING = b"s"
-TYPE_REF = b"r"
-TYPE_LIST = b"["
-TYPE_RECORD = b"{"
-TYPE_VARIANT = b"#"
+tags = [
+    TYPE_I8 := b"1",
+    TYPE_I16 := b"2",
+    TYPE_I32 := b"4",
+    TYPE_I64 := b"8",
+    TYPE_LONG := b"l",
+    TYPE_STRING := b"s",
+    TYPE_REF := b"r",
+    TYPE_LIST := b"[",
+    TYPE_RECORD := b"{",
+    TYPE_VARIANT := b"#",
+]
 FLAG_REF = 0x80
+tags = tags + [(v[0] | FLAG_REF).to_bytes(1, "little") for v in tags]
+assert len(tags) == len(set(tags)), "Duplicate tags"
 
 
 @dataclass
@@ -1080,6 +1084,7 @@ class Serializer:
             return
         if isinstance(obj, Variant):
             self.emit(TYPE_VARIANT)
+            # TODO(max): String pool (via refs) for strings longer than some length?
             self.emit(TYPE_STRING + self._string(obj.tag))
             return self.serialize(obj.value)
         raise NotImplementedError(type(obj))

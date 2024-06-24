@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import struct
 import sys
 import typing
 import unittest
@@ -1017,6 +1018,7 @@ tags = [
     TYPE_I32 := b"4",
     TYPE_I64 := b"8",
     TYPE_LONG := b"l",
+    TYPE_FLOAT := b"d",
     TYPE_STRING := b"s",
     TYPE_REF := b"r",
     TYPE_LIST := b"[",
@@ -1136,6 +1138,10 @@ class Serializer:
             self.emit(self._count(len(obj.value)))
             self.emit(obj.value)
             return
+        if isinstance(obj, Float):
+            self.emit(TYPE_FLOAT)
+            self.emit(struct.pack("<d", obj.value))
+            return
         raise NotImplementedError(type(obj))
 
 
@@ -1241,6 +1247,9 @@ class Deserializer:
             assert not is_ref
             length = self._count()
             return Bytes(self.read(length))
+        if ty == TYPE_FLOAT:
+            assert not is_ref
+            return Float(struct.unpack("<d", self.read(8))[0])
         raise NotImplementedError(bytes(ty))
 
 
@@ -4547,6 +4556,10 @@ class SerializerTests(unittest.TestCase):
         obj = Bytes(b"abc")
         self.assertEqual(self._serialize(obj), TYPE_BYTES + b"\x03\x00\x00\x00abc")
 
+    def test_float(self) -> None:
+        obj = Float(3.14)
+        self.assertEqual(self._serialize(obj), TYPE_FLOAT + b"\x1f\x85\xebQ\xb8\x1e\t@")
+
 
 class RoundTripSerializationTests(unittest.TestCase):
     def _serialize(self, obj: Object) -> bytes:
@@ -4633,6 +4646,9 @@ class RoundTripSerializationTests(unittest.TestCase):
 
     def test_bytes(self) -> None:
         self._rt(Bytes(b"abc"))
+
+    def test_float(self) -> None:
+        self._rt(Float(3.14))
 
 
 class ScrapMonadTests(unittest.TestCase):

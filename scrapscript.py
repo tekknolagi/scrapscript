@@ -1011,6 +1011,52 @@ class Variant(Object):
         return f"#{self.tag} {self.value}"
 
 
+TYPE_LONG = b"l"
+TYPE_REF = b"r"
+TYPE_LIST = b"["
+FLAG_REF = 0x80
+
+
+@dataclass
+class Serializer:
+    refs: typing.List[Object] = dataclasses.field(default_factory=list)
+    output: bytearray = dataclasses.field(default_factory=bytearray)
+
+    def ref(self, obj: Object) -> Optional[int]:
+        for idx, ref in enumerate(self.refs):
+            if ref is obj:
+                return idx
+        return None
+
+    def add_ref(self, ty: bytes, obj: Object) -> int:
+        assert len(ty) == 1
+        assert self.ref(obj) is None
+        self.emit((ty[0] | FLAG_REF).to_bytes(1, "little"))
+        result = len(self.refs)
+        self.refs.append(obj)
+        return result
+
+    def emit(self, obj: bytes) -> None:
+        self.output.extend(obj)
+
+    def _long(self, obj: int) -> bytes:
+        return obj.to_bytes(4, "little", signed=True)
+
+    def serialize(self, obj: Object) -> None:
+        assert isinstance(obj, Object), type(obj)
+        if (ref := self.ref(obj)) is not None:
+            return self.emit(TYPE_REF + self._long(ref))
+        if isinstance(obj, Int):
+            return self.emit(TYPE_LONG + self._long(obj.value))
+        if isinstance(obj, List):
+            self.add_ref(TYPE_LIST, obj)
+            self.emit(self._long(len(obj.items)))
+            for item in obj.items:
+                self.serialize(item)
+            return
+        raise NotImplementedError(type(obj))
+
+
 TRUE = Variant("true", Hole())
 
 
@@ -4230,6 +4276,29 @@ class SerializeTests(unittest.TestCase):
             serialize(obj),
             b"d3:argd4:name1:x4:type3:Vare4:bodyd4:leftd4:type3:Int5:valuei1ee2:op3:ADD5:rightd4:name1:x4:type3:Vare4:type5:Binope4:type8:Functione",
         )
+
+
+class SerializerTests(unittest.TestCase):
+    def _serialize(self, obj: Object) -> bytes:
+        serializer = Serializer()
+        serializer.serialize(obj)
+        return bytes(serializer.output)
+
+    def test_int(self) -> None:
+        self.assertEqual(self._serialize(Int(1234)), b"l\xd2\x04\x00\x00")
+
+    def test_empty_list(self) -> None:
+        obj = List([])
+        self.assertEqual(self._serialize(obj), b"\xdb\x00\x00\x00\x00")
+
+    def test_list(self) -> None:
+        obj = List([Int(123), Int(456)])
+        self.assertEqual(self._serialize(obj), b"\xdb\x02\x00\x00\x00l{\x00\x00\x00l\xc8\x01\x00\x00")
+
+    def test_self_referential_list(self) -> None:
+        obj = List([])
+        obj.items.append(obj)
+        self.assertEqual(self._serialize(obj), b"\xdb\x01\x00\x00\x00r\x00\x00\x00\x00")
 
 
 class ScrapMonadTests(unittest.TestCase):

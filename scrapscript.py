@@ -1128,6 +1128,14 @@ class Deserializer:
         is_ref = bool(tag & FLAG_REF)
         return (tag & ~FLAG_REF).to_bytes(1, "little"), is_ref
 
+    def _count(self) -> int:
+        return int.from_bytes(self.read(COUNT_NBYTES), "little")
+
+    def _string(self) -> str:
+        length = self._count()
+        encoded = self.read(length)
+        return str(encoded, "utf-8")
+
     def parse(self) -> Object:
         ty, is_ref = self.read_tag()
         if ty == TYPE_REF:
@@ -1147,16 +1155,23 @@ class Deserializer:
             return Int(int.from_bytes(self.read(8), "little", signed=True))
         if ty == TYPE_STRING:
             assert not is_ref
-            length = int.from_bytes(self.read(COUNT_NBYTES), "little")
-            encoded = self.read(length)
-            return String(str(encoded, "utf-8"))
+            return String(self._string())
         if ty == TYPE_LIST:
-            length = int.from_bytes(self.read(COUNT_NBYTES), "little")
+            length = self._count()
             result = List([])
             if is_ref:
                 self.refs.append(result)
             for i in range(length):
                 result.items.append(self.parse())
+            return result
+        if ty == TYPE_RECORD:
+            assert not is_ref
+            length = int.from_bytes(self.read(COUNT_NBYTES), "little")
+            result = Record({})
+            for i in range(length):
+                key = self._string()
+                value = self.parse()
+                result.data[key] = value
             return result
         raise NotImplementedError(bytes(ty))
 
@@ -4478,6 +4493,9 @@ class RoundTripSerializationTests(unittest.TestCase):
         self.assertIsInstance(result.items, list)
         self.assertEqual(len(result.items), 1)
         self.assertIs(result.items[0], result)
+
+    def test_record(self) -> None:
+        self._rt(Record({"x": Int(1), "y": Int(2)}))
 
 
 class ScrapMonadTests(unittest.TestCase):

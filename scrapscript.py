@@ -1065,7 +1065,8 @@ class Serializer:
         return obj.to_bytes(4, "little")
 
     def _string(self, obj: str) -> bytes:
-        return obj.encode("utf-8")
+        encoded = obj.encode("utf-8")
+        return self._count(len(encoded)) + encoded
 
     def serialize(self, obj: Object) -> None:
         assert isinstance(obj, Object), type(obj)
@@ -4330,7 +4331,7 @@ class SerializerTests(unittest.TestCase):
         self.assertEqual(self._serialize(Int(2**32 + 1)), TYPE_I64 + b"\x01\x00\x00\x00\x01\x00\x00\x00")
 
     def test_string(self) -> None:
-        self.assertEqual(self._serialize(String("hello")), b"shello")
+        self.assertEqual(self._serialize(String("hello")), b's\x05\x00\x00\x00hello')
 
     def test_empty_list(self) -> None:
         obj = List([])
@@ -4347,7 +4348,7 @@ class SerializerTests(unittest.TestCase):
 
     def test_variant(self) -> None:
         obj = Variant("abc", Int(123))
-        self.assertEqual(self._serialize(obj), b"#sabc1{")
+        self.assertEqual(self._serialize(obj), b'#s\x03\x00\x00\x00abc1{')
 
 
 class ScrapMonadTests(unittest.TestCase):

@@ -1095,7 +1095,7 @@ class Serializer:
             # TODO(max): Determine if this should be a ref
             self.emit(TYPE_VARIANT)
             # TODO(max): String pool (via refs) for strings longer than some length?
-            self.emit(TYPE_STRING + self._string(obj.tag))
+            self.emit(self._string(obj.tag))
             return self.serialize(obj.value)
         if isinstance(obj, Record):
             # TODO(max): Determine if this should be a ref
@@ -1173,6 +1173,11 @@ class Deserializer:
                 value = self.parse()
                 result.data[key] = value
             return result
+        if ty == TYPE_VARIANT:
+            assert not is_ref
+            tag = self._string()
+            value = self.parse()
+            return Variant(tag, value)
         raise NotImplementedError(bytes(ty))
 
 
@@ -4433,7 +4438,7 @@ class SerializerTests(unittest.TestCase):
 
     def test_variant(self) -> None:
         obj = Variant("abc", Int(123))
-        self.assertEqual(self._serialize(obj), TYPE_VARIANT + b"s\x03\x00\x00\x00abc1{")
+        self.assertEqual(self._serialize(obj), TYPE_VARIANT + b"\x03\x00\x00\x00abc1{")
 
     def test_record(self) -> None:
         obj = Record({"x": Int(1), "y": Int(2)})
@@ -4496,6 +4501,9 @@ class RoundTripSerializationTests(unittest.TestCase):
 
     def test_record(self) -> None:
         self._rt(Record({"x": Int(1), "y": Int(2)}))
+
+    def test_variant(self) -> None:
+        self._rt(Variant("abc", Int(123)))
 
 
 class ScrapMonadTests(unittest.TestCase):

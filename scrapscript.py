@@ -1098,7 +1098,7 @@ class Serializer:
             self.add_ref(TYPE_RECORD, obj)
             self.emit(self._count(len(obj.data)))
             for key, value in obj.data.items():
-                self.emit(TYPE_STRING + self._string(key))
+                self.emit(self._string(key))
                 self.serialize(value)
             return
         raise NotImplementedError(type(obj))
@@ -4366,7 +4366,7 @@ class SerializerTests(unittest.TestCase):
     def test_record(self) -> None:
         obj = Record({"x": Int(1), "y": Int(2)})
         self.assertEqual(
-            self._serialize(obj), ref(TYPE_RECORD) + b"\x02\x00\x00\x00s\x01\x00\x00\x00x1\x01s\x01\x00\x00\x00y1\x02"
+            self._serialize(obj), ref(TYPE_RECORD) + b"\x02\x00\x00\x00\x01\x00\x00\x00x1\x01\x01\x00\x00\x00y1\x02"
         )
 
 

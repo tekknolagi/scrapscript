@@ -1026,6 +1026,7 @@ tags = [
     TYPE_FUNCTION := b"f",
     TYPE_MATCH_FUNCTION := b"m",
     TYPE_CLOSURE := b"c",
+    TYPE_BYTES := b"b",
 ]
 FLAG_REF = 0x80
 
@@ -1130,6 +1131,11 @@ class Serializer:
                 self.emit(self._string(key))
                 self.serialize(value)
             return
+        if isinstance(obj, Bytes):
+            self.emit(TYPE_BYTES)
+            self.emit(self._count(len(obj.value)))
+            self.emit(obj.value)
+            return
         raise NotImplementedError(type(obj))
 
 
@@ -1231,6 +1237,10 @@ class Deserializer:
                 value = self.parse()
                 result.env[key] = value
             return result
+        if ty == TYPE_BYTES:
+            assert not is_ref
+            length = self._count()
+            return Bytes(self.read(length))
         raise NotImplementedError(bytes(ty))
 
 
@@ -4533,6 +4543,10 @@ class SerializerTests(unittest.TestCase):
             + b"fv\x01\x00\x00\x00xv\x01\x00\x00\x00x\x01\x00\x00\x00\x04\x00\x00\x00selfr\x00\x00\x00\x00",
         )
 
+    def test_bytes(self) -> None:
+        obj = Bytes(b"abc")
+        self.assertEqual(self._serialize(obj), TYPE_BYTES + b"\x03\x00\x00\x00abc")
+
 
 class RoundTripSerializationTests(unittest.TestCase):
     def _serialize(self, obj: Object) -> bytes:
@@ -4616,6 +4630,9 @@ class RoundTripSerializationTests(unittest.TestCase):
         self.assertIsInstance(result.env, dict)
         self.assertEqual(len(result.env), 1)
         self.assertIs(result.env["self"], result)
+
+    def test_bytes(self) -> None:
+        self._rt(Bytes(b"abc"))
 
 
 class ScrapMonadTests(unittest.TestCase):

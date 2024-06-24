@@ -1116,11 +1116,12 @@ class Serializer:
             return self.serialize(obj.body)
         if isinstance(obj, Closure):
             self.add_ref(TYPE_CLOSURE, obj)
+            self.serialize(obj.func)
             self.emit(self._count(len(obj.env)))
             for key, value in obj.env.items():
                 self.emit(self._string(key))
                 self.serialize(value)
-            return self.serialize(obj.func)
+            return
         raise NotImplementedError(type(obj))
 
 
@@ -1175,8 +1176,8 @@ class Deserializer:
         if ty == TYPE_LIST:
             length = self._count()
             result = List([])
-            if is_ref:
-                self.refs.append(result)
+            assert is_ref
+            self.refs.append(result)
             for i in range(length):
                 result.items.append(self.parse())
             return result
@@ -1194,6 +1195,25 @@ class Deserializer:
             tag = self._string()
             value = self.parse()
             return Variant(tag, value)
+        if ty == TYPE_VAR:
+            assert not is_ref
+            return Var(self._string())
+        if ty == TYPE_FUNCTION:
+            assert not is_ref
+            arg = self.parse()
+            body = self.parse()
+            return Function(arg, body)
+        if ty == TYPE_CLOSURE:
+            func = self.parse()
+            length = self._count()
+            result = Closure({}, func)
+            assert is_ref
+            self.refs.append(result)
+            for i in range(length):
+                key = self._string()
+                value = self.parse()
+                result.env[key] = value
+            return result
         raise NotImplementedError(bytes(ty))
 
 
@@ -4473,7 +4493,7 @@ class SerializerTests(unittest.TestCase):
     def test_closure(self) -> None:
         obj = Closure({}, Function(Var("x"), Var("x")))
         self.assertEqual(
-            self._serialize(obj), ref(TYPE_CLOSURE) + b"\x00\x00\x00\x00fv\x01\x00\x00\x00xv\x01\x00\x00\x00x"
+            self._serialize(obj), ref(TYPE_CLOSURE) + b"fv\x01\x00\x00\x00xv\x01\x00\x00\x00x\x00\x00\x00\x00"
         )
 
     def test_self_referential_closure(self) -> None:
@@ -4482,7 +4502,7 @@ class SerializerTests(unittest.TestCase):
         self.assertEqual(
             self._serialize(obj),
             ref(TYPE_CLOSURE)
-            + b"\x01\x00\x00\x00\x04\x00\x00\x00selfr\x00\x00\x00\x00fv\x01\x00\x00\x00xv\x01\x00\x00\x00x",
+            + b"fv\x01\x00\x00\x00xv\x01\x00\x00\x00x\x01\x00\x00\x00\x04\x00\x00\x00selfr\x00\x00\x00\x00",
         )
 
 
@@ -4543,6 +4563,24 @@ class RoundTripSerializationTests(unittest.TestCase):
 
     def test_variant(self) -> None:
         self._rt(Variant("abc", Int(123)))
+
+    def test_var(self) -> None:
+        self._rt(Var("x"))
+
+    def test_function(self) -> None:
+        self._rt(Function(Var("x"), Var("x")))
+
+    def test_closure(self) -> None:
+        self._rt(Closure({}, Function(Var("x"), Var("x"))))
+
+    def test_self_referential_closure(self) -> None:
+        obj = Closure({}, Function(Var("x"), Var("x")))
+        obj.env["self"] = obj
+        result = self._serde(obj)
+        self.assertIsInstance(result, Closure)
+        self.assertIsInstance(result.env, dict)
+        self.assertEqual(len(result.env), 1)
+        self.assertIs(result.env["self"], result)
 
 
 class ScrapMonadTests(unittest.TestCase):

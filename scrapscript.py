@@ -1024,6 +1024,7 @@ tags = [
     TYPE_VARIANT := b"#",
     TYPE_VAR := b"v",
     TYPE_FUNCTION := b"f",
+    TYPE_MATCH_FUNCTION := b"m",
     TYPE_CLOSURE := b"c",
 ]
 FLAG_REF = 0x80
@@ -1114,6 +1115,13 @@ class Serializer:
             self.emit(TYPE_FUNCTION)
             self.serialize(obj.arg)
             return self.serialize(obj.body)
+        if isinstance(obj, MatchFunction):
+            self.emit(TYPE_MATCH_FUNCTION)
+            self.emit(self._count(len(obj.cases)))
+            for case in obj.cases:
+                self.serialize(case.pattern)
+                self.serialize(case.body)
+            return
         if isinstance(obj, Closure):
             self.add_ref(TYPE_CLOSURE, obj)
             self.serialize(obj.func)
@@ -1203,6 +1211,15 @@ class Deserializer:
             arg = self.parse()
             body = self.parse()
             return Function(arg, body)
+        if ty == TYPE_MATCH_FUNCTION:
+            assert not is_ref
+            length = self._count()
+            result = MatchFunction([])
+            for i in range(length):
+                pattern = self.parse()
+                body = self.parse()
+                result.cases.append(MatchCase(pattern, body))
+            return result
         if ty == TYPE_CLOSURE:
             func = self.parse()
             length = self._count()
@@ -4490,6 +4507,17 @@ class SerializerTests(unittest.TestCase):
         obj = Function(Var("x"), Var("x"))
         self.assertEqual(self._serialize(obj), TYPE_FUNCTION + b"v\x01\x00\x00\x00xv\x01\x00\x00\x00x")
 
+    def test_empty_match_function(self) -> None:
+        obj = MatchFunction([])
+        self.assertEqual(self._serialize(obj), TYPE_MATCH_FUNCTION + b"\x00\x00\x00\x00")
+
+    def test_match_function(self) -> None:
+        obj = MatchFunction([MatchCase(Int(1), Var("x")), MatchCase(List([Int(1)]), Var("y"))])
+        self.assertEqual(
+            self._serialize(obj),
+            TYPE_MATCH_FUNCTION + b"\x02\x00\x00\x001\x01v\x01\x00\x00\x00x\xdb\x01\x00\x00\x001\x01v\x01\x00\x00\x00y",
+        )
+
     def test_closure(self) -> None:
         obj = Closure({}, Function(Var("x"), Var("x")))
         self.assertEqual(
@@ -4569,6 +4597,13 @@ class RoundTripSerializationTests(unittest.TestCase):
 
     def test_function(self) -> None:
         self._rt(Function(Var("x"), Var("x")))
+
+    def test_empty_match_function(self) -> None:
+        self._rt(MatchFunction([]))
+
+    def test_match_function(self) -> None:
+        obj = MatchFunction([MatchCase(Int(1), Var("x")), MatchCase(List([Int(1)]), Var("y"))])
+        self._rt(obj)
 
     def test_closure(self) -> None:
         self._rt(Closure({}, Function(Var("x"), Var("x"))))

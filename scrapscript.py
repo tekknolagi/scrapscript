@@ -1090,12 +1090,14 @@ class Serializer:
                 self.serialize(item)
             return
         if isinstance(obj, Variant):
+            # TODO(max): Determine if this should be a ref
             self.emit(TYPE_VARIANT)
             # TODO(max): String pool (via refs) for strings longer than some length?
             self.emit(TYPE_STRING + self._string(obj.tag))
             return self.serialize(obj.value)
         if isinstance(obj, Record):
-            self.add_ref(TYPE_RECORD, obj)
+            # TODO(max): Determine if this should be a ref
+            self.emit(TYPE_RECORD)
             self.emit(self._count(len(obj.data)))
             for key, value in obj.data.items():
                 self.emit(self._string(key))
@@ -4366,7 +4368,7 @@ class SerializerTests(unittest.TestCase):
     def test_record(self) -> None:
         obj = Record({"x": Int(1), "y": Int(2)})
         self.assertEqual(
-            self._serialize(obj), ref(TYPE_RECORD) + b"\x02\x00\x00\x00\x01\x00\x00\x00x1\x01\x01\x00\x00\x00y1\x02"
+            self._serialize(obj), TYPE_RECORD + b"\x02\x00\x00\x00\x01\x00\x00\x00x1\x01\x01\x00\x00\x00y1\x02"
         )
 
 

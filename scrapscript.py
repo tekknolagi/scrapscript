@@ -1033,6 +1033,7 @@ tags = [
     TYPE_ASSIGN := b"=",
     TYPE_BINOP := b"+",
     TYPE_APPLY := b" ",
+    TYPE_WHERE := b".",
 ]
 FLAG_REF = 0x80
 
@@ -1167,6 +1168,11 @@ class Serializer:
             self.serialize(obj.func)
             self.serialize(obj.arg)
             return
+        if isinstance(obj, Where):
+            self.emit(TYPE_WHERE)
+            self.serialize(obj.body)
+            self.serialize(obj.binding)
+            return
         raise NotImplementedError(type(obj))
 
 
@@ -1294,6 +1300,11 @@ class Deserializer:
             func = self.parse()
             arg = self.parse()
             return Apply(func, arg)
+        if ty == TYPE_WHERE:
+            assert not is_ref
+            body = self.parse()
+            binding = self.parse()
+            return Where(body, binding)
         raise NotImplementedError(bytes(ty))
 
 
@@ -4619,6 +4630,10 @@ class SerializerTests(unittest.TestCase):
         obj = Apply(Var("f"), Var("x"))
         self.assertEqual(self._serialize(obj), TYPE_APPLY + b"v\x01\x00\x00\x00fv\x01\x00\x00\x00x")
 
+    def test_where(self) -> None:
+        obj = Where(Var("a"), Var("b"))
+        self.assertEqual(self._serialize(obj), TYPE_WHERE + b"v\x01\x00\x00\x00av\x01\x00\x00\x00b")
+
 
 class RoundTripSerializationTests(unittest.TestCase):
     def _serialize(self, obj: Object) -> bytes:
@@ -4720,6 +4735,9 @@ class RoundTripSerializationTests(unittest.TestCase):
 
     def test_apply(self) -> None:
         self._rt(Apply(Var("f"), Var("x")))
+
+    def test_where(self) -> None:
+        self._rt(Where(Var("a"), Var("b")))
 
 
 class ScrapMonadTests(unittest.TestCase):

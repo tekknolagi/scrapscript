@@ -5085,6 +5085,13 @@ def compile_command(args: argparse.Namespace) -> None:
         subprocess.run(["sh", "-c", "./a.out"], check=True)
 
 
+def flat_command(args: argparse.Namespace) -> None:
+    prog = parse(tokenize(sys.stdin.read()))
+    serializer = Serializer()
+    serializer.serialize(prog)
+    sys.stdout.buffer.write(serializer.output)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="scrapscript")
     subparsers = parser.add_subparsers(dest="command")
@@ -5119,6 +5126,9 @@ def main() -> None:
     comp.add_argument("--debug", action="store_true", default=False)
     # The platform is in the same directory as this file
     comp.add_argument("--platform", default=os.path.join(os.path.dirname(__file__), "cli.c"))
+
+    flat = subparsers.add_parser("flat")
+    flat.set_defaults(func=flat_command)
 
     args = parser.parse_args()
     if not args.command:

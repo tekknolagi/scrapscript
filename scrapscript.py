@@ -1123,20 +1123,41 @@ class Deserializer:
         self.idx += size
         return result
 
+    def read_tag(self) -> Tuple[bytes, bool]:
+        tag = self.read(1)[0]
+        is_ref = bool(tag & FLAG_REF)
+        return (tag & ~FLAG_REF).to_bytes(1, "little"), is_ref
+
     def parse(self) -> Object:
-        ty = self.read(1)
+        ty, is_ref = self.read_tag()
+        if ty == TYPE_REF:
+            idx = int.from_bytes(self.read(COUNT_NBYTES), "little")
+            return self.refs[idx]
         if ty == TYPE_I8:
+            assert not is_ref
             return Int(int.from_bytes(self.read(1), "little", signed=True))
         if ty == TYPE_I16:
+            assert not is_ref
             return Int(int.from_bytes(self.read(2), "little", signed=True))
         if ty == TYPE_I32:
+            assert not is_ref
             return Int(int.from_bytes(self.read(4), "little", signed=True))
         if ty == TYPE_I64:
+            assert not is_ref
             return Int(int.from_bytes(self.read(8), "little", signed=True))
         if ty == TYPE_STRING:
+            assert not is_ref
             length = int.from_bytes(self.read(COUNT_NBYTES), "little")
             encoded = self.read(length)
             return String(str(encoded, "utf-8"))
+        if ty == TYPE_LIST:
+            length = int.from_bytes(self.read(COUNT_NBYTES), "little")
+            result = List([])
+            if is_ref:
+                self.refs.append(result)
+            for i in range(length):
+                result.items.append(self.parse())
+            return result
         raise NotImplementedError(bytes(ty))
 
 
@@ -4416,9 +4437,12 @@ class RoundTripSerializationTests(unittest.TestCase):
         deserializer = Deserializer(flat)
         return deserializer.parse()
 
-    def _rt(self, obj: Object):
+    def _serde(self, obj: Object):
         flat = self._serialize(obj)
-        result = self._deserialize(flat)
+        return self._deserialize(flat)
+
+    def _rt(self, obj: Object):
+        result = self._serde(obj)
         self.assertEqual(result, obj)
 
     def test_i8(self) -> None:
@@ -4441,6 +4465,19 @@ class RoundTripSerializationTests(unittest.TestCase):
         self._rt(String(""))
         self._rt(String("a"))
         self._rt(String("hello"))
+
+    def test_list(self) -> None:
+        self._rt(List([]))
+        self._rt(List([Int(123), Int(345)]))
+
+    def test_self_referential_list(self) -> None:
+        ls = List([])
+        ls.items.append(ls)
+        result = self._serde(ls)
+        self.assertIsInstance(result, List)
+        self.assertIsInstance(result.items, list)
+        self.assertEqual(len(result.items), 1)
+        self.assertIs(result.items[0], result)
 
 
 class ScrapMonadTests(unittest.TestCase):

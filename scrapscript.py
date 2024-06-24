@@ -1012,8 +1012,11 @@ class Variant(Object):
 
 
 TYPE_LONG = b"l"
+TYPE_STRING = b"s"
 TYPE_REF = b"r"
 TYPE_LIST = b"["
+TYPE_RECORD = b"{"
+TYPE_VARIANT = b"#"
 FLAG_REF = 0x80
 
 
@@ -1040,7 +1043,11 @@ class Serializer:
         self.output.extend(obj)
 
     def _long(self, obj: int) -> bytes:
+        # TODO(max): Scale down to u8/u16/u32/u64 as appropriate
         return obj.to_bytes(4, "little", signed=True)
+
+    def _string(self, obj: str) -> bytes:
+        return obj.encode("utf-8")
 
     def serialize(self, obj: Object) -> None:
         assert isinstance(obj, Object), type(obj)
@@ -1048,12 +1055,18 @@ class Serializer:
             return self.emit(TYPE_REF + self._long(ref))
         if isinstance(obj, Int):
             return self.emit(TYPE_LONG + self._long(obj.value))
+        if isinstance(obj, String):
+            return self.emit(TYPE_STRING + self._string(obj.value))
         if isinstance(obj, List):
             self.add_ref(TYPE_LIST, obj)
             self.emit(self._long(len(obj.items)))
             for item in obj.items:
                 self.serialize(item)
             return
+        if isinstance(obj, Variant):
+            self.emit(TYPE_VARIANT)
+            self.emit(TYPE_STRING + self._string(obj.tag))
+            return self.serialize(obj.value)
         raise NotImplementedError(type(obj))
 
 
@@ -4287,6 +4300,9 @@ class SerializerTests(unittest.TestCase):
     def test_int(self) -> None:
         self.assertEqual(self._serialize(Int(1234)), b"l\xd2\x04\x00\x00")
 
+    def test_string(self) -> None:
+        self.assertEqual(self._serialize(String("hello")), b"shello")
+
     def test_empty_list(self) -> None:
         obj = List([])
         self.assertEqual(self._serialize(obj), b"\xdb\x00\x00\x00\x00")
@@ -4299,6 +4315,10 @@ class SerializerTests(unittest.TestCase):
         obj = List([])
         obj.items.append(obj)
         self.assertEqual(self._serialize(obj), b"\xdb\x01\x00\x00\x00r\x00\x00\x00\x00")
+
+    def test_variant(self) -> None:
+        obj = Variant("abc", Int(123))
+        self.assertEqual(self._serialize(obj), b"#sabcl{\x00\x00\x00")
 
 
 class ScrapMonadTests(unittest.TestCase):

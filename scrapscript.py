@@ -1034,6 +1034,7 @@ tags = [
     TYPE_BINOP := b"+",
     TYPE_APPLY := b" ",
     TYPE_WHERE := b".",
+    TYPE_ACCESS := b"@",
 ]
 FLAG_REF = 0x80
 
@@ -1173,6 +1174,11 @@ class Serializer:
             self.serialize(obj.body)
             self.serialize(obj.binding)
             return
+        if isinstance(obj, Access):
+            self.emit(TYPE_ACCESS)
+            self.serialize(obj.obj)
+            self.serialize(obj.at)
+            return
         raise NotImplementedError(type(obj))
 
 
@@ -1305,6 +1311,11 @@ class Deserializer:
             body = self.parse()
             binding = self.parse()
             return Where(body, binding)
+        if ty == TYPE_ACCESS:
+            assert not is_ref
+            obj = self.parse()
+            at = self.parse()
+            return Access(obj, at)
         raise NotImplementedError(bytes(ty))
 
 
@@ -4634,6 +4645,10 @@ class SerializerTests(unittest.TestCase):
         obj = Where(Var("a"), Var("b"))
         self.assertEqual(self._serialize(obj), TYPE_WHERE + b"v\x01\x00\x00\x00av\x01\x00\x00\x00b")
 
+    def test_access(self) -> None:
+        obj = Access(Var("a"), Var("b"))
+        self.assertEqual(self._serialize(obj), TYPE_ACCESS + b"v\x01\x00\x00\x00av\x01\x00\x00\x00b")
+
 
 class RoundTripSerializationTests(unittest.TestCase):
     def _serialize(self, obj: Object) -> bytes:
@@ -4738,6 +4753,9 @@ class RoundTripSerializationTests(unittest.TestCase):
 
     def test_where(self) -> None:
         self._rt(Where(Var("a"), Var("b")))
+
+    def test_access(self) -> None:
+        self._rt(Access(Var("a"), Var("b")))
 
 
 class ScrapMonadTests(unittest.TestCase):

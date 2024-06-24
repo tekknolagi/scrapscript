@@ -1024,7 +1024,13 @@ tags = [
     TYPE_VARIANT := b"#",
 ]
 FLAG_REF = 0x80
-tags = tags + [(v[0] | FLAG_REF).to_bytes(1, "little") for v in tags]
+
+
+def ref(tag):
+    return (tag[0] | FLAG_REF).to_bytes(1, "little")
+
+
+tags = tags + [ref(v) for v in tags]
 assert len(tags) == len(set(tags)), "Duplicate tags"
 
 
@@ -1042,7 +1048,7 @@ class Serializer:
     def add_ref(self, ty: bytes, obj: Object) -> int:
         assert len(ty) == 1
         assert self.ref(obj) is None
-        self.emit((ty[0] | FLAG_REF).to_bytes(1, "little"))
+        self.emit(ref(ty))
         result = len(self.refs)
         self.refs.append(obj)
         return result
@@ -4331,24 +4337,24 @@ class SerializerTests(unittest.TestCase):
         self.assertEqual(self._serialize(Int(2**32 + 1)), TYPE_I64 + b"\x01\x00\x00\x00\x01\x00\x00\x00")
 
     def test_string(self) -> None:
-        self.assertEqual(self._serialize(String("hello")), b's\x05\x00\x00\x00hello')
+        self.assertEqual(self._serialize(String("hello")), TYPE_STRING + b"\x05\x00\x00\x00hello")
 
     def test_empty_list(self) -> None:
         obj = List([])
-        self.assertEqual(self._serialize(obj), b"\xdb\x00\x00\x00\x00")
+        self.assertEqual(self._serialize(obj), ref(TYPE_LIST) + b"\x00\x00\x00\x00")
 
     def test_list(self) -> None:
         obj = List([Int(123), Int(456)])
-        self.assertEqual(self._serialize(obj), b"\xdb\x02\x00\x00\x001{2\xc8\x01")
+        self.assertEqual(self._serialize(obj), ref(TYPE_LIST) + b"\x02\x00\x00\x001{2\xc8\x01")
 
     def test_self_referential_list(self) -> None:
         obj = List([])
         obj.items.append(obj)
-        self.assertEqual(self._serialize(obj), b"\xdb\x01\x00\x00\x00rr\x00\x00\x00\x00")
+        self.assertEqual(self._serialize(obj), ref(TYPE_LIST) + b"\x01\x00\x00\x00rr\x00\x00\x00\x00")
 
     def test_variant(self) -> None:
         obj = Variant("abc", Int(123))
-        self.assertEqual(self._serialize(obj), b'#s\x03\x00\x00\x00abc1{')
+        self.assertEqual(self._serialize(obj), TYPE_VARIANT + b"s\x03\x00\x00\x00abc1{")
 
 
 class ScrapMonadTests(unittest.TestCase):

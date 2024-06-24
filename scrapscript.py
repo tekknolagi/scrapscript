@@ -1034,6 +1034,9 @@ tags = tags + [ref(v) for v in tags]
 assert len(tags) == len(set(tags)), "Duplicate tags"
 
 
+COUNT_NBYTES = 4
+
+
 @dataclass
 class Serializer:
     refs: typing.List[Object] = dataclasses.field(default_factory=list)
@@ -1068,7 +1071,7 @@ class Serializer:
         raise ValueError(f"integer {obj} is too large to serialize")
 
     def _count(self, obj: int) -> bytes:
-        return obj.to_bytes(4, "little")
+        return obj.to_bytes(COUNT_NBYTES, "little")
 
     def _string(self, obj: str) -> bytes:
         encoded = obj.encode("utf-8")
@@ -1104,6 +1107,38 @@ class Serializer:
                 self.serialize(value)
             return
         raise NotImplementedError(type(obj))
+
+
+@dataclass
+class Deserializer:
+    flat: bytes | memoryview
+    idx: int = 0
+    refs: typing.List[Object] = dataclasses.field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if isinstance(self.flat, bytes):
+            self.flat = memoryview(self.flat)
+
+    def read(self, size: int) -> memoryview:
+        result = memoryview(self.flat[self.idx : self.idx + size])
+        self.idx += size
+        return result
+
+    def parse(self) -> Object:
+        ty = self.read(1)
+        if ty == TYPE_I8:
+            return Int(int.from_bytes(self.read(1), "little", signed=True))
+        if ty == TYPE_I16:
+            return Int(int.from_bytes(self.read(2), "little", signed=True))
+        if ty == TYPE_I32:
+            return Int(int.from_bytes(self.read(4), "little", signed=True))
+        if ty == TYPE_I64:
+            return Int(int.from_bytes(self.read(8), "little", signed=True))
+        if ty == TYPE_STRING:
+            length = int.from_bytes(self.read(COUNT_NBYTES), "little")
+            encoded = self.read(length)
+            return String(str(encoded, "utf-8"))
+        raise NotImplementedError(bytes(ty))
 
 
 TRUE = Variant("true", Hole())
@@ -4370,6 +4405,43 @@ class SerializerTests(unittest.TestCase):
         self.assertEqual(
             self._serialize(obj), TYPE_RECORD + b"\x02\x00\x00\x00\x01\x00\x00\x00x1\x01\x01\x00\x00\x00y1\x02"
         )
+
+
+class RoundTripSerializationTests(unittest.TestCase):
+    def _serialize(self, obj: Object) -> bytes:
+        serializer = Serializer()
+        serializer.serialize(obj)
+        return bytes(serializer.output)
+
+    def _deserialize(self, flat: bytes) -> Object:
+        deserializer = Deserializer(flat)
+        return deserializer.parse()
+
+    def _rt(self, obj: Object):
+        flat = self._serialize(obj)
+        result = self._deserialize(flat)
+        self.assertEqual(result, obj)
+
+    def test_i8(self) -> None:
+        self._rt(Int(123))
+        self._rt(Int(-123))
+
+    def test_i16(self) -> None:
+        self._rt(Int(1234))
+        self._rt(Int(-1234))
+
+    def test_i32(self) -> None:
+        self._rt(Int(2**16 + 1))
+        self._rt(Int(-(2**16) - 1))
+
+    def test_i64(self) -> None:
+        self._rt(Int(2**32 + 1))
+        self._rt(Int(-(2**32) - 1))
+
+    def test_string(self) -> None:
+        self._rt(String(""))
+        self._rt(String("a"))
+        self._rt(String("hello"))
 
 
 class ScrapMonadTests(unittest.TestCase):

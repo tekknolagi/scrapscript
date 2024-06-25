@@ -1013,11 +1013,8 @@ class Variant(Object):
 
 
 tags = [
-    TYPE_I8 := b"1",
-    TYPE_I16 := b"2",
-    TYPE_I32 := b"4",
-    TYPE_I64 := b"8",
-    TYPE_LONG := b"l",
+    TYPE_SHORT := b"i",  # fits in 64 bits
+    TYPE_LONG := b"l",  # bignum
     TYPE_FLOAT := b"d",
     TYPE_STRING := b"s",
     TYPE_REF := b"r",
@@ -1051,7 +1048,16 @@ assert all(len(v) == 1 for v in tags), "Tags must be 1 byte"
 assert all(isinstance(v, bytes) for v in tags)
 
 
-COUNT_NBYTES = 4
+def zigzag_encode(val):
+    if val < 0:
+        return -2 * val - 1
+    return 2 * val
+
+
+def zigzag_decode(val):
+    if val & 1 == 1:
+        return -val // 2
+    return val // 2
 
 
 @dataclass
@@ -1076,36 +1082,45 @@ class Serializer:
     def emit(self, obj: bytes) -> None:
         self.output.extend(obj)
 
-    def _long(self, obj: int) -> None:
-        # TODO(max): Run-length encoding?
-        types = [TYPE_I8, TYPE_I16, TYPE_I32, TYPE_I64]
-        for idx, ty in enumerate(types):
-            numbytes = 2**idx
-            try:
-                return self.emit(ty + obj.to_bytes(numbytes, "little", signed=True))
-            except OverflowError:
-                continue
+    def _fits_in_nbits(self, obj: int, nbits: int) -> bool:
+        return -(1 << (nbits - 1)) <= obj < (1 << (nbits - 1))
+
+    def _short(self, number: int) -> bytes:
+        # From Peter Ruibal, https://github.com/fmoo/python-varint
+        number = zigzag_encode(number)
+        buf = bytearray()
+        while True:
+            towrite = number & 0x7F
+            number >>= 7
+            if number:
+                buf.append(towrite | 0x80)
+            else:
+                buf.append(towrite)
+                break
+        return bytes(buf)
+
+    def _int(self, obj: int) -> bytes:
+        if self._fits_in_nbits(obj, 64):
+            self.emit(TYPE_SHORT)
+            return self.emit(self._short(obj))
         # TODO(max): big integers
         raise ValueError(f"integer {obj} is too large to serialize")
 
-    def _count(self, obj: int) -> bytes:
-        return obj.to_bytes(COUNT_NBYTES, "little")
-
     def _string(self, obj: str) -> bytes:
         encoded = obj.encode("utf-8")
-        return self._count(len(encoded)) + encoded
+        return self._short(len(encoded)) + encoded
 
     def serialize(self, obj: Object) -> None:
         assert isinstance(obj, Object), type(obj)
         if (ref := self.ref(obj)) is not None:
-            return self.emit(TYPE_REF + self._count(ref))
+            return self.emit(TYPE_REF + self._short(ref))
         if isinstance(obj, Int):
-            return self._long(obj.value)
+            return self._int(obj.value)
         if isinstance(obj, String):
             return self.emit(TYPE_STRING + self._string(obj.value))
         if isinstance(obj, List):
             self.add_ref(TYPE_LIST, obj)
-            self.emit(self._count(len(obj.items)))
+            self.emit(self._short(len(obj.items)))
             for item in obj.items:
                 self.serialize(item)
             return
@@ -1118,7 +1133,7 @@ class Serializer:
         if isinstance(obj, Record):
             # TODO(max): Determine if this should be a ref
             self.emit(TYPE_RECORD)
-            self.emit(self._count(len(obj.data)))
+            self.emit(self._short(len(obj.data)))
             for key, value in obj.data.items():
                 self.emit(self._string(key))
                 self.serialize(value)
@@ -1131,7 +1146,7 @@ class Serializer:
             return self.serialize(obj.body)
         if isinstance(obj, MatchFunction):
             self.emit(TYPE_MATCH_FUNCTION)
-            self.emit(self._count(len(obj.cases)))
+            self.emit(self._short(len(obj.cases)))
             for case in obj.cases:
                 self.serialize(case.pattern)
                 self.serialize(case.body)
@@ -1139,14 +1154,14 @@ class Serializer:
         if isinstance(obj, Closure):
             self.add_ref(TYPE_CLOSURE, obj)
             self.serialize(obj.func)
-            self.emit(self._count(len(obj.env)))
+            self.emit(self._short(len(obj.env)))
             for key, value in obj.env.items():
                 self.emit(self._string(key))
                 self.serialize(value)
             return
         if isinstance(obj, Bytes):
             self.emit(TYPE_BYTES)
-            self.emit(self._count(len(obj.value)))
+            self.emit(self._short(len(obj.value)))
             self.emit(obj.value)
             return
         if isinstance(obj, Float):
@@ -1212,36 +1227,39 @@ class Deserializer:
         is_ref = bool(tag & FLAG_REF)
         return (tag & ~FLAG_REF).to_bytes(1, "little"), is_ref
 
-    def _count(self) -> int:
-        return int.from_bytes(self.read(COUNT_NBYTES), "little")
-
     def _string(self) -> str:
-        length = self._count()
+        length = self._short()
         encoded = self.read(length)
         return str(encoded, "utf-8")
+
+    def _short(self) -> int:
+        # From Peter Ruibal, https://github.com/fmoo/python-varint
+        shift = 0
+        result = 0
+        while True:
+            i = self.read(1)[0]
+            result |= (i & 0x7F) << shift
+            shift += 7
+            if not (i & 0x80):
+                break
+        return zigzag_decode(result)
 
     def parse(self) -> Object:
         ty, is_ref = self.read_tag()
         if ty == TYPE_REF:
-            idx = int.from_bytes(self.read(COUNT_NBYTES), "little")
+            idx = self._short()
             return self.refs[idx]
-        if ty == TYPE_I8:
+        if ty == TYPE_SHORT:
             assert not is_ref
-            return Int(int.from_bytes(self.read(1), "little", signed=True))
-        if ty == TYPE_I16:
+            return Int(self._short())
+        if ty == TYPE_LONG:
             assert not is_ref
-            return Int(int.from_bytes(self.read(2), "little", signed=True))
-        if ty == TYPE_I32:
-            assert not is_ref
-            return Int(int.from_bytes(self.read(4), "little", signed=True))
-        if ty == TYPE_I64:
-            assert not is_ref
-            return Int(int.from_bytes(self.read(8), "little", signed=True))
+            raise NotImplementedError("long integers")
         if ty == TYPE_STRING:
             assert not is_ref
             return String(self._string())
         if ty == TYPE_LIST:
-            length = self._count()
+            length = self._short()
             result = List([])
             assert is_ref
             self.refs.append(result)
@@ -1250,7 +1268,7 @@ class Deserializer:
             return result
         if ty == TYPE_RECORD:
             assert not is_ref
-            length = int.from_bytes(self.read(COUNT_NBYTES), "little")
+            length = self._short()
             result = Record({})
             for i in range(length):
                 key = self._string()
@@ -1272,7 +1290,7 @@ class Deserializer:
             return Function(arg, body)
         if ty == TYPE_MATCH_FUNCTION:
             assert not is_ref
-            length = self._count()
+            length = self._short()
             result = MatchFunction([])
             for i in range(length):
                 pattern = self.parse()
@@ -1281,7 +1299,7 @@ class Deserializer:
             return result
         if ty == TYPE_CLOSURE:
             func = self.parse()
-            length = self._count()
+            length = self._short()
             result = Closure({}, func)
             assert is_ref
             self.refs.append(result)
@@ -1292,7 +1310,7 @@ class Deserializer:
             return result
         if ty == TYPE_BYTES:
             assert not is_ref
-            length = self._count()
+            length = self._short()
             return Bytes(self.read(length))
         if ty == TYPE_FLOAT:
             assert not is_ref
@@ -4560,81 +4578,67 @@ class SerializerTests(unittest.TestCase):
         serializer.serialize(obj)
         return bytes(serializer.output)
 
-    def test_int8(self) -> None:
-        self.assertEqual(self._serialize(Int(1)), TYPE_I8 + b"\x01")
-
-    def test_int16(self) -> None:
-        self.assertEqual(self._serialize(Int(2**8 + 1)), TYPE_I16 + b"\x01\x01")
-
-    def test_int32(self) -> None:
-        self.assertEqual(self._serialize(Int(2**16 + 1)), TYPE_I32 + b"\x01\x00\x01\x00")
-
-    def test_int64(self) -> None:
-        self.assertEqual(self._serialize(Int(2**32 + 1)), TYPE_I64 + b"\x01\x00\x00\x00\x01\x00\x00\x00")
+    def test_smallints(self) -> None:
+        self.assertEqual(self._serialize(Int(-1)), TYPE_SHORT + b"\x01")
+        self.assertEqual(self._serialize(Int(0)), TYPE_SHORT + b"\x00")
+        self.assertEqual(self._serialize(Int(1)), TYPE_SHORT + b"\x02")
+        self.assertEqual(self._serialize(Int(-(2**33))), TYPE_SHORT + b"\xff\xff\xff\xff?")
+        self.assertEqual(self._serialize(Int(2**33)), TYPE_SHORT + b"\x80\x80\x80\x80@")
+        self.assertEqual(self._serialize(Int(-(2**63))), TYPE_SHORT + b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01")
+        self.assertEqual(self._serialize(Int(2**63 - 1)), TYPE_SHORT + b"\xfe\xff\xff\xff\xff\xff\xff\xff\xff\x01")
 
     def test_string(self) -> None:
-        self.assertEqual(self._serialize(String("hello")), TYPE_STRING + b"\x05\x00\x00\x00hello")
+        self.assertEqual(self._serialize(String("hello")), TYPE_STRING + b"\nhello")
 
     def test_empty_list(self) -> None:
         obj = List([])
-        self.assertEqual(self._serialize(obj), ref(TYPE_LIST) + b"\x00\x00\x00\x00")
+        self.assertEqual(self._serialize(obj), ref(TYPE_LIST) + b"\x00")
 
     def test_list(self) -> None:
         obj = List([Int(123), Int(456)])
-        self.assertEqual(self._serialize(obj), ref(TYPE_LIST) + b"\x02\x00\x00\x001{2\xc8\x01")
+        self.assertEqual(self._serialize(obj), ref(TYPE_LIST) + b"\x04i\xf6\x01i\x90\x07")
 
     def test_self_referential_list(self) -> None:
         obj = List([])
         obj.items.append(obj)
-        self.assertEqual(self._serialize(obj), ref(TYPE_LIST) + b"\x01\x00\x00\x00r\x00\x00\x00\x00")
+        self.assertEqual(self._serialize(obj), ref(TYPE_LIST) + b"\x02r\x00")
 
     def test_variant(self) -> None:
         obj = Variant("abc", Int(123))
-        self.assertEqual(self._serialize(obj), TYPE_VARIANT + b"\x03\x00\x00\x00abc1{")
+        self.assertEqual(self._serialize(obj), TYPE_VARIANT + b"\x06abci\xf6\x01")
 
     def test_record(self) -> None:
         obj = Record({"x": Int(1), "y": Int(2)})
-        self.assertEqual(
-            self._serialize(obj), TYPE_RECORD + b"\x02\x00\x00\x00\x01\x00\x00\x00x1\x01\x01\x00\x00\x00y1\x02"
-        )
+        self.assertEqual(self._serialize(obj), TYPE_RECORD + b"\x04\x02xi\x02\x02yi\x04")
 
     def test_var(self) -> None:
         obj = Var("x")
-        self.assertEqual(self._serialize(obj), TYPE_VAR + b"\x01\x00\x00\x00x")
+        self.assertEqual(self._serialize(obj), TYPE_VAR + b"\x02x")
 
     def test_function(self) -> None:
         obj = Function(Var("x"), Var("x"))
-        self.assertEqual(self._serialize(obj), TYPE_FUNCTION + b"v\x01\x00\x00\x00xv\x01\x00\x00\x00x")
+        self.assertEqual(self._serialize(obj), TYPE_FUNCTION + b"v\x02xv\x02x")
 
     def test_empty_match_function(self) -> None:
         obj = MatchFunction([])
-        self.assertEqual(self._serialize(obj), TYPE_MATCH_FUNCTION + b"\x00\x00\x00\x00")
+        self.assertEqual(self._serialize(obj), TYPE_MATCH_FUNCTION + b"\x00")
 
     def test_match_function(self) -> None:
         obj = MatchFunction([MatchCase(Int(1), Var("x")), MatchCase(List([Int(1)]), Var("y"))])
-        self.assertEqual(
-            self._serialize(obj),
-            TYPE_MATCH_FUNCTION + b"\x02\x00\x00\x001\x01v\x01\x00\x00\x00x\xdb\x01\x00\x00\x001\x01v\x01\x00\x00\x00y",
-        )
+        self.assertEqual(self._serialize(obj), TYPE_MATCH_FUNCTION + b"\x04i\x02v\x02x\xdb\x02i\x02v\x02y")
 
     def test_closure(self) -> None:
         obj = Closure({}, Function(Var("x"), Var("x")))
-        self.assertEqual(
-            self._serialize(obj), ref(TYPE_CLOSURE) + b"fv\x01\x00\x00\x00xv\x01\x00\x00\x00x\x00\x00\x00\x00"
-        )
+        self.assertEqual(self._serialize(obj), ref(TYPE_CLOSURE) + b"fv\x02xv\x02x\x00")
 
     def test_self_referential_closure(self) -> None:
         obj = Closure({}, Function(Var("x"), Var("x")))
         obj.env["self"] = obj
-        self.assertEqual(
-            self._serialize(obj),
-            ref(TYPE_CLOSURE)
-            + b"fv\x01\x00\x00\x00xv\x01\x00\x00\x00x\x01\x00\x00\x00\x04\x00\x00\x00selfr\x00\x00\x00\x00",
-        )
+        self.assertEqual(self._serialize(obj), ref(TYPE_CLOSURE) + b"fv\x02xv\x02x\x02\x08selfr\x00")
 
     def test_bytes(self) -> None:
         obj = Bytes(b"abc")
-        self.assertEqual(self._serialize(obj), TYPE_BYTES + b"\x03\x00\x00\x00abc")
+        self.assertEqual(self._serialize(obj), TYPE_BYTES + b"\x06abc")
 
     def test_float(self) -> None:
         obj = Float(3.14)
@@ -4645,27 +4649,27 @@ class SerializerTests(unittest.TestCase):
 
     def test_assign(self) -> None:
         obj = Assign(Var("x"), Int(123))
-        self.assertEqual(self._serialize(obj), TYPE_ASSIGN + b"v\x01\x00\x00\x00x1{")
+        self.assertEqual(self._serialize(obj), TYPE_ASSIGN + b"v\x02xi\xf6\x01")
 
     def test_binop(self) -> None:
         obj = Binop(BinopKind.ADD, Int(3), Int(4))
-        self.assertEqual(self._serialize(obj), TYPE_BINOP + b"\x01\x00\x00\x00+1\x031\x04")
+        self.assertEqual(self._serialize(obj), TYPE_BINOP + b"\x02+i\x06i\x08")
 
     def test_apply(self) -> None:
         obj = Apply(Var("f"), Var("x"))
-        self.assertEqual(self._serialize(obj), TYPE_APPLY + b"v\x01\x00\x00\x00fv\x01\x00\x00\x00x")
+        self.assertEqual(self._serialize(obj), TYPE_APPLY + b"v\x02fv\x02x")
 
     def test_where(self) -> None:
         obj = Where(Var("a"), Var("b"))
-        self.assertEqual(self._serialize(obj), TYPE_WHERE + b"v\x01\x00\x00\x00av\x01\x00\x00\x00b")
+        self.assertEqual(self._serialize(obj), TYPE_WHERE + b"v\x02av\x02b")
 
     def test_access(self) -> None:
         obj = Access(Var("a"), Var("b"))
-        self.assertEqual(self._serialize(obj), TYPE_ACCESS + b"v\x01\x00\x00\x00av\x01\x00\x00\x00b")
+        self.assertEqual(self._serialize(obj), TYPE_ACCESS + b"v\x02av\x02b")
 
     def test_spread(self) -> None:
         self.assertEqual(self._serialize(Spread()), TYPE_SPREAD)
-        self.assertEqual(self._serialize(Spread("rest")), TYPE_NAMED_SPREAD + b"\x04\x00\x00\x00rest")
+        self.assertEqual(self._serialize(Spread("rest")), TYPE_NAMED_SPREAD + b"\x08rest")
 
 
 class RoundTripSerializationTests(unittest.TestCase):
@@ -4686,21 +4690,13 @@ class RoundTripSerializationTests(unittest.TestCase):
         result = self._serde(obj)
         self.assertEqual(result, obj)
 
-    def test_i8(self) -> None:
-        self._rt(Int(123))
-        self._rt(Int(-123))
-
-    def test_i16(self) -> None:
-        self._rt(Int(1234))
-        self._rt(Int(-1234))
-
-    def test_i32(self) -> None:
-        self._rt(Int(2**16 + 1))
-        self._rt(Int(-(2**16) - 1))
+    def test_smallints(self) -> None:
+        for i in range(-(2**16), 2**16):
+            self._rt(Int(i))
 
     def test_i64(self) -> None:
-        self._rt(Int(2**32 + 1))
-        self._rt(Int(-(2**32) - 1))
+        self._rt(Int(-(2**63)))
+        self._rt(Int(2**63 - 1))
 
     def test_string(self) -> None:
         self._rt(String(""))

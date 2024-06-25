@@ -841,7 +841,7 @@ tags = [
 FLAG_REF = 0x80
 
 
-def ref(tag):
+def ref(tag: bytes) -> bytes:
     return (tag[0] | FLAG_REF).to_bytes(1, "little")
 
 
@@ -851,13 +851,13 @@ assert all(len(v) == 1 for v in tags), "Tags must be 1 byte"
 assert all(isinstance(v, bytes) for v in tags)
 
 
-def zigzag_encode(val):
+def zigzag_encode(val: int) -> int:
     if val < 0:
         return -2 * val - 1
     return 2 * val
 
 
-def zigzag_decode(val):
+def zigzag_decode(val: int) -> int:
     if val & 1 == 1:
         return -val // 2
     return val // 2
@@ -902,13 +902,6 @@ class Serializer:
                 break
         return bytes(buf)
 
-    def _int(self, obj: int) -> bytes:
-        if self._fits_in_nbits(obj, 64):
-            self.emit(TYPE_SHORT)
-            return self.emit(self._short(obj))
-        # TODO(max): big integers
-        raise ValueError(f"integer {obj} is too large to serialize")
-
     def _string(self, obj: str) -> bytes:
         encoded = obj.encode("utf-8")
         return self._short(len(encoded)) + encoded
@@ -918,7 +911,12 @@ class Serializer:
         if (ref := self.ref(obj)) is not None:
             return self.emit(TYPE_REF + self._short(ref))
         if isinstance(obj, Int):
-            return self._int(obj.value)
+            if self._fits_in_nbits(obj, 64):
+                self.emit(TYPE_SHORT)
+                self.emit(self._short(obj))
+                return
+            # TODO(max): big integers
+            raise ValueError(f"integer {obj} is too large to serialize")
         if isinstance(obj, String):
             return self.emit(TYPE_STRING + self._string(obj.value))
         if isinstance(obj, List):

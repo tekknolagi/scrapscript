@@ -15,7 +15,7 @@ import unittest
 import urllib.request
 from dataclasses import dataclass
 from enum import auto
-from types import FunctionType, ModuleType
+from types import ModuleType
 from typing import Any, Callable, Dict, Mapping, Optional, Set, Tuple, Union
 
 readline: Optional[ModuleType]

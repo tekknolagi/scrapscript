@@ -4055,7 +4055,7 @@ class SerializerTests(unittest.TestCase):
         serializer.serialize(obj)
         return bytes(serializer.output)
 
-    def test_smallints(self) -> None:
+    def test_short(self) -> None:
         self.assertEqual(self._serialize(Int(-1)), TYPE_SHORT + b"\x01")
         self.assertEqual(self._serialize(Int(0)), TYPE_SHORT + b"\x00")
         self.assertEqual(self._serialize(Int(1)), TYPE_SHORT + b"\x02")
@@ -4064,7 +4064,7 @@ class SerializerTests(unittest.TestCase):
         self.assertEqual(self._serialize(Int(-(2**63))), TYPE_SHORT + b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01")
         self.assertEqual(self._serialize(Int(2**63 - 1)), TYPE_SHORT + b"\xfe\xff\xff\xff\xff\xff\xff\xff\xff\x01")
 
-    def test_bigints(self) -> None:
+    def test_long(self) -> None:
         self.assertEqual(
             self._serialize(Int(2**100)),
             TYPE_LONG + b"\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00 \x00\x00\x00",
@@ -4178,15 +4178,14 @@ class RoundTripSerializationTests(unittest.TestCase):
         result = self._serde(obj)
         self.assertEqual(result, obj)
 
-    def test_smallints(self) -> None:
+    def test_short(self) -> None:
         for i in range(-(2**16), 2**16):
             self._rt(Int(i))
 
-    def test_i64(self) -> None:
         self._rt(Int(-(2**63)))
         self._rt(Int(2**63 - 1))
 
-    def test_bigints(self) -> None:
+    def test_long(self) -> None:
         self._rt(Int(2**100))
         self._rt(Int(-(2**100)))
 

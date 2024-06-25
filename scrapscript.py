@@ -841,6 +841,12 @@ tags = [
 FLAG_REF = 0x80
 
 
+BITS_PER_BYTE = 8
+BYTES_PER_DIGIT = 8
+BITS_PER_DIGIT = BYTES_PER_DIGIT * BITS_PER_BYTE
+DIGIT_MASK = (1 << BITS_PER_DIGIT) - 1
+
+
 def ref(tag: bytes) -> bytes:
     return (tag[0] | FLAG_REF).to_bytes(1, "little")
 
@@ -902,6 +908,18 @@ class Serializer:
                 break
         return bytes(buf)
 
+    def _long(self, number: int) -> bytes:
+        digits = []
+        number = zigzag_encode(number)
+        while number:
+            digits.append(number & DIGIT_MASK)
+            number >>= BITS_PER_DIGIT
+        buf = bytearray()
+        self.emit(self._short(len(digits)))
+        for digit in digits:
+            buf.extend(digit.to_bytes(BYTES_PER_DIGIT, "little"))
+        return bytes(buf)
+
     def _string(self, obj: str) -> bytes:
         encoded = obj.encode("utf-8")
         return self._short(len(encoded)) + encoded
@@ -915,8 +933,9 @@ class Serializer:
                 self.emit(TYPE_SHORT)
                 self.emit(self._short(obj.value))
                 return
-            # TODO(max): big integers
-            raise ValueError(f"integer {obj} is too large to serialize")
+            self.emit(TYPE_LONG)
+            self.emit(self._long(obj.value))
+            return
         if isinstance(obj, String):
             return self.emit(TYPE_STRING + self._string(obj.value))
         if isinstance(obj, List):
@@ -1045,6 +1064,18 @@ class Deserializer:
                 break
         return zigzag_decode(result)
 
+    def _long(self) -> int:
+        num_digits = self._short()
+        digits = []
+        for _ in range(num_digits):
+            digit = int.from_bytes(self.read(BYTES_PER_DIGIT), "little")
+            digits.append(digit)
+        result = 0
+        for digit in reversed(digits):
+            result <<= BITS_PER_DIGIT
+            result |= digit
+        return zigzag_decode(result)
+
     def parse(self) -> Object:
         ty, is_ref = self.read_tag()
         if ty == TYPE_REF:
@@ -1055,7 +1086,7 @@ class Deserializer:
             return Int(self._short())
         if ty == TYPE_LONG:
             assert not is_ref
-            raise NotImplementedError("long integers")
+            return Int(self._long())
         if ty == TYPE_STRING:
             assert not is_ref
             return String(self._string())
@@ -4033,6 +4064,16 @@ class SerializerTests(unittest.TestCase):
         self.assertEqual(self._serialize(Int(-(2**63))), TYPE_SHORT + b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01")
         self.assertEqual(self._serialize(Int(2**63 - 1)), TYPE_SHORT + b"\xfe\xff\xff\xff\xff\xff\xff\xff\xff\x01")
 
+    def test_bigints(self) -> None:
+        self.assertEqual(
+            self._serialize(Int(2**100)),
+            TYPE_LONG + b"\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00 \x00\x00\x00",
+        )
+        self.assertEqual(
+            self._serialize(Int(-(2**100))),
+            TYPE_LONG + b"\x04\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x1f\x00\x00\x00",
+        )
+
     def test_string(self) -> None:
         self.assertEqual(self._serialize(String("hello")), TYPE_STRING + b"\nhello")
 
@@ -4144,6 +4185,10 @@ class RoundTripSerializationTests(unittest.TestCase):
     def test_i64(self) -> None:
         self._rt(Int(-(2**63)))
         self._rt(Int(2**63 - 1))
+
+    def test_bigints(self) -> None:
+        self._rt(Int(2**100))
+        self._rt(Int(-(2**100)))
 
     def test_string(self) -> None:
         self._rt(String(""))

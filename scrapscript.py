@@ -1012,7 +1012,7 @@ class Serializer:
 
 @dataclass
 class Deserializer:
-    flat: bytes | memoryview
+    flat: Union[bytes, memoryview]
     idx: int = 0
     refs: typing.List[Object] = dataclasses.field(default_factory=list)
 

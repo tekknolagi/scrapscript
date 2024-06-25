@@ -911,9 +911,9 @@ class Serializer:
         if (ref := self.ref(obj)) is not None:
             return self.emit(TYPE_REF + self._short(ref))
         if isinstance(obj, Int):
-            if self._fits_in_nbits(obj, 64):
+            if self._fits_in_nbits(obj.value, 64):
                 self.emit(TYPE_SHORT)
-                self.emit(self._short(obj))
+                self.emit(self._short(obj.value))
                 return
             # TODO(max): big integers
             raise ValueError(f"integer {obj} is too large to serialize")
@@ -1061,21 +1061,21 @@ class Deserializer:
             return String(self._string())
         if ty == TYPE_LIST:
             length = self._short()
-            result = List([])
+            result_list = List([])
             assert is_ref
-            self.refs.append(result)
+            self.refs.append(result_list)
             for i in range(length):
-                result.items.append(self.parse())
-            return result
+                result_list.items.append(self.parse())
+            return result_list
         if ty == TYPE_RECORD:
             assert not is_ref
             length = self._short()
-            result = Record({})
+            result_rec = Record({})
             for i in range(length):
                 key = self._string()
                 value = self.parse()
-                result.data[key] = value
-            return result
+                result_rec.data[key] = value
+            return result_rec
         if ty == TYPE_VARIANT:
             assert not is_ref
             tag = self._string()
@@ -1092,23 +1092,25 @@ class Deserializer:
         if ty == TYPE_MATCH_FUNCTION:
             assert not is_ref
             length = self._short()
-            result = MatchFunction([])
+            result_matchfun = MatchFunction([])
             for i in range(length):
                 pattern = self.parse()
                 body = self.parse()
-                result.cases.append(MatchCase(pattern, body))
-            return result
+                result_matchfun.cases.append(MatchCase(pattern, body))
+            return result_matchfun
         if ty == TYPE_CLOSURE:
             func = self.parse()
             length = self._short()
-            result = Closure({}, func)
+            assert isinstance(func, (Function, MatchFunction))
+            result_closure = Closure({}, func)
             assert is_ref
-            self.refs.append(result)
+            self.refs.append(result_closure)
             for i in range(length):
                 key = self._string()
                 value = self.parse()
-                result.env[key] = value
-            return result
+                assert isinstance(result_closure.env, dict)  # For mypy
+                result_closure.env[key] = value
+            return result_closure
         if ty == TYPE_BYTES:
             assert not is_ref
             length = self._short()
@@ -1123,6 +1125,7 @@ class Deserializer:
             assert not is_ref
             name = self.parse()
             value = self.parse()
+            assert isinstance(name, Var)
             return Assign(name, value)
         if ty == TYPE_BINOP:
             assert not is_ref
@@ -4076,6 +4079,7 @@ class SerializerTests(unittest.TestCase):
 
     def test_self_referential_closure(self) -> None:
         obj = Closure({}, Function(Var("x"), Var("x")))
+        assert isinstance(obj.env, dict)  # For mypy
         obj.env["self"] = obj
         self.assertEqual(self._serialize(obj), ref(TYPE_CLOSURE) + b"fv\x02xv\x02x\x02\x08selfr\x00")
 
@@ -4125,11 +4129,11 @@ class RoundTripSerializationTests(unittest.TestCase):
         deserializer = Deserializer(flat)
         return deserializer.parse()
 
-    def _serde(self, obj: Object):
+    def _serde(self, obj: Object) -> Object:
         flat = self._serialize(obj)
         return self._deserialize(flat)
 
-    def _rt(self, obj: Object):
+    def _rt(self, obj: Object) -> None:
         result = self._serde(obj)
         self.assertEqual(result, obj)
 
@@ -4155,6 +4159,7 @@ class RoundTripSerializationTests(unittest.TestCase):
         ls.items.append(ls)
         result = self._serde(ls)
         self.assertIsInstance(result, List)
+        assert isinstance(result, List)  # For mypy
         self.assertIsInstance(result.items, list)
         self.assertEqual(len(result.items), 1)
         self.assertIs(result.items[0], result)
@@ -4183,9 +4188,11 @@ class RoundTripSerializationTests(unittest.TestCase):
 
     def test_self_referential_closure(self) -> None:
         obj = Closure({}, Function(Var("x"), Var("x")))
+        assert isinstance(obj.env, dict)  # For mypy
         obj.env["self"] = obj
         result = self._serde(obj)
         self.assertIsInstance(result, Closure)
+        assert isinstance(result, Closure)  # For mypy
         self.assertIsInstance(result.env, dict)
         self.assertEqual(len(result.env), 1)
         self.assertIs(result.env["self"], result)

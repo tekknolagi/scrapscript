@@ -914,8 +914,7 @@ class Serializer:
         while number:
             digits.append(number & DIGIT_MASK)
             number >>= BITS_PER_DIGIT
-        buf = bytearray()
-        self.emit(self._short(len(digits)))
+        buf = bytearray(self._short(len(digits)))
         for digit in digits:
             buf.extend(digit.to_bytes(BYTES_PER_DIGIT, "little"))
         return bytes(buf)

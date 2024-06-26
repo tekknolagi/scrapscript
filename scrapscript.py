@@ -563,6 +563,13 @@ class HashVar(Object):
         assert self.is_linked()
         return self._value[0]
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Object):
+            return NotImplemented
+        if not self.is_linked():
+            return isinstance(other, HashVar) and self.name == other.name
+        return self.value() == other
+
     def __str__(self) -> str:
         return f"$sha1'{self.name}"
 
@@ -3703,6 +3710,7 @@ class LinkTests(unittest.TestCase):
         self.assertEqual(var, HashVar("x"))
         var.link(Int(1))
         self.assertEqual(var, Int(1))
+        self.assertNotEqual(var, Int(2))
 
     def test_variant(self) -> None:
         exp = Variant("tag", HashVar("x"))

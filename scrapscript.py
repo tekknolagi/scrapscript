@@ -3632,9 +3632,9 @@ class EndToEndTests(EndToEndTestsBase):
     def test_linking(self) -> None:
         import hashlib
 
-        extern = eval_exp({}, parse(tokenize("x -> y -> x + y")))
+        flat = serialize(eval_exp({}, parse(tokenize("x -> y -> x + y"))))
+        extern = deserialize(flat)
         self.assertIsInstance(extern, Closure)
-        flat = serialize(extern)
         flathash = hashlib.sha1(flat).hexdigest()
         self.assertEqual(flathash, "fcc9450b1de9b76c8453900086c084d7755e6448")
         exp = parse(tokenize(f"$sha1'{flathash} 3 4"))

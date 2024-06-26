@@ -372,8 +372,12 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     elif isinstance(token, FloatLit):
         l = Float(token.value)
     elif isinstance(token, Name):
-        # TODO: Handle kebab case vars
-        l = Var(token.value)
+        hash_prefix = "$sha1'"
+        if token.value.startswith(hash_prefix):
+            l = HashVar(token.value[len(hash_prefix) :])
+        else:
+            # TODO: Handle kebab case vars
+            l = Var(token.value)
     elif isinstance(token, VariantToken):
         # It needs to be higher than the precedence of the -> operator so that
         # we can match variants in MatchFunction
@@ -541,6 +545,26 @@ class Bytes(Object):
 
     def __str__(self) -> str:
         return f"~~{base64.b64encode(self.value).decode()}"
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class HashVar(Object):
+    name: str
+    _value: typing.List[Object] = dataclasses.field(default_factory=list)
+
+    def is_linked(self) -> bool:
+        return bool(self._value)
+
+    def link(self, value: Object) -> None:
+        assert not self.is_linked()
+        self._value.append(value)
+
+    def value(self) -> Object:
+        assert self.is_linked()
+        return self._value[0]
+
+    def __str__(self) -> str:
+        return self.name
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -1969,7 +1993,7 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse([Name("abc_123")]), Var("abc_123"))
 
     def test_parse_sha_var_returns_var(self) -> None:
-        self.assertEqual(parse([Name("$sha1'abc")]), Var("$sha1'abc"))
+        self.assertEqual(parse([Name("$sha1'abc")]), HashVar("abc"))
 
     def test_parse_sha_var_without_quote_returns_var(self) -> None:
         self.assertEqual(parse([Name("$sha1abc")]), Var("$sha1abc"))
@@ -3593,6 +3617,182 @@ class EndToEndTests(EndToEndTestsBase):
             ),
             Int(7),
         )
+
+
+class LinkError(Exception):
+    pass
+
+
+def link(exp: Object, env: Env) -> None:
+    if isinstance(exp, HashVar):
+        value = env.get(exp.name)
+        if value is None:
+            raise LinkError(f"undefined reference to {exp.name!r}")
+        exp.link(value)
+        return
+    if isinstance(exp, (Int, Float, String, Bytes, Hole, Closure, NativeFunction, Var, Spread)):
+        return
+    if isinstance(exp, Variant):
+        link(exp.value, env)
+        return
+    if isinstance(exp, Binop):
+        link(exp.left, env)
+        link(exp.right, env)
+        return
+    if isinstance(exp, List):
+        for elem in exp.items:
+            link(elem, env)
+        return
+    if isinstance(exp, Record):
+        for value in exp.data.values():
+            link(value, env)
+        return
+    if isinstance(exp, Assign):
+        link(exp.value, env)
+        return
+    if isinstance(exp, Where):
+        link(exp.body, env)
+        link(exp.binding, env)
+        return
+    if isinstance(exp, Assert):
+        link(exp.cond, env)
+        link(exp.value, env)
+        return
+    if isinstance(exp, Function):
+        link(exp.body, env)
+        return
+    if isinstance(exp, MatchFunction):
+        for case in exp.cases:
+            link(case.body, env)
+        return
+    if isinstance(exp, Apply):
+        link(exp.func, env)
+        link(exp.arg, env)
+        return
+    if isinstance(exp, Access):
+        link(exp.obj, env)
+        return
+    if isinstance(exp, Compose):
+        link(exp.inner, env)
+        link(exp.outer, env)
+        return
+    raise NotImplementedError(f"linking not implemented for {type(exp).__name__}")
+
+
+class LinkTests(unittest.TestCase):
+    def test_eq(self) -> None:
+        var = HashVar("x")
+        self.assertEqual(var, HashVar("x"))
+        var.link(Int(1))
+        self.assertEqual(var, Int(1))
+
+    def test_variant(self) -> None:
+        exp = Variant("tag", HashVar("x"))
+        link(exp, {"x": Int(1)})
+        assert isinstance(exp.value, HashVar)  # For mypy
+        self.assertTrue(exp.value.is_linked())
+        self.assertEqual(exp.value.value(), Int(1))
+
+    def test_binop(self) -> None:
+        exp = Binop(BinopKind.ADD, HashVar("x"), HashVar("y"))
+        link(exp, {"x": Int(1), "y": Int(2)})
+        assert isinstance(exp.left, HashVar)  # For mypy
+        self.assertTrue(exp.left.is_linked())
+        self.assertEqual(exp.left.value(), Int(1))
+        assert isinstance(exp.right, HashVar)  # For mypy
+        self.assertTrue(exp.right.is_linked())
+        self.assertEqual(exp.right.value(), Int(2))
+
+    def test_list(self) -> None:
+        exp = List([HashVar("x"), HashVar("y")])
+        link(exp, {"x": Int(1), "y": Int(2)})
+        assert isinstance(exp.items[0], HashVar)  # For mypy
+        self.assertTrue(exp.items[0].is_linked())
+        self.assertEqual(exp.items[0].value(), Int(1))
+        assert isinstance(exp.items[1], HashVar)  # For mypy
+        self.assertTrue(exp.items[1].is_linked())
+        self.assertEqual(exp.items[1].value(), Int(2))
+
+    def test_record(self) -> None:
+        x = HashVar("x")
+        y = HashVar("y")
+        exp = Record({"x": x, "y": y})
+        link(exp, {"x": Int(1), "y": Int(2)})
+        self.assertTrue(x.is_linked())
+        self.assertEqual(x.value(), Int(1))
+        self.assertTrue(y.is_linked())
+        self.assertEqual(y.value(), Int(2))
+
+    def test_assign(self) -> None:
+        exp = Assign(Var("x"), HashVar("y"))
+        link(exp, {"y": Int(1)})
+        assert isinstance(exp.value, HashVar)  # For mypy
+        self.assertTrue(exp.value.is_linked())
+        self.assertEqual(exp.value.value(), Int(1))
+
+    def test_where(self) -> None:
+        y = HashVar("y")
+        exp = Where(Binop(BinopKind.ADD, Var("x"), y), Assign(Var("x"), Int(1)))
+        link(exp, {"y": Int(2)})
+        self.assertTrue(y.is_linked())
+        self.assertEqual(y.value(), Int(2))
+
+    def test_assert(self) -> None:
+        exp = Assert(HashVar("x"), TRUE)
+        link(exp, {"x": Int(1)})
+        assert isinstance(exp.value, HashVar)  # For mypy
+        self.assertTrue(exp.value.is_linked())
+        self.assertEqual(exp.value.value(), Int(1))
+
+    def test_function(self) -> None:
+        exp = Function(Var("x"), HashVar("x"))
+        link(exp, {"x": Int(1)})
+        assert isinstance(exp.body, HashVar)  # For mypy
+        self.assertTrue(exp.body.is_linked())
+        self.assertEqual(exp.body.value(), Int(1))
+
+    def test_match_function(self) -> None:
+        x = HashVar("x")
+        exp = MatchFunction([MatchCase(Int(1), x)])
+        link(exp, {"x": Int(2)})
+        self.assertTrue(x.is_linked())
+        self.assertEqual(x.value(), Int(2))
+
+    def test_apply(self) -> None:
+        exp = Apply(HashVar("f"), HashVar("x"))
+        link(exp, {"f": Int(1), "x": Int(2)})
+        assert isinstance(exp.func, HashVar)  # For mypy
+        self.assertTrue(exp.func.is_linked())
+        self.assertTrue(exp.func.is_linked())
+        assert isinstance(exp.arg, HashVar)  # For mypy
+        self.assertTrue(exp.arg.is_linked())
+        self.assertEqual(exp.func.value(), Int(1))
+        self.assertEqual(exp.arg.value(), Int(2))
+
+    def test_access(self) -> None:
+        exp = Access(HashVar("x"), String("y"))
+        link(exp, {"x": Record({"y": Int(1)})})
+        assert isinstance(exp.obj, HashVar)  # For mypy
+        self.assertTrue(exp.obj.is_linked())
+        self.assertEqual(exp.obj.value(), Record({"y": Int(1)}))
+
+    def test_compose(self) -> None:
+        exp = Compose(HashVar("f"), HashVar("g"))
+        link(exp, {"f": Int(1), "g": Int(2)})
+        assert isinstance(exp.inner, HashVar)  # For mypy
+        self.assertTrue(exp.inner.is_linked())
+        assert isinstance(exp.outer, HashVar)  # For mypy
+        self.assertTrue(exp.outer.is_linked())
+        self.assertEqual(exp.inner.value(), Int(1))
+        self.assertEqual(exp.outer.value(), Int(2))
+
+    def test_spread(self) -> None:
+        link(Spread(), {})
+
+    def test_link_nonexistent_var_raises_link_error(self) -> None:
+        with self.assertRaises(LinkError) as ctx:
+            link(HashVar("x"), {})
+        self.assertEqual(str(ctx.exception), "undefined reference to 'x'")
 
 
 class ClosureOptimizeTests(unittest.TestCase):

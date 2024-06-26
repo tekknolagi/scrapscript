@@ -564,7 +564,7 @@ class HashVar(Object):
         return self._value[0]
 
     def __str__(self) -> str:
-        return self.name
+        return f"$sha1'{self.name}"
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -1426,6 +1426,10 @@ def eval_exp(env: Env, exp: Object) -> Object:
         if value is None:
             raise NameError(f"name '{exp.name}' is not defined")
         return value
+    if isinstance(exp, HashVar):
+        if not exp.is_linked():
+            raise NameError(f"undefined reference to {exp!r}")
+        return exp.value()
     if isinstance(exp, Binop):
         handler = BINOP_HANDLERS.get(exp.op)
         if handler is None:
@@ -3617,6 +3621,20 @@ class EndToEndTests(EndToEndTestsBase):
             ),
             Int(7),
         )
+
+    def test_linking(self) -> None:
+        import hashlib
+
+        extern = eval_exp({}, parse(tokenize("x -> y -> x + y")))
+        self.assertIsInstance(extern, Closure)
+        flat = serialize(extern)
+        flathash = hashlib.sha1(flat).hexdigest()
+        self.assertEqual(flathash, "fcc9450b1de9b76c8453900086c084d7755e6448")
+        exp = parse(tokenize(f"$sha1'{flathash} 3 4"))
+        with self.assertRaises(NameError):
+            eval_exp({}, exp)
+        link(exp, {flathash: extern})
+        self.assertEqual(eval_exp({}, exp), Int(7))
 
 
 class LinkError(Exception):

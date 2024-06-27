@@ -512,7 +512,6 @@ def compile_to_string(source: str, debug: bool) -> str:
         print(function.decl() + ";", file=f)
     # Emit the const heap
     print("#define ptrto(obj) ((struct object*)((uword)&(obj) + 1))", file=f)
-    print('#define CONST_HEAP __attribute__((section("const_heap")))', file=f)
     for line in compiler.const_heap:
         print(line, file=f)
     for function in compiler.functions:

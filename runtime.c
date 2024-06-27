@@ -755,6 +755,7 @@ struct object* println(struct object* obj) {
 
 // Put something in the const heap so that __start_const_heap and
 // __stop_const_heap are defined by the linker.
-__attribute__((section("const_heap"), used)) struct heap_string private_unused_const_heap = {
+#define CONST_HEAP const __attribute__((section("const_heap")))
+CONST_HEAP __attribute__((used)) struct heap_string private_unused_const_heap = {
     .HEAD.tag = TAG_STRING, .size = 11, .data = "hello world"
 };

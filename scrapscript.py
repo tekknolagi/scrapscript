@@ -746,7 +746,7 @@ class Binop(Object):
     def serialize(self) -> Dict[str, object]:
         return {
             "type": "Binop",
-            "op": self.op.name,
+            "op": BinopKind.to_str(self.op),
             "left": self.left.serialize(),
             "right": self.right.serialize(),
         }
@@ -1217,6 +1217,19 @@ def improve_closure(closure: Closure) -> Closure:
     return Closure(env, closure.func)
 
 
+def as_record(x: object) -> Object:
+    if isinstance(x, int):
+        return Int(x)
+    if isinstance(x, str):
+        return String(x)
+    if isinstance(x, list):
+        return List([as_record(item) for item in x])
+    if isinstance(x, dict):
+        return Record({key: as_record(value) for key, value in x.items()})
+    raise NotImplementedError(type(x))
+
+
+# pylint: disable=redefined-builtin
 def eval_exp(env: Env, exp: Object) -> Object:
     logger.debug(exp)
     if isinstance(exp, (Int, Float, String, Bytes, Hole, Closure, NativeFunction)):
@@ -4409,17 +4422,80 @@ def listlength(obj: Object) -> Object:
     return Int(len(obj.items))
 
 
+def int_as_str(obj: Object) -> String:
+    if not isinstance(obj, Int):
+        raise TypeError(f"int_as_str expected Int, but got {type(obj).__name__}")
+    return String(str(obj.value))
+
+
+def str_as_str(obj: Object) -> String:
+    if not isinstance(obj, String):
+        raise TypeError(f"str_as_str expected String, but got {type(obj).__name__}")
+    return String(repr(obj.value))
+
+
+def record_each(obj: Object) -> Object:
+    if not isinstance(obj, Record):
+        raise TypeError(f"record_each expected Record, but got {type(obj).__name__}")
+    return List([Record({"key": String(key), "value": value}) for key, value in obj.data.items()])
+
+
 STDLIB = {
     "$$add": Closure({}, Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))),
     "$$fetch": NativeFunction("$$fetch", fetch),
     "$$jsondecode": NativeFunction("$$jsondecode", jsondecode),
     "$$serialize": NativeFunction("$$serialize", lambda obj: Bytes(serialize(obj))),
     "$$listlength": NativeFunction("$$listlength", listlength),
+    "$$asrecord": NativeFunction("$$asrecord", lambda exp: as_record(exp.serialize())),
+    "$$int_as_str": NativeFunction("$$int_as_str", int_as_str),
+    "$$str_as_str": NativeFunction("$$str_as_str", str_as_str),
+    "$$record_each": NativeFunction("$$record_each", record_each),
 }
 
 
 PRELUDE = """
 id = x -> x
+
+. compile =
+  | {type="Int", value=value} -> $$int_as_str value
+  | {type="Var", name=name} -> name
+  | {type="String", value=value} -> $$str_as_str value
+  | {type="Binop", op="++", left=left, right=right} -> (compile left) ++ "+" ++ (compile right)
+  | {type="Binop", op=op, left=left, right=right} -> (compile left) ++ op ++ (compile right)
+  | {type="List", items=items} -> "[" ++ (join ", " (map compile items)) ++ "]"
+  | {type="Record", data=data} -> ("{" ++ (join ", " (map compile_pair ($$record_each data))) ++ "}"
+    . compile_pair = | {key=key, value=value} -> key ++ ":" ++ (compile value)
+  )
+  | {type="Assign", name=name, value=value} -> "((" ++ name ++ ") =>" ++ (compile value) ++ ")("
+  | {type="Where", binding={type="Assign", name=name, value=value}, body=body} ->
+      "(" ++ (compile name) ++ " => " ++ (compile body) ++ ")(" ++ (compile value) ++ ")"
+  | {type="Function", arg=arg, body=body} ->
+      "(" ++ (compile arg) ++ " => " ++ (compile body) ++ ")"
+  | {type="Apply", func=func, arg=arg} -> "(" ++ (compile func) ++ ")(" ++ (compile arg) ++ ")"
+  | {type="MatchFunction", cases=cases} ->
+      -- TODO(max): Figure out what to do about __arg. Gensym?
+      (foldr (case -> acc -> (compile_case case) ++ "\n" ++ acc)
+             "raise 'no matching cases';"
+             cases
+    . compile_case =
+    | {type="MatchCase", pattern={type="Int", value=value}, body=body} ->
+        "if (__arg === " ++ ($$int_as_str value) ++ ") { return " ++ (compile body) ++ "; }"
+    | {type="MatchCase", pattern={type="String", value=value}, body=body} ->
+        "if (__arg === " ++ ($$str_as_str value) ++ ") { return " ++ (compile body) ++ "; }"
+    | {type="MatchCase", pattern={type="Var", name=name}, body=body} ->
+        "return (" ++ compile ({type="Where",
+                  binding={type="Assign",
+                           name={type="Var", name=name},
+                           value={type="Var", name="__arg"}},
+                  body=body}) ++ ");"
+    | {type="MatchCase", pattern={type="Record", data={}}, body=body} ->
+        "if (__arg === {}) { return " ++ (compile body) ++ "; }"
+  )
+
+. join = sep ->
+  | [] -> ""
+  | [x] -> x
+  | [x, ...xs] -> x ++ sep ++ (join sep xs)
 
 . quicksort =
   | [] -> []

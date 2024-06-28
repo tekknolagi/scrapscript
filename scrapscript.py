@@ -8,13 +8,14 @@ import json
 import logging
 import os
 import re
+import struct
 import sys
 import typing
 import unittest
 import urllib.request
 from dataclasses import dataclass
 from enum import auto
-from types import FunctionType, ModuleType
+from types import ModuleType
 from typing import Any, Callable, Dict, Mapping, Optional, Set, Tuple, Union
 
 readline: Optional[ModuleType]
@@ -503,57 +504,8 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     return l
 
 
-OBJECT_DESERIALIZERS: Dict[str, FunctionType] = {}
-OBJECT_TYPES: Dict[str, type] = {}
-
-
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Object:
-    def __init_subclass__(cls, /, **kwargs: Dict[Any, Any]) -> None:
-        super().__init_subclass__(**kwargs)
-        OBJECT_TYPES[cls.__name__] = cls
-        deserializer = cls.__dict__.get("deserialize", None)
-        if deserializer:
-            assert isinstance(deserializer, staticmethod)
-            func = deserializer.__func__
-            assert isinstance(func, FunctionType)
-            OBJECT_DESERIALIZERS[cls.__name__] = func
-
-    def serialize(self) -> Dict[str, object]:
-        cls = type(self)
-        result: Dict[str, object] = {"type": cls.__name__}
-        for field in dataclasses.fields(cls):
-            if issubclass(field.type, Object):
-                value = getattr(self, field.name)
-                result[field.name] = value.serialize()
-            else:
-                raise NotImplementedError("serializing non-Object fields; write your own serialize function")
-        return result
-
-    def _serialize(self, **kwargs: object) -> Dict[str, object]:
-        return {"type": type(self).__name__, **kwargs}
-
-    @staticmethod
-    def deserialize(msg: Dict[str, Any]) -> "Object":
-        assert "type" in msg, f"No idea what to do with {msg!r}"
-        ty = msg["type"]
-        assert isinstance(ty, str)
-        deserializer = OBJECT_DESERIALIZERS.get(ty)
-        if deserializer:
-            result = deserializer(msg)
-            assert isinstance(result, Object)
-            return result
-        cls = OBJECT_TYPES[ty]
-        kwargs = {}
-        for field in dataclasses.fields(cls):
-            if issubclass(field.type, Object):
-                kwargs[field.name] = Object.deserialize(msg[field.name])
-            else:
-                raise NotImplementedError("deserializing non-Object fields; write your own deserialize function")
-        result = cls(**kwargs)
-        assert isinstance(result, Object)
-        return result
-
     def __str__(self) -> str:
         raise NotImplementedError("__str__ not implemented for superclass Object")
 
@@ -561,15 +513,6 @@ class Object:
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Int(Object):
     value: int
-
-    def serialize(self) -> Dict[str, object]:
-        return self._serialize(value=self.value)
-
-    @staticmethod
-    def deserialize(msg: Dict[str, object]) -> "Int":
-        assert msg["type"] == "Int"
-        assert isinstance(msg["value"], int)
-        return Int(msg["value"])
 
     def __str__(self) -> str:
         return str(self.value)
@@ -579,13 +522,6 @@ class Int(Object):
 class Float(Object):
     value: float
 
-    def serialize(self) -> Dict[str, object]:
-        raise NotImplementedError("serialization for Float is not supported")
-
-    @staticmethod
-    def deserialize(msg: Dict[str, object]) -> "Float":
-        raise NotImplementedError("serialization for Float is not supported")
-
     def __str__(self) -> str:
         return str(self.value)
 
@@ -593,15 +529,6 @@ class Float(Object):
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class String(Object):
     value: str
-
-    def serialize(self) -> Dict[str, object]:
-        return {"type": "String", "value": self.value}
-
-    @staticmethod
-    def deserialize(msg: Dict[str, object]) -> "String":
-        assert msg["type"] == "String"
-        assert isinstance(msg["value"], str)
-        return String(msg["value"])
 
     def __str__(self) -> str:
         # TODO: handle nested quotes
@@ -612,15 +539,6 @@ class String(Object):
 class Bytes(Object):
     value: bytes
 
-    def serialize(self) -> Dict[str, object]:
-        return {"type": "Bytes", "value": str(self)}
-
-    @staticmethod
-    def deserialize(msg: Dict[str, object]) -> "Bytes":
-        assert msg["type"] == "Bytes"
-        assert isinstance(msg["value"], bytes)
-        return Bytes(msg["value"])
-
     def __str__(self) -> str:
         return f"~~{base64.b64encode(self.value).decode()}"
 
@@ -628,15 +546,6 @@ class Bytes(Object):
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Var(Object):
     name: str
-
-    def serialize(self) -> Dict[str, object]:
-        return {"type": "Var", "name": self.name}
-
-    @staticmethod
-    def deserialize(msg: Dict[str, object]) -> "Var":
-        assert msg["type"] == "Var"
-        assert isinstance(msg["name"], str)
-        return Var(msg["name"])
 
     def __str__(self) -> str:
         return self.name
@@ -743,29 +652,6 @@ class Binop(Object):
     left: Object
     right: Object
 
-    def serialize(self) -> Dict[str, object]:
-        return {
-            "type": "Binop",
-            "op": self.op.name,
-            "left": self.left.serialize(),
-            "right": self.right.serialize(),
-        }
-
-    @staticmethod
-    def deserialize(msg: Dict[str, object]) -> "Binop":
-        assert msg["type"] == "Binop"
-        opname = msg["op"]
-        assert isinstance(opname, str)
-        op = BinopKind[opname]
-        assert isinstance(op, BinopKind)
-        left_obj = msg["left"]
-        assert isinstance(left_obj, dict)
-        right_obj = msg["right"]
-        assert isinstance(right_obj, dict)
-        left = Object.deserialize(left_obj)
-        right = Object.deserialize(right_obj)
-        return Binop(op, left, right)
-
     def __str__(self) -> str:
         return f"{self.left} {BinopKind.to_str(self.op)} {self.right}"
 
@@ -773,9 +659,6 @@ class Binop(Object):
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class List(Object):
     items: typing.List[Object]
-
-    def serialize(self) -> Dict[str, object]:
-        return {"type": "List", "items": [item.serialize() for item in self.items]}
 
     def __str__(self) -> str:
         inner = ", ".join(str(item) for item in self.items)
@@ -841,28 +724,9 @@ class Assert(Object):
         return self.__repr__()
 
 
-def serialize_env(env: Env) -> Dict[str, object]:
-    return {key: value.serialize() for key, value in env.items()}
-
-
-def deserialize_env(msg: Dict[str, Any]) -> Env:
-    return {key: Object.deserialize(value) for key, value in msg.items()}
-
-
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class EnvObject(Object):
     env: Env
-
-    def serialize(self) -> Dict[str, object]:
-        return self._serialize(env=serialize_env(self.env))
-
-    @staticmethod
-    def deserialize(msg: Dict[str, object]) -> "EnvObject":
-        assert msg["type"] == "EnvObject"
-        env_obj = msg["env"]
-        assert isinstance(env_obj, dict)
-        env = deserialize_env(env_obj)
-        return EnvObject(env)
 
     def __str__(self) -> str:
         return f"EnvObject(keys={self.env.keys()})"
@@ -882,9 +746,6 @@ class MatchCase(Object):
 class MatchFunction(Object):
     cases: typing.List[MatchCase]
 
-    def serialize(self) -> Dict[str, object]:
-        return self._serialize(cases=[case.serialize() for case in self.cases])
-
     def __str__(self) -> str:
         # TODO: Better pretty printing for MatchFunction
         return self.__repr__()
@@ -894,9 +755,6 @@ class MatchFunction(Object):
 class Relocation(Object):
     name: str
 
-    def serialize(self) -> Dict[str, object]:
-        return self._serialize(name=self.name)
-
     def __str__(self) -> str:
         # TODO: Better pretty printing for Relocation
         return self.__repr__()
@@ -904,18 +762,6 @@ class Relocation(Object):
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class NativeFunctionRelocation(Relocation):
-    @staticmethod
-    def deserialize(msg: Dict[str, object]) -> "NativeFunction":
-        # TODO(max): Should this return a Var or an actual
-        # NativeFunctionRelocation object instead of doing the relocation in
-        # the deserialization?
-        assert msg["type"] == "NativeFunctionRelocation"
-        name = msg["name"]
-        assert isinstance(name, str)
-        result = STDLIB[name]
-        assert isinstance(result, NativeFunction)
-        return result
-
     def __str__(self) -> str:
         # TODO: Better pretty printing for NativeFunctionRelocation
         return self.__repr__()
@@ -925,9 +771,6 @@ class NativeFunctionRelocation(Relocation):
 class NativeFunction(Object):
     name: str
     func: Callable[[Object], Object]
-
-    def serialize(self) -> Dict[str, object]:
-        return NativeFunctionRelocation(self.name).serialize()
 
     def __str__(self) -> str:
         # TODO: Better pretty printing for NativeFunction
@@ -939,21 +782,6 @@ class Closure(Object):
     env: Env
     func: Union[Function, MatchFunction]
 
-    def serialize(self) -> Dict[str, object]:
-        return self._serialize(env=serialize_env(self.env), func=self.func.serialize())
-
-    @staticmethod
-    def deserialize(msg: Dict[str, object]) -> "Closure":
-        assert msg["type"] == "Closure"
-        env_obj = msg["env"]
-        assert isinstance(env_obj, dict)
-        env = deserialize_env(env_obj)
-        func_obj = msg["func"]
-        assert isinstance(func_obj, dict)
-        func = Object.deserialize(func_obj)
-        assert isinstance(func, (Function, MatchFunction))
-        return Closure(env, func)
-
     def __str__(self) -> str:
         # TODO: Better pretty printing for Closure
         return self.__repr__()
@@ -962,17 +790,6 @@ class Closure(Object):
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Record(Object):
     data: Dict[str, Object]
-
-    def serialize(self) -> Dict[str, object]:
-        return self._serialize(data={key: value.serialize() for key, value in self.data.items()})
-
-    @staticmethod
-    def deserialize(msg: Dict[str, object]) -> "Record":
-        assert msg["type"] == "Record"
-        data_obj = msg["data"]
-        assert isinstance(data_obj, dict)
-        data = {key: Object.deserialize(value) for key, value in data_obj.items()}
-        return Record(data)
 
     def __str__(self) -> str:
         inner = ", ".join(f"{k} = {self.data[k]}" for k in self.data)
@@ -994,21 +811,378 @@ class Variant(Object):
     tag: str
     value: Object
 
-    def serialize(self) -> Dict[str, object]:
-        return self._serialize(tag=self.tag, value=self.value.serialize())
-
-    @staticmethod
-    def deserialize(msg: Dict[str, object]) -> "Variant":
-        assert msg["type"] == "Variant"
-        tag = msg["tag"]
-        assert isinstance(tag, str)
-        value_obj = msg["value"]
-        assert isinstance(value_obj, dict)
-        value = Object.deserialize(value_obj)
-        return Variant(tag, value)
-
     def __str__(self) -> str:
         return f"#{self.tag} {self.value}"
+
+
+tags = [
+    TYPE_SHORT := b"i",  # fits in 64 bits
+    TYPE_LONG := b"l",  # bignum
+    TYPE_FLOAT := b"d",
+    TYPE_STRING := b"s",
+    TYPE_REF := b"r",
+    TYPE_LIST := b"[",
+    TYPE_RECORD := b"{",
+    TYPE_VARIANT := b"#",
+    TYPE_VAR := b"v",
+    TYPE_FUNCTION := b"f",
+    TYPE_MATCH_FUNCTION := b"m",
+    TYPE_CLOSURE := b"c",
+    TYPE_BYTES := b"b",
+    TYPE_HOLE := b"(",
+    TYPE_ASSIGN := b"=",
+    TYPE_BINOP := b"+",
+    TYPE_APPLY := b" ",
+    TYPE_WHERE := b".",
+    TYPE_ACCESS := b"@",
+    TYPE_SPREAD := b"S",
+    TYPE_NAMED_SPREAD := b"R",
+]
+FLAG_REF = 0x80
+
+
+BITS_PER_BYTE = 8
+BYTES_PER_DIGIT = 8
+BITS_PER_DIGIT = BYTES_PER_DIGIT * BITS_PER_BYTE
+DIGIT_MASK = (1 << BITS_PER_DIGIT) - 1
+
+
+def ref(tag: bytes) -> bytes:
+    return (tag[0] | FLAG_REF).to_bytes(1, "little")
+
+
+tags = tags + [ref(v) for v in tags]
+assert len(tags) == len(set(tags)), "Duplicate tags"
+assert all(len(v) == 1 for v in tags), "Tags must be 1 byte"
+assert all(isinstance(v, bytes) for v in tags)
+
+
+def zigzag_encode(val: int) -> int:
+    if val < 0:
+        return -2 * val - 1
+    return 2 * val
+
+
+def zigzag_decode(val: int) -> int:
+    if val & 1 == 1:
+        return -val // 2
+    return val // 2
+
+
+@dataclass
+class Serializer:
+    refs: typing.List[Object] = dataclasses.field(default_factory=list)
+    output: bytearray = dataclasses.field(default_factory=bytearray)
+
+    def ref(self, obj: Object) -> Optional[int]:
+        for idx, ref in enumerate(self.refs):
+            if ref is obj:
+                return idx
+        return None
+
+    def add_ref(self, ty: bytes, obj: Object) -> int:
+        assert len(ty) == 1
+        assert self.ref(obj) is None
+        self.emit(ref(ty))
+        result = len(self.refs)
+        self.refs.append(obj)
+        return result
+
+    def emit(self, obj: bytes) -> None:
+        self.output.extend(obj)
+
+    def _fits_in_nbits(self, obj: int, nbits: int) -> bool:
+        return -(1 << (nbits - 1)) <= obj < (1 << (nbits - 1))
+
+    def _short(self, number: int) -> bytes:
+        # From Peter Ruibal, https://github.com/fmoo/python-varint
+        number = zigzag_encode(number)
+        buf = bytearray()
+        while True:
+            towrite = number & 0x7F
+            number >>= 7
+            if number:
+                buf.append(towrite | 0x80)
+            else:
+                buf.append(towrite)
+                break
+        return bytes(buf)
+
+    def _long(self, number: int) -> bytes:
+        digits = []
+        number = zigzag_encode(number)
+        while number:
+            digits.append(number & DIGIT_MASK)
+            number >>= BITS_PER_DIGIT
+        buf = bytearray(self._short(len(digits)))
+        for digit in digits:
+            buf.extend(digit.to_bytes(BYTES_PER_DIGIT, "little"))
+        return bytes(buf)
+
+    def _string(self, obj: str) -> bytes:
+        encoded = obj.encode("utf-8")
+        return self._short(len(encoded)) + encoded
+
+    def serialize(self, obj: Object) -> None:
+        assert isinstance(obj, Object), type(obj)
+        if (ref := self.ref(obj)) is not None:
+            return self.emit(TYPE_REF + self._short(ref))
+        if isinstance(obj, Int):
+            if self._fits_in_nbits(obj.value, 64):
+                self.emit(TYPE_SHORT)
+                self.emit(self._short(obj.value))
+                return
+            self.emit(TYPE_LONG)
+            self.emit(self._long(obj.value))
+            return
+        if isinstance(obj, String):
+            return self.emit(TYPE_STRING + self._string(obj.value))
+        if isinstance(obj, List):
+            self.add_ref(TYPE_LIST, obj)
+            self.emit(self._short(len(obj.items)))
+            for item in obj.items:
+                self.serialize(item)
+            return
+        if isinstance(obj, Variant):
+            # TODO(max): Determine if this should be a ref
+            self.emit(TYPE_VARIANT)
+            # TODO(max): String pool (via refs) for strings longer than some length?
+            self.emit(self._string(obj.tag))
+            return self.serialize(obj.value)
+        if isinstance(obj, Record):
+            # TODO(max): Determine if this should be a ref
+            self.emit(TYPE_RECORD)
+            self.emit(self._short(len(obj.data)))
+            for key, value in obj.data.items():
+                self.emit(self._string(key))
+                self.serialize(value)
+            return
+        if isinstance(obj, Var):
+            return self.emit(TYPE_VAR + self._string(obj.name))
+        if isinstance(obj, Function):
+            self.emit(TYPE_FUNCTION)
+            self.serialize(obj.arg)
+            return self.serialize(obj.body)
+        if isinstance(obj, MatchFunction):
+            self.emit(TYPE_MATCH_FUNCTION)
+            self.emit(self._short(len(obj.cases)))
+            for case in obj.cases:
+                self.serialize(case.pattern)
+                self.serialize(case.body)
+            return
+        if isinstance(obj, Closure):
+            self.add_ref(TYPE_CLOSURE, obj)
+            self.serialize(obj.func)
+            self.emit(self._short(len(obj.env)))
+            for key, value in obj.env.items():
+                self.emit(self._string(key))
+                self.serialize(value)
+            return
+        if isinstance(obj, Bytes):
+            self.emit(TYPE_BYTES)
+            self.emit(self._short(len(obj.value)))
+            self.emit(obj.value)
+            return
+        if isinstance(obj, Float):
+            self.emit(TYPE_FLOAT)
+            self.emit(struct.pack("<d", obj.value))
+            return
+        if isinstance(obj, Hole):
+            self.emit(TYPE_HOLE)
+            return
+        if isinstance(obj, Assign):
+            self.emit(TYPE_ASSIGN)
+            self.serialize(obj.name)
+            self.serialize(obj.value)
+            return
+        if isinstance(obj, Binop):
+            self.emit(TYPE_BINOP)
+            self.emit(self._string(BinopKind.to_str(obj.op)))
+            self.serialize(obj.left)
+            self.serialize(obj.right)
+            return
+        if isinstance(obj, Apply):
+            self.emit(TYPE_APPLY)
+            self.serialize(obj.func)
+            self.serialize(obj.arg)
+            return
+        if isinstance(obj, Where):
+            self.emit(TYPE_WHERE)
+            self.serialize(obj.body)
+            self.serialize(obj.binding)
+            return
+        if isinstance(obj, Access):
+            self.emit(TYPE_ACCESS)
+            self.serialize(obj.obj)
+            self.serialize(obj.at)
+            return
+        if isinstance(obj, Spread):
+            if obj.name is not None:
+                self.emit(TYPE_NAMED_SPREAD)
+                self.emit(self._string(obj.name))
+                return
+            self.emit(TYPE_SPREAD)
+            return
+        raise NotImplementedError(type(obj))
+
+
+@dataclass
+class Deserializer:
+    flat: Union[bytes, memoryview]
+    idx: int = 0
+    refs: typing.List[Object] = dataclasses.field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if isinstance(self.flat, bytes):
+            self.flat = memoryview(self.flat)
+
+    def read(self, size: int) -> memoryview:
+        result = memoryview(self.flat[self.idx : self.idx + size])
+        self.idx += size
+        return result
+
+    def read_tag(self) -> Tuple[bytes, bool]:
+        tag = self.read(1)[0]
+        is_ref = bool(tag & FLAG_REF)
+        return (tag & ~FLAG_REF).to_bytes(1, "little"), is_ref
+
+    def _string(self) -> str:
+        length = self._short()
+        encoded = self.read(length)
+        return str(encoded, "utf-8")
+
+    def _short(self) -> int:
+        # From Peter Ruibal, https://github.com/fmoo/python-varint
+        shift = 0
+        result = 0
+        while True:
+            i = self.read(1)[0]
+            result |= (i & 0x7F) << shift
+            shift += 7
+            if not (i & 0x80):
+                break
+        return zigzag_decode(result)
+
+    def _long(self) -> int:
+        num_digits = self._short()
+        digits = []
+        for _ in range(num_digits):
+            digit = int.from_bytes(self.read(BYTES_PER_DIGIT), "little")
+            digits.append(digit)
+        result = 0
+        for digit in reversed(digits):
+            result <<= BITS_PER_DIGIT
+            result |= digit
+        return zigzag_decode(result)
+
+    def parse(self) -> Object:
+        ty, is_ref = self.read_tag()
+        if ty == TYPE_REF:
+            idx = self._short()
+            return self.refs[idx]
+        if ty == TYPE_SHORT:
+            assert not is_ref
+            return Int(self._short())
+        if ty == TYPE_LONG:
+            assert not is_ref
+            return Int(self._long())
+        if ty == TYPE_STRING:
+            assert not is_ref
+            return String(self._string())
+        if ty == TYPE_LIST:
+            length = self._short()
+            result_list = List([])
+            assert is_ref
+            self.refs.append(result_list)
+            for i in range(length):
+                result_list.items.append(self.parse())
+            return result_list
+        if ty == TYPE_RECORD:
+            assert not is_ref
+            length = self._short()
+            result_rec = Record({})
+            for i in range(length):
+                key = self._string()
+                value = self.parse()
+                result_rec.data[key] = value
+            return result_rec
+        if ty == TYPE_VARIANT:
+            assert not is_ref
+            tag = self._string()
+            value = self.parse()
+            return Variant(tag, value)
+        if ty == TYPE_VAR:
+            assert not is_ref
+            return Var(self._string())
+        if ty == TYPE_FUNCTION:
+            assert not is_ref
+            arg = self.parse()
+            body = self.parse()
+            return Function(arg, body)
+        if ty == TYPE_MATCH_FUNCTION:
+            assert not is_ref
+            length = self._short()
+            result_matchfun = MatchFunction([])
+            for i in range(length):
+                pattern = self.parse()
+                body = self.parse()
+                result_matchfun.cases.append(MatchCase(pattern, body))
+            return result_matchfun
+        if ty == TYPE_CLOSURE:
+            func = self.parse()
+            length = self._short()
+            assert isinstance(func, (Function, MatchFunction))
+            result_closure = Closure({}, func)
+            assert is_ref
+            self.refs.append(result_closure)
+            for i in range(length):
+                key = self._string()
+                value = self.parse()
+                assert isinstance(result_closure.env, dict)  # For mypy
+                result_closure.env[key] = value
+            return result_closure
+        if ty == TYPE_BYTES:
+            assert not is_ref
+            length = self._short()
+            return Bytes(self.read(length))
+        if ty == TYPE_FLOAT:
+            assert not is_ref
+            return Float(struct.unpack("<d", self.read(8))[0])
+        if ty == TYPE_HOLE:
+            assert not is_ref
+            return Hole()
+        if ty == TYPE_ASSIGN:
+            assert not is_ref
+            name = self.parse()
+            value = self.parse()
+            assert isinstance(name, Var)
+            return Assign(name, value)
+        if ty == TYPE_BINOP:
+            assert not is_ref
+            op = BinopKind.from_str(self._string())
+            left = self.parse()
+            right = self.parse()
+            return Binop(op, left, right)
+        if ty == TYPE_APPLY:
+            assert not is_ref
+            func = self.parse()
+            arg = self.parse()
+            return Apply(func, arg)
+        if ty == TYPE_WHERE:
+            assert not is_ref
+            body = self.parse()
+            binding = self.parse()
+            return Where(body, binding)
+        if ty == TYPE_ACCESS:
+            assert not is_ref
+            obj = self.parse()
+            at = self.parse()
+            return Access(obj, at)
+        if ty == TYPE_SPREAD:
+            return Spread()
+        if ty == TYPE_NAMED_SPREAD:
+            return Spread(self._string())
+        raise NotImplementedError(bytes(ty))
 
 
 TRUE = Variant("true", Hole())
@@ -1320,97 +1494,6 @@ def eval_exp(env: Env, exp: Object) -> Object:
     elif isinstance(exp, Spread):
         raise RuntimeError("cannot evaluate a spread")
     raise NotImplementedError(f"eval_exp not implemented for {exp}")
-
-
-def bencode(obj: object) -> bytes:
-    assert not isinstance(obj, bool)
-    if isinstance(obj, int):
-        return b"i" + str(int(obj)).encode("ascii") + b"e"
-    if isinstance(obj, str):
-        return bencode(obj.encode("utf-8"))
-    if isinstance(obj, bytes):
-        return str(len(obj)).encode("ascii") + b":" + obj
-    if isinstance(obj, list):
-        return b"l" + b"".join(bencode(x) for x in obj) + b"e"
-    if isinstance(obj, dict):
-        sorted_items = sorted(obj.items(), key=lambda x: x[0])
-        return b"d" + b"".join(bencode(k) + bencode(v) for k, v in sorted_items) + b"e"
-    raise NotImplementedError(f"bencode not implemented for {type(obj)}")
-
-
-class Bdecoder:
-    def __init__(self, msg: str) -> None:
-        self.msg: str = msg
-        self.idx: int = 0
-
-    def peek(self) -> str:
-        return self.msg[self.idx]
-
-    def read(self) -> str:
-        c = self.peek()
-        self.idx += 1
-        return c
-
-    def decode_int(self) -> int:
-        buf = ""
-        while (c := self.read()) != "e":
-            buf += c
-        return int(buf)
-
-    def decode_list(self) -> typing.List[Any]:
-        result = []
-        while self.peek() != "e":
-            result.append(self.decode())
-        assert self.read() == "e"
-        return result
-
-    def decode_dict(self) -> typing.Dict[Any, Any]:
-        result: Dict[Any, Any] = {}
-        while self.peek() != "e":
-            key = self.decode()
-            value = self.decode()
-            result[key] = value
-        assert self.read() == "e"
-        return result
-
-    def decode_str(self, start: str) -> str:
-        len_buf = start
-        while (c := self.peek()) != ":":
-            assert c.isdigit()
-            len_buf += c
-            self.read()
-        assert self.read() == ":"
-        buf = ""
-        for _ in range(int(len_buf)):
-            buf += self.read()
-        return buf
-
-    def decode(self) -> object:
-        ty = self.read()
-        if ty == "i":
-            return self.decode_int()
-        if ty == "l":
-            return self.decode_list()
-        if ty == "d":
-            return self.decode_dict()
-        if ty.isdigit():
-            return self.decode_str(ty)
-        raise NotImplementedError(ty)
-
-
-def bdecode(msg: str) -> object:
-    return Bdecoder(msg).decode()
-
-
-def serialize(obj: Object) -> bytes:
-    return bencode(obj.serialize())
-
-
-def deserialize(msg: str) -> Object:
-    logging.debug("deserialize %s", msg)
-    decoded = bdecode(msg)
-    assert isinstance(decoded, dict)
-    return Object.deserialize(decoded)
 
 
 class ScrapMonad:
@@ -3650,13 +3733,19 @@ class StdLibTests(EndToEndTestsBase):
         self.assertEqual(self._run("$$quote <| 3 + 4"), Binop(BinopKind.ADD, Int(3), Int(4)))
 
     def test_stdlib_serialize(self) -> None:
-        self.assertEqual(self._run("$$serialize 3", STDLIB), Bytes(value=b"d4:type3:Int5:valuei3ee"))
+        self.assertEqual(self._run("$$serialize 3", STDLIB), Bytes(value=b"i\x06"))
 
     def test_stdlib_serialize_expr(self) -> None:
         self.assertEqual(
             self._run("(1+2) |> $$quote |> $$serialize", STDLIB),
-            Bytes(value=b"d4:leftd4:type3:Int5:valuei1ee2:op3:ADD5:rightd4:type3:Int5:valuei2ee4:type5:Binope"),
+            Bytes(value=b"+\x02+i\x02i\x04"),
         )
+
+    def test_stdlib_deserialize(self) -> None:
+        self.assertEqual(self._run("$$deserialize ~~aQY="), Int(3))
+
+    def test_stdlib_deserialize_expr(self) -> None:
+        self.assertEqual(self._run("$$deserialize ~~KwIraQJpBA=="), Binop(BinopKind.ADD, Int(1), Int(2)))
 
     def test_stdlib_listlength_empty_list_returns_zero(self) -> None:
         self.assertEqual(self._run("$$listlength []", STDLIB), Int(0))
@@ -3959,277 +4048,225 @@ class PreludeTests(EndToEndTestsBase):
         )
 
 
-class BencodeTests(unittest.TestCase):
-    def test_bencode_int(self) -> None:
-        self.assertEqual(bencode(123), b"i123e")
+class SerializerTests(unittest.TestCase):
+    def _serialize(self, obj: Object) -> bytes:
+        serializer = Serializer()
+        serializer.serialize(obj)
+        return bytes(serializer.output)
 
-    def test_bencode_negative_int(self) -> None:
-        self.assertEqual(bencode(-123), b"i-123e")
+    def test_short(self) -> None:
+        self.assertEqual(self._serialize(Int(-1)), TYPE_SHORT + b"\x01")
+        self.assertEqual(self._serialize(Int(0)), TYPE_SHORT + b"\x00")
+        self.assertEqual(self._serialize(Int(1)), TYPE_SHORT + b"\x02")
+        self.assertEqual(self._serialize(Int(-(2**33))), TYPE_SHORT + b"\xff\xff\xff\xff?")
+        self.assertEqual(self._serialize(Int(2**33)), TYPE_SHORT + b"\x80\x80\x80\x80@")
+        self.assertEqual(self._serialize(Int(-(2**63))), TYPE_SHORT + b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01")
+        self.assertEqual(self._serialize(Int(2**63 - 1)), TYPE_SHORT + b"\xfe\xff\xff\xff\xff\xff\xff\xff\xff\x01")
 
-    def test_bencode_bytes(self) -> None:
-        self.assertEqual(bencode(b"abc"), b"3:abc")
-
-    def test_bencode_empty_list(self) -> None:
-        self.assertEqual(bencode([]), b"le")
-
-    def test_bencode_list_of_ints(self) -> None:
-        self.assertEqual(bencode([1, 2, 3]), b"li1ei2ei3ee")
-
-    def test_bencode_list_of_lists(self) -> None:
-        self.assertEqual(bencode([[1, 2], [3, 4]]), b"lli1ei2eeli3ei4eee")
-
-    def test_bencode_dict_sorts_keys(self) -> None:
-        d = {}
-        d[b"b"] = 1
-        d[b"a"] = 2
-        # It's sorted by insertion order (guaranteed Python 3.6+)
-        self.assertEqual([*d], [b"b", b"a"])
-        # It's sorted lexicographically
-        self.assertEqual(bencode(d), b"d1:ai2e1:bi1ee")
-
-
-class BdecodeTests(unittest.TestCase):
-    def test_bdecode_int(self) -> None:
-        self.assertEqual(bdecode("i123e"), 123)
-
-    def test_bdecode_negative_int(self) -> None:
-        self.assertEqual(bdecode("i-123e"), -123)
-
-    def test_bdecode_bytes(self) -> None:
-        self.assertEqual(bdecode("3:abc"), "abc")
-
-    def test_bdecode_empty_list(self) -> None:
-        self.assertEqual(bdecode("le"), [])
-
-    def test_bdecode_list_of_ints(self) -> None:
-        self.assertEqual(bdecode("li1ei2ei3ee"), [1, 2, 3])
-
-    def test_bdecode_list_of_lists(self) -> None:
-        self.assertEqual(bdecode("lli1ei2eeli3ei4eee"), [[1, 2], [3, 4]])
-
-    def test_bdecode_dict_sorts_keys(self) -> None:
-        self.assertEqual(bdecode("d1:ai2e1:bi1ee"), {"b": 1, "a": 2})
-
-
-class ObjectSerializeTests(unittest.TestCase):
-    def test_serialize_int(self) -> None:
-        obj = Int(123)
-        self.assertEqual(obj.serialize(), {"type": "Int", "value": 123})
-
-    def test_serialize_negative_int(self) -> None:
-        obj = Int(-123)
-        self.assertEqual(obj.serialize(), {"type": "Int", "value": -123})
-
-    def test_serialize_float_raises_not_implemented_error(self) -> None:
-        obj = Float(3.14)
-        with self.assertRaisesRegex(NotImplementedError, re.escape("serialization for Float is not supported")):
-            obj.serialize()
-
-    def test_serialize_str(self) -> None:
-        obj = String("abc")
-        self.assertEqual(obj.serialize(), {"type": "String", "value": "abc"})
-
-    def test_serialize_bytes(self) -> None:
-        obj = Bytes(b"abc")
-        self.assertEqual(obj.serialize(), {"type": "Bytes", "value": "~~YWJj"})
-
-    def test_serialize_var(self) -> None:
-        obj = Var("abc")
-        self.assertEqual(obj.serialize(), {"type": "Var", "name": "abc"})
-
-    def test_serialize_variant(self) -> None:
-        obj = Variant("abc", Int(1))
-        self.assertEqual(obj.serialize(), {"type": "Variant", "tag": "abc", "value": {"type": "Int", "value": 1}})
-
-    def test_serialize_binary_add(self) -> None:
-        obj = Binop(BinopKind.ADD, Int(123), Int(456))
+    def test_long(self) -> None:
         self.assertEqual(
-            obj.serialize(),
-            {
-                "left": {"type": "Int", "value": 123},
-                "op": "ADD",
-                "right": {"type": "Int", "value": 456},
-                "type": "Binop",
-            },
+            self._serialize(Int(2**100)),
+            TYPE_LONG + b"\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00 \x00\x00\x00",
+        )
+        self.assertEqual(
+            self._serialize(Int(-(2**100))),
+            TYPE_LONG + b"\x04\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x1f\x00\x00\x00",
         )
 
-    def test_serialize_list(self) -> None:
-        obj = List([Int(1), Int(2)])
-        self.assertEqual(
-            obj.serialize(),
-            {"type": "List", "items": [{"type": "Int", "value": 1}, {"type": "Int", "value": 2}]},
-        )
+    def test_string(self) -> None:
+        self.assertEqual(self._serialize(String("hello")), TYPE_STRING + b"\nhello")
 
-    def test_serialize_assign(self) -> None:
-        obj = Assign(Var("x"), Int(2))
-        self.assertEqual(
-            obj.serialize(),
-            {"type": "Assign", "name": {"name": "x", "type": "Var"}, "value": {"type": "Int", "value": 2}},
-        )
+    def test_empty_list(self) -> None:
+        obj = List([])
+        self.assertEqual(self._serialize(obj), ref(TYPE_LIST) + b"\x00")
 
-    def test_serialize_record(self) -> None:
-        obj = Record({"x": Int(1)})
-        self.assertEqual(obj.serialize(), {"data": {"x": {"type": "Int", "value": 1}}, "type": "Record"})
+    def test_list(self) -> None:
+        obj = List([Int(123), Int(456)])
+        self.assertEqual(self._serialize(obj), ref(TYPE_LIST) + b"\x04i\xf6\x01i\x90\x07")
 
-    def test_serialize_env_object(self) -> None:
-        obj = EnvObject({"x": Int(1)})
-        self.assertEqual(
-            obj.serialize(),
-            {"env": {"x": {"type": "Int", "value": 1}}, "type": "EnvObject"},
-        )
+    def test_self_referential_list(self) -> None:
+        obj = List([])
+        obj.items.append(obj)
+        self.assertEqual(self._serialize(obj), ref(TYPE_LIST) + b"\x02r\x00")
 
-    def test_serialize_function(self) -> None:
-        obj = Function(Var("x"), Var("x"))
-        self.assertEqual(
-            obj.serialize(),
-            {
-                "arg": {"name": "x", "type": "Var"},
-                "body": {"name": "x", "type": "Var"},
-                "type": "Function",
-            },
-        )
+    def test_variant(self) -> None:
+        obj = Variant("abc", Int(123))
+        self.assertEqual(self._serialize(obj), TYPE_VARIANT + b"\x06abci\xf6\x01")
 
-    def test_serialize_apply(self) -> None:
-        obj = Apply(Var("f"), Var("x"))
-        self.assertEqual(
-            obj.serialize(),
-            {
-                "func": {"name": "f", "type": "Var"},
-                "arg": {"name": "x", "type": "Var"},
-                "type": "Apply",
-            },
-        )
-
-    def test_serialize_closure(self) -> None:
-        obj = Closure({"a": Int(123)}, Function(Var("x"), Var("x")))
-        self.assertEqual(
-            obj.serialize(),
-            {
-                "env": {"a": {"type": "Int", "value": 123}},
-                "func": {
-                    "arg": {"name": "x", "type": "Var"},
-                    "body": {"name": "x", "type": "Var"},
-                    "type": "Function",
-                },
-                "type": "Closure",
-            },
-        )
-
-
-class ObjectDeserializeTests(unittest.TestCase):
-    def test_deserialize_int(self) -> None:
-        msg = {"type": "Int", "value": 123}
-        self.assertEqual(Object.deserialize(msg), Int(123))
-
-    def test_deserialize_negative_int(self) -> None:
-        msg = {"type": "Int", "value": -123}
-        self.assertEqual(Object.deserialize(msg), Int(-123))
-
-    def test_deserialize_str(self) -> None:
-        msg = {"type": "String", "value": "abc"}
-        self.assertEqual(Object.deserialize(msg), String("abc"))
-
-    def test_deserialize_bytes(self) -> None:
-        msg = {"type": "Bytes", "value": b"abc"}
-        self.assertEqual(Object.deserialize(msg), Bytes(b"abc"))
-
-    def test_deserialize_var(self) -> None:
-        msg = {"type": "Var", "name": "abc"}
-        self.assertEqual(Object.deserialize(msg), Var("abc"))
-
-    def test_deserialize_variant(self) -> None:
-        msg = {"type": "Variant", "tag": "abc", "value": {"type": "Int", "value": 123}}
-        self.assertEqual(Object.deserialize(msg), Variant("abc", Int(123)))
-
-    def test_deserialize_binary_add(self) -> None:
-        msg = {
-            "left": {"type": "Int", "value": 123},
-            "op": "ADD",
-            "right": {"type": "Int", "value": 456},
-            "type": "Binop",
-        }
-        obj = Binop(BinopKind.ADD, Int(123), Int(456))
-        self.assertEqual(Object.deserialize(msg), obj)
-
-    def test_deserialize_env_object(self) -> None:
-        obj = EnvObject({"x": Int(1)})
-        msg = {"env": {"x": {"type": "Int", "value": 1}}, "type": "EnvObject"}
-        self.assertEqual(Object.deserialize(msg), obj)
-
-    def test_deserialize_function(self) -> None:
-        obj = Function(Var("x"), Var("x"))
-        msg = {
-            "arg": {"name": "x", "type": "Var"},
-            "body": {"name": "x", "type": "Var"},
-            "type": "Function",
-        }
-        self.assertEqual(Object.deserialize(msg), obj)
-
-    def test_deserialize_closure(self) -> None:
-        obj = Closure({"a": Int(123)}, Function(Var("x"), Var("x")))
-        msg = {
-            "env": {"a": {"type": "Int", "value": 123}},
-            "func": {
-                "arg": {"name": "x", "type": "Var"},
-                "body": {"name": "x", "type": "Var"},
-                "type": "Function",
-            },
-            "type": "Closure",
-        }
-        self.assertEqual(Object.deserialize(msg), obj)
-
-    def test_deserialize_native_function_relocation_returns_native_function_from_stdlib(self) -> None:
-        obj = STDLIB["$$fetch"]
-        msg = {"type": "NativeFunctionRelocation", "name": "$$fetch"}
-        result = Object.deserialize(msg)
-        self.assertEqual(result, obj)
-        self.assertIs(result, obj)
-
-    def test_deserialize_apply(self) -> None:
-        obj = Apply(Var("f"), Var("x"))
-        msg = {
-            "func": {"name": "f", "type": "Var"},
-            "arg": {"name": "x", "type": "Var"},
-            "type": "Apply",
-        }
-        self.assertEqual(Object.deserialize(msg), obj)
-
-    def test_deserialize_record(self) -> None:
+    def test_record(self) -> None:
         obj = Record({"x": Int(1), "y": Int(2)})
-        msg = {
-            "data": {"x": {"type": "Int", "value": 1}, "y": {"type": "Int", "value": 2}},
-            "type": "Record",
-        }
-        self.assertEqual(Object.deserialize(msg), obj)
+        self.assertEqual(self._serialize(obj), TYPE_RECORD + b"\x04\x02xi\x02\x02yi\x04")
 
+    def test_var(self) -> None:
+        obj = Var("x")
+        self.assertEqual(self._serialize(obj), TYPE_VAR + b"\x02x")
 
-class SerializeTests(unittest.TestCase):
-    def test_serialize_int(self) -> None:
-        obj = Int(3)
-        self.assertEqual(serialize(obj), b"d4:type3:Int5:valuei3ee")
+    def test_function(self) -> None:
+        obj = Function(Var("x"), Var("x"))
+        self.assertEqual(self._serialize(obj), TYPE_FUNCTION + b"v\x02xv\x02x")
 
-    def test_serialize_str(self) -> None:
-        obj = String("abc")
-        self.assertEqual(serialize(obj), b"d4:type6:String5:value3:abce")
+    def test_empty_match_function(self) -> None:
+        obj = MatchFunction([])
+        self.assertEqual(self._serialize(obj), TYPE_MATCH_FUNCTION + b"\x00")
 
-    def test_serialize_bytes(self) -> None:
+    def test_match_function(self) -> None:
+        obj = MatchFunction([MatchCase(Int(1), Var("x")), MatchCase(List([Int(1)]), Var("y"))])
+        self.assertEqual(self._serialize(obj), TYPE_MATCH_FUNCTION + b"\x04i\x02v\x02x\xdb\x02i\x02v\x02y")
+
+    def test_closure(self) -> None:
+        obj = Closure({}, Function(Var("x"), Var("x")))
+        self.assertEqual(self._serialize(obj), ref(TYPE_CLOSURE) + b"fv\x02xv\x02x\x00")
+
+    def test_self_referential_closure(self) -> None:
+        obj = Closure({}, Function(Var("x"), Var("x")))
+        assert isinstance(obj.env, dict)  # For mypy
+        obj.env["self"] = obj
+        self.assertEqual(self._serialize(obj), ref(TYPE_CLOSURE) + b"fv\x02xv\x02x\x02\x08selfr\x00")
+
+    def test_bytes(self) -> None:
         obj = Bytes(b"abc")
-        self.assertEqual(serialize(obj), b"d4:type5:Bytes5:value6:~~YWJje")
+        self.assertEqual(self._serialize(obj), TYPE_BYTES + b"\x06abc")
 
-    def test_serialize_var(self) -> None:
-        obj = Var("abc")
-        self.assertEqual(serialize(obj), b"d4:name3:abc4:type3:Vare")
+    def test_float(self) -> None:
+        obj = Float(3.14)
+        self.assertEqual(self._serialize(obj), TYPE_FLOAT + b"\x1f\x85\xebQ\xb8\x1e\t@")
 
-    def test_serialize_variant(self) -> None:
-        obj = Variant("abcd", Int(5))
-        self.assertEqual(serialize(obj), b"d3:tag4:abcd4:type7:Variant5:valued4:type3:Int5:valuei5eee")
+    def test_hole(self) -> None:
+        self.assertEqual(self._serialize(Hole()), TYPE_HOLE)
 
-    def test_serialize_function(self) -> None:
-        obj = Function(Var("x"), Binop(BinopKind.ADD, Int(1), Var("x")))
-        self.assertEqual(
-            serialize(obj),
-            b"d3:argd4:name1:x4:type3:Vare4:bodyd4:leftd4:type3:Int5:valuei1ee2:op3:ADD5:rightd4:name1:x4:type3:Vare4:type5:Binope4:type8:Functione",
-        )
+    def test_assign(self) -> None:
+        obj = Assign(Var("x"), Int(123))
+        self.assertEqual(self._serialize(obj), TYPE_ASSIGN + b"v\x02xi\xf6\x01")
+
+    def test_binop(self) -> None:
+        obj = Binop(BinopKind.ADD, Int(3), Int(4))
+        self.assertEqual(self._serialize(obj), TYPE_BINOP + b"\x02+i\x06i\x08")
+
+    def test_apply(self) -> None:
+        obj = Apply(Var("f"), Var("x"))
+        self.assertEqual(self._serialize(obj), TYPE_APPLY + b"v\x02fv\x02x")
+
+    def test_where(self) -> None:
+        obj = Where(Var("a"), Var("b"))
+        self.assertEqual(self._serialize(obj), TYPE_WHERE + b"v\x02av\x02b")
+
+    def test_access(self) -> None:
+        obj = Access(Var("a"), Var("b"))
+        self.assertEqual(self._serialize(obj), TYPE_ACCESS + b"v\x02av\x02b")
+
+    def test_spread(self) -> None:
+        self.assertEqual(self._serialize(Spread()), TYPE_SPREAD)
+        self.assertEqual(self._serialize(Spread("rest")), TYPE_NAMED_SPREAD + b"\x08rest")
+
+
+class RoundTripSerializationTests(unittest.TestCase):
+    def _serialize(self, obj: Object) -> bytes:
+        serializer = Serializer()
+        serializer.serialize(obj)
+        return bytes(serializer.output)
+
+    def _deserialize(self, flat: bytes) -> Object:
+        deserializer = Deserializer(flat)
+        return deserializer.parse()
+
+    def _serde(self, obj: Object) -> Object:
+        flat = self._serialize(obj)
+        return self._deserialize(flat)
+
+    def _rt(self, obj: Object) -> None:
+        result = self._serde(obj)
+        self.assertEqual(result, obj)
+
+    def test_short(self) -> None:
+        for i in range(-(2**16), 2**16):
+            self._rt(Int(i))
+
+        self._rt(Int(-(2**63)))
+        self._rt(Int(2**63 - 1))
+
+    def test_long(self) -> None:
+        self._rt(Int(2**100))
+        self._rt(Int(-(2**100)))
+
+    def test_string(self) -> None:
+        self._rt(String(""))
+        self._rt(String("a"))
+        self._rt(String("hello"))
+
+    def test_list(self) -> None:
+        self._rt(List([]))
+        self._rt(List([Int(123), Int(345)]))
+
+    def test_self_referential_list(self) -> None:
+        ls = List([])
+        ls.items.append(ls)
+        result = self._serde(ls)
+        self.assertIsInstance(result, List)
+        assert isinstance(result, List)  # For mypy
+        self.assertIsInstance(result.items, list)
+        self.assertEqual(len(result.items), 1)
+        self.assertIs(result.items[0], result)
+
+    def test_record(self) -> None:
+        self._rt(Record({"x": Int(1), "y": Int(2)}))
+
+    def test_variant(self) -> None:
+        self._rt(Variant("abc", Int(123)))
+
+    def test_var(self) -> None:
+        self._rt(Var("x"))
+
+    def test_function(self) -> None:
+        self._rt(Function(Var("x"), Var("x")))
+
+    def test_empty_match_function(self) -> None:
+        self._rt(MatchFunction([]))
+
+    def test_match_function(self) -> None:
+        obj = MatchFunction([MatchCase(Int(1), Var("x")), MatchCase(List([Int(1)]), Var("y"))])
+        self._rt(obj)
+
+    def test_closure(self) -> None:
+        self._rt(Closure({}, Function(Var("x"), Var("x"))))
+
+    def test_self_referential_closure(self) -> None:
+        obj = Closure({}, Function(Var("x"), Var("x")))
+        assert isinstance(obj.env, dict)  # For mypy
+        obj.env["self"] = obj
+        result = self._serde(obj)
+        self.assertIsInstance(result, Closure)
+        assert isinstance(result, Closure)  # For mypy
+        self.assertIsInstance(result.env, dict)
+        self.assertEqual(len(result.env), 1)
+        self.assertIs(result.env["self"], result)
+
+    def test_bytes(self) -> None:
+        self._rt(Bytes(b"abc"))
+
+    def test_float(self) -> None:
+        self._rt(Float(3.14))
+
+    def test_hole(self) -> None:
+        self._rt(Hole())
+
+    def test_assign(self) -> None:
+        self._rt(Assign(Var("x"), Int(123)))
+
+    def test_binop(self) -> None:
+        self._rt(Binop(BinopKind.ADD, Int(3), Int(4)))
+
+    def test_apply(self) -> None:
+        self._rt(Apply(Var("f"), Var("x")))
+
+    def test_where(self) -> None:
+        self._rt(Where(Var("a"), Var("b")))
+
+    def test_access(self) -> None:
+        self._rt(Access(Var("a"), Var("b")))
+
+    def test_spread(self) -> None:
+        self._rt(Spread())
+        self._rt(Spread("rest"))
 
 
 class ScrapMonadTests(unittest.TestCase):
@@ -4409,11 +4446,28 @@ def listlength(obj: Object) -> Object:
     return Int(len(obj.items))
 
 
+def serialize(obj: Object) -> bytes:
+    serializer = Serializer()
+    serializer.serialize(obj)
+    return bytes(serializer.output)
+
+
+def deserialize(data: bytes) -> Object:
+    deserializer = Deserializer(data)
+    return deserializer.parse()
+
+
+def deserialize_object(obj: Object) -> Object:
+    assert isinstance(obj, Bytes)
+    return deserialize(obj.value)
+
+
 STDLIB = {
     "$$add": Closure({}, Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))),
     "$$fetch": NativeFunction("$$fetch", fetch),
     "$$jsondecode": NativeFunction("$$jsondecode", jsondecode),
     "$$serialize": NativeFunction("$$serialize", lambda obj: Bytes(serialize(obj))),
+    "$$deserialize": NativeFunction("$$deserialize", deserialize_object),
     "$$listlength": NativeFunction("$$listlength", listlength),
 }
 
@@ -4652,6 +4706,13 @@ def compile_command(args: argparse.Namespace) -> None:
         subprocess.run(["sh", "-c", "./a.out"], check=True)
 
 
+def flat_command(args: argparse.Namespace) -> None:
+    prog = parse(tokenize(sys.stdin.read()))
+    serializer = Serializer()
+    serializer.serialize(prog)
+    sys.stdout.buffer.write(serializer.output)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="scrapscript")
     subparsers = parser.add_subparsers(dest="command")
@@ -4686,6 +4747,9 @@ def main() -> None:
     comp.add_argument("--debug", action="store_true", default=False)
     # The platform is in the same directory as this file
     comp.add_argument("--platform", default=os.path.join(os.path.dirname(__file__), "cli.c"))
+
+    flat = subparsers.add_parser("flat")
+    flat.set_defaults(func=flat_command)
 
     args = parser.parse_args()
     if not args.command:

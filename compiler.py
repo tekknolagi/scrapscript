@@ -305,7 +305,7 @@ class Compiler:
         value = value_str.encode("utf-8")
         length = len(value)
         assert length < 8, "small string must be less than 8 bytes"
-        value_int = int.from_bytes(value[::-1], "big")
+        value_int = int.from_bytes(value, "little")
         return f"(struct object*)(({hex(value_int)}ULL << kBitsPerByte) | ({length}ULL << kImmediateTagBits) | (uword)kSmallStringTag /* {value_str!r} */)"
 
     def _emit_const(self, exp: Object) -> str:

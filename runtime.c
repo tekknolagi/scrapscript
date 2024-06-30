@@ -45,6 +45,14 @@ bool is_hole(struct object* obj) {
 static ALWAYS_INLINE bool is_small_string(struct object* obj) {
   return (((uword)obj) & kImmediateTagMask) == kSmallStringTag;
 }
+#define mk_immediate_variant(tag) (struct object*)(((uword)(tag) << kImmediateTagBits) | kVariantTag)
+static ALWAYS_INLINE bool is_immediate_variant(struct object* obj) {
+  return ((uword)obj & kImmediateTagMask) == kVariantTag;
+}
+static uword immediate_variant_tag(struct object* obj) {
+  assert(is_immediate_variant(obj));
+  return ((uword)obj) >> kImmediateTagBits;
+}
 static ALWAYS_INLINE uword small_string_length(struct object* obj) {
   assert(is_small_string(obj));
   return (((uword)obj) >> kImmediateTagBits) & kMaxSmallStringLength;
@@ -549,11 +557,15 @@ char string_at(struct object* obj, uword index) {
 }
 
 bool is_variant(struct object* obj) {
+  if (is_immediate_variant(obj)) {
+    return true;
+  }
   return is_heap_object(obj) && as_heap_object(obj)->tag == TAG_VARIANT;
 }
 
 struct variant* as_variant(struct object* obj) {
   assert(is_variant(obj));
+  assert(is_heap_object(obj));  // This only makes sense for heap variants.
   return (struct variant*)as_heap_object(obj);
 }
 
@@ -564,9 +576,17 @@ struct object* mkvariant(struct gc_heap* heap, size_t tag) {
   return result;
 }
 
-size_t variant_tag(struct object* obj) { return as_variant(obj)->tag; }
+size_t variant_tag(struct object* obj) {
+  if (is_immediate_variant(obj)) {
+    return immediate_variant_tag(obj);
+  }
+  return as_variant(obj)->tag;
+}
 
 struct object* variant_value(struct object* obj) {
+  if (is_immediate_variant(obj)) {
+    return hole();
+  }
   return as_variant(obj)->value;
 }
 

@@ -315,7 +315,7 @@ class Compiler:
     def _emit_const(self, exp: Object) -> str:
         assert self._is_const(exp), f"not a constant {exp}"
         if isinstance(exp, Hole):
-            return "((struct object*)kHoleTag)"
+            return "hole()"
         if isinstance(exp, Int):
             # TODO(max): Bignum
             return f"_mksmallint({exp.value})"

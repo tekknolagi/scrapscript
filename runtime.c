@@ -38,7 +38,7 @@ bool is_heap_object(struct object* obj) {
 }
 struct object* empty_list() { return (struct object*)kEmptyListTag; }
 bool is_empty_list(struct object* obj) { return obj == empty_list(); }
-struct object* hole() { return (struct object*)kHoleTag; }
+#define hole() ((struct object*)kHoleTag)
 bool is_hole(struct object* obj) { return (uword)obj == kHoleTag; }
 static ALWAYS_INLINE bool is_small_string(struct object* obj) {
   return (((uword)obj) & kImmediateTagMask) == kSmallStringTag;

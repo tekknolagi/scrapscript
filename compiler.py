@@ -187,6 +187,11 @@ class Compiler:
             return {}
         if isinstance(pattern, Variant):
             self.variant_tag(pattern.tag)  # register it for the big enum
+            if isinstance(pattern.value, Hole):
+                # This is an optimization for immediate variants but it's not
+                # necessary; the non-Hole case would work just fine.
+                self._emit(f"if ({arg} != mk_immediate_variant(Tag_{pattern.tag})) {{ goto {fallthrough}; }}")
+                return {}
             self._emit(f"if (!is_variant({arg})) {{ goto {fallthrough}; }}")
             self._emit(f"if (variant_tag({arg}) != Tag_{pattern.tag}) {{ goto {fallthrough}; }}")
             return self.try_match(env, self._mktemp(f"variant_value({arg})"), pattern.value, fallthrough)

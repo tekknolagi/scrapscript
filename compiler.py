@@ -318,7 +318,7 @@ class Compiler:
             return "((struct object*)kHoleTag)"
         if isinstance(exp, Int):
             # TODO(max): Bignum
-            return f"(struct object*)(((uword){exp.value} << kSmallIntTagBits))"
+            return f"_mksmallint({exp.value})"
         if isinstance(exp, List):
             items = [self._emit_const(item) for item in exp.items]
             result = "((struct object*)kEmptyListTag)"

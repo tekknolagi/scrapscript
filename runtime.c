@@ -36,7 +36,7 @@ bool is_immediate_not_small_int(struct object* obj) {
 bool is_heap_object(struct object* obj) {
   return (((uword)obj) & kPrimaryTagMask) == kHeapObjectTag;
 }
-struct object* empty_list() { return (struct object*)kEmptyListTag; }
+#define empty_list() ((struct object*)kEmptyListTag)
 bool is_empty_list(struct object* obj) { return obj == empty_list(); }
 #define hole() ((struct object*)kHoleTag)
 bool is_hole(struct object* obj) { return (uword)obj == kHoleTag; }

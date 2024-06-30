@@ -349,13 +349,9 @@ class Compiler:
     def compile(self, env: Env, exp: Object) -> str:
         if self._is_const(exp):
             return self._emit_const(exp)
-        if isinstance(exp, Int):
-            # TODO(max): Bignum
-            self._debug("collect(heap);")
-            return self._mktemp(f"mknum(heap, {exp.value})")
-        if isinstance(exp, Hole):
-            return self._mktemp("hole()")
         if isinstance(exp, Variant):
+            assert not isinstance(exp.value, Hole), "immediate variant should be handled in _emit_const"
+            assert not self._is_const(exp.value), "const heap variant should be handled in _emit_const"
             self._debug("collect(heap);")
             self.variant_tag(exp.tag)
             value = self.compile(env, exp.value)
@@ -363,6 +359,7 @@ class Compiler:
             self._emit(f"variant_set({result}, {value});")
             return result
         if isinstance(exp, String):
+            assert len(exp.value.encode("utf-8")) >= 8, "small string should be handled in _emit_const"
             self._debug("collect(heap);")
             string_repr = json.dumps(exp.value)
             return self._mktemp(f"mkstring(heap, {string_repr}, {len(exp.value)});")

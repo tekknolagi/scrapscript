@@ -471,6 +471,11 @@ def compile_to_string(source: str, debug: bool) -> str:
         ("uword", "kEmptyListTag", 5),  # 0b00101
         ("uword", "kHoleTag", 7),  # 0b00111
         ("uword", "kSmallStringTag", 13),  # 0b01101
+        # TODO(max): Fill in 15
+        # TODO(max): Fill in 21
+        # TODO(max): Fill in 23
+        # TODO(max): Fill in 29
+        # TODO(max): Fill in 31
         ("uword", "kBitsPerPointer", "kBitsPerByte * kWordSize"),
         ("word", "kSmallIntBits", "kBitsPerPointer - kSmallIntTagBits"),
         ("word", "kSmallIntMinValue", "-(((word)1) << (kSmallIntBits - 1))"),

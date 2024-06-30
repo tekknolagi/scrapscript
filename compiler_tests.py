@@ -112,8 +112,11 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_match_hole(self) -> None:
         self.assertEqual(self._run("f () . f = | 1 -> 3 | () -> 4"), "4\n")
 
-    def test_match_variant(self) -> None:
+    def test_match_immediate_variant(self) -> None:
         self.assertEqual(self._run("f #foo () . f = | # bar 1 -> 3 | # foo () -> 4"), "4\n")
+
+    def test_match_heap_variant(self) -> None:
+        self.assertEqual(self._run("f #bar 1 . f = | # bar 1 -> 3 | # foo () -> 4"), "3\n")
 
 
 if __name__ == "__main__":

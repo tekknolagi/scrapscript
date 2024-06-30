@@ -328,6 +328,8 @@ class Compiler:
             )
         if isinstance(exp, Variant):
             self.variant_tag(exp.tag)
+            if isinstance(exp.value, Hole):
+                return f"mk_immediate_variant(Tag_{exp.tag})"
             value = self._emit_const(exp.value)
             return self._const_obj("variant", "TAG_VARIANT", f".tag=Tag_{exp.tag}, .value={value}")
         if isinstance(exp, Record):
@@ -471,7 +473,7 @@ def compile_to_string(source: str, debug: bool) -> str:
         ("uword", "kEmptyListTag", 5),  # 0b00101
         ("uword", "kHoleTag", 7),  # 0b00111
         ("uword", "kSmallStringTag", 13),  # 0b01101
-        # TODO(max): Fill in 15
+        ("uword", "kVariantTag", 15),  # 0b01111
         # TODO(max): Fill in 21
         # TODO(max): Fill in 23
         # TODO(max): Fill in 29

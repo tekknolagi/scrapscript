@@ -381,9 +381,12 @@ bool smallint_is_valid(word value) {
   return (value >= kSmallIntMinValue) && (value <= kSmallIntMaxValue);
 }
 
+#define _mksmallint(value)                                                     \
+  (struct object*)(((uword)(value) << kSmallIntTagBits) | kSmallIntTag)
+
 struct object* mksmallint(word value) {
   assert(smallint_is_valid(value));
-  return (struct object*)(((uword)value << kSmallIntTagBits));
+  return _mksmallint(value);
 }
 
 struct object* mknum(struct gc_heap* heap, word value) {

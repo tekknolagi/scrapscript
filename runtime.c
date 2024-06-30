@@ -70,7 +70,8 @@ static ALWAYS_INLINE struct object* mksmallstring(const char* data,
   assert(small_string_length(result_obj) == length);
   return result_obj;
 }
-bool is_empty_string(struct object* obj) { return obj == mksmallstring("", 0); }
+struct object* empty_string() { return (struct object*)kSmallStringTag; }
+bool is_empty_string(struct object* obj) { return obj == empty_string(); }
 static ALWAYS_INLINE char small_string_at(struct object* obj, uword index) {
   assert(is_small_string(obj));
   assert(index < small_string_length(obj));

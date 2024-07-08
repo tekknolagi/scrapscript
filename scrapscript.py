@@ -372,8 +372,13 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     elif isinstance(token, FloatLit):
         l = Float(token.value)
     elif isinstance(token, Name):
-        # TODO: Handle kebab case vars
-        l = Var(token.value)
+        sha_prefix = "$sha1'"
+        if token.value.startswith(sha_prefix):
+            hash = token.value[len(sha_prefix):]
+            l = HashVar(hash)
+        else:
+            # TODO: Handle kebab case vars
+            l = Var(token.value)
     elif isinstance(token, VariantToken):
         # It needs to be higher than the precedence of the -> operator so that
         # we can match variants in MatchFunction
@@ -545,6 +550,14 @@ class Bytes(Object):
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Var(Object):
+    name: str
+
+    def __str__(self) -> str:
+        return self.name
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class HashVar(Object):
     name: str
 
     def __str__(self) -> str:
@@ -814,6 +827,12 @@ class Variant(Object):
     def __str__(self) -> str:
         return f"#{self.tag} {self.value}"
 
+
+scrapyard: Env = {
+    "4b1cfcc995860c3fb134063c23bb26bf804367a6": Closure({}, Function(
+        Var("x"), Binop(BinopKind.ADD, Var("x"), Int(1))
+    )),
+}
 
 tags = [
     TYPE_SHORT := b"i",  # fits in 64 bits
@@ -1342,6 +1361,8 @@ def free_in(exp: Object) -> Set[str]:
         return free_in(exp.value)
     if isinstance(exp, Var):
         return {exp.name}
+    if isinstance(exp, HashVar):
+        return {exp.name}
     if isinstance(exp, Spread):
         if exp.name is not None:
             return {exp.name}
@@ -1391,6 +1412,7 @@ def improve_closure(closure: Closure) -> Closure:
     return Closure(env, closure.func)
 
 
+
 def eval_exp(env: Env, exp: Object) -> Object:
     logger.debug(exp)
     if isinstance(exp, (Int, Float, String, Bytes, Hole, Closure, NativeFunction)):
@@ -1401,6 +1423,11 @@ def eval_exp(env: Env, exp: Object) -> Object:
         value = env.get(exp.name)
         if value is None:
             raise NameError(f"name '{exp.name}' is not defined")
+        return value
+    if isinstance(exp, HashVar):
+        value = scrapyard.get(exp.name)
+        if value is None:
+            raise NameError(f"no known scrap with hash '{exp.name}'")
         return value
     if isinstance(exp, Binop):
         handler = BINOP_HANDLERS.get(exp.op)
@@ -1968,8 +1995,8 @@ class ParserTests(unittest.TestCase):
     def test_parse_var_returns_var(self) -> None:
         self.assertEqual(parse([Name("abc_123")]), Var("abc_123"))
 
-    def test_parse_sha_var_returns_var(self) -> None:
-        self.assertEqual(parse([Name("$sha1'abc")]), Var("$sha1'abc"))
+    def test_parse_sha_var_returns_hash_var(self) -> None:
+        self.assertEqual(parse([Name("$sha1'abc")]), HashVar("abc"))
 
     def test_parse_sha_var_without_quote_returns_var(self) -> None:
         self.assertEqual(parse([Name("$sha1abc")]), Var("$sha1abc"))
@@ -3124,6 +3151,13 @@ class EvalTests(unittest.TestCase):
 
     def test_eval_int_and_int_division_returns_float(self) -> None:
         self.assertEqual(eval_exp({}, Binop(BinopKind.DIV, Int(1), Int(2))), Float(0.5))
+
+    def test_eval_hash_var_uses_scrapyard(self) -> None:
+        exp = Where(
+            Apply(Var("f"), Int(2)),
+            Assign(Var("f"), HashVar("4b1cfcc995860c3fb134063c23bb26bf804367a6")),
+        )
+        self.assertEqual(eval_exp({}, exp), Int(3))
 
 
 class EndToEndTestsBase(unittest.TestCase):

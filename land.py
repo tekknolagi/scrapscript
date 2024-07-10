@@ -31,25 +31,27 @@ def find_scrap(hash):
             response.status = 404
             return "Not found."
 
+
 @post("/scrap/upload")
 def upload_scrap():
     # curl -X POST -F smallstr=@smallstr.flat -F foo=bar -F a=b  ...
     # for key, value in request.forms.items():
     #     print(key, value)
     inserted = set()
+    items = []
+    for key, value in request.files.items():
+        flat = value.file.read()
+        hash = hashlib.sha256(flat).hexdigest()
+        items.append({"hash": hash, "contents": flat})
     with db:
         cursor = db.cursor()
-        for key, value in request.files.items():
-            flat = value.file.read()
-            hash = hashlib.sha256(flat).hexdigest()
-            result = cursor.execute("INSERT or IGNORE INTO scrap_object VALUES (?, ?)", (hash, flat))
-            if result.rowcount > 0:
-                inserted.add(hash)
-    if inserted:
+        result = cursor.executemany("INSERT or IGNORE INTO scrap_object VALUES (:hash, :contents)", items)
+        num_inserted = result.rowcount
+    if num_inserted > 0:
         response.status = 201
-        return {"inserted": list(inserted)}
+        return {"num_inserted": num_inserted}
     response.status = 304
-    return {"inserted": []}
+    return {"num_inserted": 0}
 
 
 if IN_MEMORY:

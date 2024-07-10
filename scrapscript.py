@@ -4731,6 +4731,7 @@ def publish_command(args: argparse.Namespace) -> None:
     import urllib.request
     from multipart import MultiPartForm
 
+    # curl -X POST -F smallstr=@smallstr.flat -F foo=bar -F a=b  ...
     form = MultiPartForm()
     if args.program_filename:
         with open(args.program_filename, "r") as f:

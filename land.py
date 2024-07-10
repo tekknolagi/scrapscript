@@ -23,10 +23,12 @@ def find_scrap(hash):
         row = cursor.fetchone()
         if row:
             flat = row[0]
+            response.status = 200
             response.content_type = "application/scrapscript"
             response.content_length = len(flat)
             return flat
         else:
+            response.status = 404
             return "Not found."
 
 @post("/scrap/upload")
@@ -34,13 +36,20 @@ def upload_scrap():
     # curl -X POST -F smallstr=@smallstr.flat -F foo=bar -F a=b  ...
     # for key, value in request.forms.items():
     #     print(key, value)
+    inserted = set()
     with db:
         cursor = db.cursor()
         for key, value in request.files.items():
             flat = value.file.read()
             hash = hashlib.sha256(flat).hexdigest()
-            cursor.execute("INSERT or IGNORE INTO scrap_object VALUES (?, ?)", (hash, flat))
-    return template("Inserted into DB as {{hash}}", hash=hash)
+            result = cursor.execute("INSERT or IGNORE INTO scrap_object VALUES (?, ?)", (hash, flat))
+            if result.rowcount > 0:
+                inserted.add(hash)
+    if inserted:
+        response.status = 201
+        return {"inserted": list(inserted)}
+    response.status = 304
+    return {"inserted": []}
 
 
 if IN_MEMORY:

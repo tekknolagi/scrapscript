@@ -4706,11 +4706,53 @@ def compile_command(args: argparse.Namespace) -> None:
         subprocess.run(["sh", "-c", "./a.out"], check=True)
 
 
+def flatten_program(program: str) -> bytes:
+    tokens = tokenize(program)
+    ast = parse(tokens)
+    result = eval_exp(boot_env(), ast)
+    serializer = Serializer()
+    serializer.serialize(result)
+    return bytes(serializer.output)
+
+
 def flat_command(args: argparse.Namespace) -> None:
     prog = parse(tokenize(sys.stdin.read()))
     serializer = Serializer()
     serializer.serialize(prog)
     sys.stdout.buffer.write(serializer.output)
+
+
+DEFAULT_LAND = "http://localhost:8080"
+
+
+def publish_command(args: argparse.Namespace) -> None:
+    import hashlib
+    import io
+    import urllib.request
+    from multipart import MultiPartForm
+
+    form = MultiPartForm()
+    if args.program_filename:
+        with open(args.program_filename, "r") as f:
+            contents = f.read()
+        flat = flatten_program(contents)
+        filename = args.program_filename
+        form.add_file(filename, filename, io.BytesIO(flat), "application/scrapscript")
+
+    data = bytes(form)
+    land = args.land or DEFAULT_LAND
+    hash = hashlib.sha256(flat).hexdigest()
+    req = urllib.request.Request(f"{land}/scrap/upload", data=data)
+    req.add_header("Content-type", form.get_content_type())
+    req.add_header("Content-length", len(data))
+    try:
+        with urllib.request.urlopen(req) as f:
+            print(f.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        if e.code == 304:
+            pass
+        else:
+            raise
 
 
 def main() -> None:
@@ -4750,6 +4792,11 @@ def main() -> None:
 
     flat = subparsers.add_parser("flat")
     flat.set_defaults(func=flat_command)
+
+    publish = subparsers.add_parser("publish")
+    publish.set_defaults(func=publish_command)
+    publish.add_argument("program_filename", type=str, default=None)
+    publish.add_argument("--land", type=str, default=DEFAULT_LAND)
 
     args = parser.parse_args()
     if not args.command:

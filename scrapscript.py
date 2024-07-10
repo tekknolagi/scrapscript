@@ -4716,10 +4716,8 @@ def flatten_program(program: str) -> bytes:
 
 
 def flat_command(args: argparse.Namespace) -> None:
-    prog = parse(tokenize(sys.stdin.read()))
-    serializer = Serializer()
-    serializer.serialize(prog)
-    sys.stdout.buffer.write(serializer.output)
+    flat = flatten_program(sys.stdin.read())
+    sys.stdout.buffer.write(flat)
 
 
 DEFAULT_LAND = "http://localhost:8080"

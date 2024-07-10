@@ -19,7 +19,7 @@ with db:
 def find_scrap(hash):
     with db:
         cursor = db.cursor()
-        cursor.execute("SELECT contents FROM scrap_object WHERE hash=?", (hash,))
+        cursor.execute("SELECT contents FROM scrap_object WHERE hash=:hash", {"hash": hash})
         row = cursor.fetchone()
         if row:
             flat = row[0]

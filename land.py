@@ -29,7 +29,7 @@ def find_scrap(hash):
             return flat
         else:
             response.status = 404
-            return "Not found."
+            return "Not found.\n"
 
 
 @post("/scrap/upload")
@@ -59,7 +59,7 @@ if IN_MEMORY:
     def persist_db():
         disk_db = sqlite3.connect("land.db")
         db.backup(disk_db)
-        return "Flushed to disk."
+        return "Flushed to disk.\n"
 
 
 if __name__ == "__main__":

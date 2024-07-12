@@ -44,7 +44,8 @@ bool is_hole(struct object* obj) { return (uword)obj == kHoleTag; }
 static ALWAYS_INLINE bool is_small_string(struct object* obj) {
   return (((uword)obj) & kImmediateTagMask) == kSmallStringTag;
 }
-#define mk_immediate_variant(tag) (struct object*)(((uword)(tag) << kImmediateTagBits) | kVariantTag)
+#define mk_immediate_variant(tag)                                              \
+  (struct object*)(((uword)(tag) << kImmediateTagBits) | kVariantTag)
 static ALWAYS_INLINE bool is_immediate_variant(struct object* obj) {
   return ((uword)obj & kImmediateTagMask) == kVariantTag;
 }
@@ -188,8 +189,9 @@ struct object* heap_tag(uintptr_t addr) {
 // libc defines __attribute__ as an empty macro if the compiler is not GCC or
 // GCC < 2. We know tcc has supported __attribute__(section(...)) for 20+ years
 // so we can undefine it.
-// See tinycc-devel: https://lists.nongnu.org/archive/html/tinycc-devel/2018-04/msg00008.html
-// and my StackOverflow question: https://stackoverflow.com/q/78638571/569183
+// See tinycc-devel:
+// https://lists.nongnu.org/archive/html/tinycc-devel/2018-04/msg00008.html and
+// my StackOverflow question: https://stackoverflow.com/q/78638571/569183
 #undef __attribute__
 #endif
 
@@ -763,6 +765,6 @@ struct object* println(struct object* obj) {
 // Put something in the const heap so that __start_const_heap and
 // __stop_const_heap are defined by the linker.
 #define CONST_HEAP const __attribute__((section("const_heap")))
-CONST_HEAP __attribute__((used)) struct heap_string private_unused_const_heap = {
-    .HEAD.tag = TAG_STRING, .size = 11, .data = "hello world"
-};
+CONST_HEAP
+    __attribute__((used)) struct heap_string private_unused_const_heap = {
+        .HEAD.tag = TAG_STRING, .size = 11, .data = "hello world"};

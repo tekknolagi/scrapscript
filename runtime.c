@@ -16,6 +16,7 @@
 const int kPointerSize = sizeof(void*);
 typedef intptr_t word;
 typedef uintptr_t uword;
+typedef unsigned char byte;
 
 // Garbage collector core by Andy Wingo <wingo@pobox.com>.
 
@@ -249,14 +250,32 @@ static NEVER_INLINE ALLOCATOR struct object* allocate_slow_path(
   return heap_tag(addr);
 }
 
+bool is_power_of_two(uword x) { return (x & (x - 1)) == 0; }
+
+bool is_aligned(uword value, uword alignment) {
+  assert(is_power_of_two(alignment));
+  return (value & (alignment - 1)) == 0;
+}
+
+uword make_tag(uword tag, uword size_bytes) {
+  assert(size_bytes <= 0xffffffff);
+  return (size_bytes << kBitsPerByte) | tag;
+}
+
+byte obj_tag(struct gc_obj* obj) { return (obj->tag & 0xff); }
+
+bool obj_has_tag(struct gc_obj* obj, byte tag) { return obj_tag(obj) == tag; }
+
 static ALWAYS_INLINE ALLOCATOR struct object* allocate(struct gc_heap* heap,
-                                                       size_t size) {
+                                                       uword tag, uword size) {
+  assert(is_aligned(size, 1 << kPrimaryTagBits) && "need 3 bits for tagging");
   uintptr_t addr = heap->hp;
   uintptr_t new_hp = align_size(addr + size);
   if (UNLIKELY(heap->limit < new_hp)) {
     return allocate_slow_path(heap, size);
   }
   heap->hp = new_hp;
+  ((struct gc_obj*)addr)->tag = make_tag(tag, size);
   return heap_tag(addr);
 }
 
@@ -316,42 +335,11 @@ struct variant {
   struct object* value;
 };
 
-size_t variable_size(size_t base, size_t count) {
-  return base + count * kPointerSize;
-}
-
-size_t record_size(size_t count) {
-  return sizeof(struct record) + count * sizeof(struct record_field);
-}
-
-size_t heap_string_size(size_t count) {
-  return sizeof(struct heap_string) + count;
-}
-
-size_t heap_object_size(struct gc_obj* obj) {
-  switch (obj->tag) {
-    case TAG_LIST:
-      return sizeof(struct list);
-    case TAG_CLOSURE:
-      return variable_size(sizeof(struct closure),
-                           ((struct closure*)obj)->size);
-    case TAG_RECORD:
-      return record_size(((struct record*)obj)->size);
-    case TAG_STRING:
-      return heap_string_size(((struct heap_string*)obj)->size);
-    case TAG_VARIANT:
-      return sizeof(struct variant);
-    default:
-      fprintf(stderr, "unknown tag: %lu\n", obj->tag);
-      abort();
-      // Pacify the C compiler
-      return (size_t)-1;
-  }
-}
+size_t heap_object_size(struct gc_obj* obj) { return obj->tag >> kBitsPerByte; }
 
 size_t trace_heap_object(struct gc_obj* obj, struct gc_heap* heap,
                          VisitFn visit) {
-  switch (obj->tag) {
+  switch (obj_tag(obj)) {
     case TAG_LIST:
       visit(&((struct list*)obj)->first, heap);
       visit(&((struct list*)obj)->rest, heap);
@@ -372,7 +360,7 @@ size_t trace_heap_object(struct gc_obj* obj, struct gc_heap* heap,
       visit(&((struct variant*)obj)->value, heap);
       break;
     default:
-      fprintf(stderr, "unknown tag: %lu\n", obj->tag);
+      fprintf(stderr, "unknown tag: %u\n", obj_tag(obj));
       abort();
   }
   return heap_object_size(obj);
@@ -411,7 +399,7 @@ bool is_list(struct object* obj) {
   if (is_empty_list(obj)) {
     return true;
   }
-  return is_heap_object(obj) && as_heap_object(obj)->tag == TAG_LIST;
+  return is_heap_object(obj) && obj_has_tag(as_heap_object(obj), TAG_LIST);
 }
 
 struct list* as_list(struct object* obj) {
@@ -430,15 +418,14 @@ struct object* list_rest(struct object* list) {
 }
 
 struct object* mklist(struct gc_heap* heap) {
-  struct object* result = allocate(heap, sizeof(struct list));
-  as_heap_object(result)->tag = TAG_LIST;
+  struct object* result = allocate(heap, TAG_LIST, sizeof(struct list));
   as_list(result)->first = empty_list();
   as_list(result)->rest = empty_list();
   return result;
 }
 
 bool is_closure(struct object* obj) {
-  return is_heap_object(obj) && as_heap_object(obj)->tag == TAG_CLOSURE;
+  return is_heap_object(obj) && obj_has_tag(as_heap_object(obj), TAG_CLOSURE);
 }
 
 struct closure* as_closure(struct object* obj) {
@@ -446,12 +433,12 @@ struct closure* as_closure(struct object* obj) {
   return (struct closure*)as_heap_object(obj);
 }
 
-struct object* mkclosure(struct gc_heap* heap, ClosureFn fn, size_t size) {
-  struct object* result =
-      allocate(heap, variable_size(sizeof(struct closure), size));
-  as_heap_object(result)->tag = TAG_CLOSURE;
+struct object* mkclosure(struct gc_heap* heap, ClosureFn fn,
+                         size_t num_fields) {
+  struct object* result = allocate(
+      heap, TAG_CLOSURE, sizeof(struct closure) + num_fields * kPointerSize);
   as_closure(result)->fn = fn;
-  as_closure(result)->size = size;
+  as_closure(result)->size = num_fields;
   // Assumes the items will be filled in immediately after calling mkclosure so
   // they are not initialized
   return result;
@@ -477,7 +464,7 @@ struct object* closure_call(struct object* closure, struct object* arg) {
 }
 
 bool is_record(struct object* obj) {
-  return is_heap_object(obj) && as_heap_object(obj)->tag == TAG_RECORD;
+  return is_heap_object(obj) && obj_has_tag(as_heap_object(obj), TAG_RECORD);
 }
 
 struct record* as_record(struct object* obj) {
@@ -485,12 +472,11 @@ struct record* as_record(struct object* obj) {
   return (struct record*)as_heap_object(obj);
 }
 
-struct object* mkrecord(struct gc_heap* heap, size_t size) {
-  // size is the number of fields, each of which has an index and a value
-  // (object)
-  struct object* result = allocate(heap, record_size(size));
-  as_heap_object(result)->tag = TAG_RECORD;
-  as_record(result)->size = size;
+struct object* mkrecord(struct gc_heap* heap, size_t num_fields) {
+  struct object* result = allocate(
+      heap, TAG_RECORD,
+      sizeof(struct record) + num_fields * sizeof(struct record_field));
+  as_record(result)->size = num_fields;
   // Assumes the items will be filled in immediately after calling mkrecord so
   // they are not initialized
   return result;
@@ -519,7 +505,7 @@ bool is_string(struct object* obj) {
   if (is_small_string(obj)) {
     return true;
   }
-  return is_heap_object(obj) && as_heap_object(obj)->tag == TAG_STRING;
+  return is_heap_object(obj) && obj_has_tag(as_heap_object(obj), TAG_STRING);
 }
 
 struct heap_string* as_heap_string(struct object* obj) {
@@ -527,11 +513,11 @@ struct heap_string* as_heap_string(struct object* obj) {
   return (struct heap_string*)as_heap_object(obj);
 }
 
-struct object* mkstring_uninit_private(struct gc_heap* heap, size_t size) {
-  assert(size > kMaxSmallStringLength);  // can't fill in small string later
-  struct object* result = allocate(heap, heap_string_size(size));
-  as_heap_object(result)->tag = TAG_STRING;
-  as_heap_string(result)->size = size;
+struct object* mkstring_uninit_private(struct gc_heap* heap, size_t count) {
+  assert(count > kMaxSmallStringLength);  // can't fill in small string later
+  struct object* result =
+      allocate(heap, TAG_STRING, sizeof(struct heap_string) + count);
+  as_heap_string(result)->size = count;
   return result;
 }
 
@@ -562,7 +548,7 @@ bool is_variant(struct object* obj) {
   if (is_immediate_variant(obj)) {
     return true;
   }
-  return is_heap_object(obj) && as_heap_object(obj)->tag == TAG_VARIANT;
+  return is_heap_object(obj) && obj_has_tag(as_heap_object(obj), TAG_VARIANT);
 }
 
 struct variant* as_variant(struct object* obj) {
@@ -572,8 +558,7 @@ struct variant* as_variant(struct object* obj) {
 }
 
 struct object* mkvariant(struct gc_heap* heap, size_t tag) {
-  struct object* result = allocate(heap, sizeof(struct variant));
-  as_heap_object(result)->tag = TAG_VARIANT;
+  struct object* result = allocate(heap, TAG_VARIANT, sizeof(struct variant));
   as_variant(result)->tag = tag;
   return result;
 }
@@ -759,7 +744,7 @@ struct object* print(struct object* obj) {
     fputs("()", stdout);
   } else {
     assert(is_heap_object(obj));
-    fprintf(stderr, "unknown tag: %lu\n", as_heap_object(obj)->tag);
+    fprintf(stderr, "unknown tag: %u\n", obj_tag(as_heap_object(obj)));
     abort();
   }
   return obj;

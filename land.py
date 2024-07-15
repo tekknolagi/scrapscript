@@ -10,6 +10,7 @@ if IN_MEMORY:
     db = sqlite3.connect(":memory:")
 else:
     db = sqlite3.connect("land.db")
+db.row_factory = sqlite3.Row
 with db:
     cursor = db.cursor()
     cursor.execute("CREATE TABLE IF NOT EXISTS scrap_object (hash TEXT, contents BLOB)")
@@ -24,7 +25,7 @@ def find_scrap(hash):
         cursor.execute("SELECT contents FROM scrap_object WHERE hash=:hash", {"hash": hash})
         row = cursor.fetchone()
         if row:
-            flat = row[0]
+            flat = row["contents"]
             bottle.response.status = 200
             bottle.response.content_type = "application/scrapscript"
             bottle.response.content_length = len(flat)

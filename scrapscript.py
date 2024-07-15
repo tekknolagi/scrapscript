@@ -3656,7 +3656,12 @@ def link(exp: Object, env: Env) -> None:
             raise LinkError(f"undefined reference to {exp.name!r}")
         exp.link(value)
         return
-    if isinstance(exp, (Int, Float, String, Bytes, Hole, Closure, NativeFunction, Var, Spread)):
+    if isinstance(exp, (Int, Float, String, Bytes, Hole, NativeFunction, Var, Spread)):
+        return
+    if isinstance(exp, Closure):
+        for key, value in exp.env.items():
+            link(value, env)
+        link(exp.func, env)
         return
     if isinstance(exp, Variant):
         link(exp.value, env)
@@ -3777,6 +3782,16 @@ class LinkTests(unittest.TestCase):
         assert isinstance(exp.body, HashVar)  # For mypy
         self.assertTrue(exp.body.is_linked())
         self.assertEqual(exp.body.value(), Int(1))
+
+    def test_closure(self) -> None:
+        x = HashVar("x")
+        y = HashVar("y")
+        exp = Closure({"y": y}, x)
+        link(exp, {"x": Int(1), "y": Int(2)})
+        self.assertTrue(x.is_linked())
+        self.assertEqual(x.value(), Int(1))
+        self.assertTrue(y.is_linked())
+        self.assertEqual(y.value(), Int(2))
 
     def test_match_function(self) -> None:
         x = HashVar("x")

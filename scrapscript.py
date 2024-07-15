@@ -372,9 +372,9 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     elif isinstance(token, FloatLit):
         l = Float(token.value)
     elif isinstance(token, Name):
-        hash_prefix = "$sha1'"
+        hash_prefix = "$sha256'"
         if token.value.startswith(hash_prefix):
-            l = HashVar(token.value[len(hash_prefix) :])
+            l = HashVar(token.value[len(hash_prefix) :], "sha256")
         else:
             # TODO: Handle kebab case vars
             l = Var(token.value)
@@ -550,6 +550,7 @@ class Bytes(Object):
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class HashVar(Object):
     name: str
+    kind: str = "sha256"
     _value: typing.List[Object] = dataclasses.field(default_factory=list)
 
     def is_linked(self) -> bool:
@@ -571,7 +572,7 @@ class HashVar(Object):
         return self.value() == other
 
     def __str__(self) -> str:
-        return f"$sha1'{self.name}"
+        return f"${self.kind}'{self.name}"
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -1595,10 +1596,10 @@ class TokenizerTests(unittest.TestCase):
 
     @unittest.skip("TODO: make this fail to tokenize")
     def test_tokenize_var_with_quote(self) -> None:
-        self.assertEqual(tokenize("sha1'abc"), [Name("sha1'abc")])
+        self.assertEqual(tokenize("sha256'abc"), [Name("sha256'abc")])
 
-    def test_tokenize_dollar_sha1_var(self) -> None:
-        self.assertEqual(tokenize("$sha1'foo"), [Name("$sha1'foo")])
+    def test_tokenize_dollar_sha256_var(self) -> None:
+        self.assertEqual(tokenize("$sha256'foo"), [Name("$sha256'foo")])
 
     def test_tokenize_dollar_dollar_var(self) -> None:
         self.assertEqual(tokenize("$$bills"), [Name("$$bills")])
@@ -2004,10 +2005,10 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse([Name("abc_123")]), Var("abc_123"))
 
     def test_parse_sha_var_returns_var(self) -> None:
-        self.assertEqual(parse([Name("$sha1'abc")]), HashVar("abc"))
+        self.assertEqual(parse([Name("$sha256'abc")]), HashVar("abc"))
 
     def test_parse_sha_var_without_quote_returns_var(self) -> None:
-        self.assertEqual(parse([Name("$sha1abc")]), Var("$sha1abc"))
+        self.assertEqual(parse([Name("$sha256abc")]), Var("$sha256abc"))
 
     def test_parse_dollar_returns_var(self) -> None:
         self.assertEqual(parse([Name("$")]), Var("$"))
@@ -2018,7 +2019,7 @@ class ParserTests(unittest.TestCase):
     @unittest.skip("TODO: make this fail to parse")
     def test_parse_sha_var_without_dollar_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, "unexpected token"):
-            parse([Name("sha1'abc")])
+            parse([Name("sha256'abc")])
 
     def test_parse_dollar_dollar_var_returns_var(self) -> None:
         self.assertEqual(parse([Name("$$bills")]), Var("$$bills"))
@@ -3635,9 +3636,9 @@ class EndToEndTests(EndToEndTestsBase):
         flat = serialize(eval_exp({}, parse(tokenize("x -> y -> x + y"))))
         extern = deserialize(flat)
         self.assertIsInstance(extern, Closure)
-        flathash = hashlib.sha1(flat).hexdigest()
-        self.assertEqual(flathash, "fcc9450b1de9b76c8453900086c084d7755e6448")
-        exp = parse(tokenize(f"$sha1'{flathash} 3 4"))
+        flathash = hashlib.sha256(flat).hexdigest()
+        self.assertEqual(flathash, "8d8b8eb06a378ef5100c5b84fa60c4cf1e6e979f3708917f84377bd3a4074dab")
+        exp = parse(tokenize(f"$sha256'{flathash} 3 4"))
         with self.assertRaises(NameError):
             eval_exp({}, exp)
         link(exp, {flathash: extern})

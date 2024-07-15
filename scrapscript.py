@@ -1435,9 +1435,16 @@ def eval_exp(env: Env, exp: Object) -> Object:
             raise NameError(f"name '{exp.name}' is not defined")
         return value
     if isinstance(exp, HashVar):
-        if not exp.is_linked():
+        if exp.is_linked():
+            return exp.value()
+        yard = env.get("$__YARD")
+        if yard is None:
+            raise NameError(f"No attached scrapyard")
+        value = yard.get(exp.name)
+        if value is None:
             raise NameError(f"undefined reference to {exp!r}")
-        return exp.value()
+        exp.link(value)
+        return value
     if isinstance(exp, Binop):
         handler = BINOP_HANDLERS.get(exp.op)
         if handler is None:
@@ -3161,6 +3168,12 @@ class EvalTests(unittest.TestCase):
     def test_eval_int_and_int_division_returns_float(self) -> None:
         self.assertEqual(eval_exp({}, Binop(BinopKind.DIV, Int(1), Int(2))), Float(0.5))
 
+    def test_eval_hash_var_links_var(self) -> None:
+        yard = MemoryYard({"abc": Int(1)})
+        hv = HashVar("abc")
+        self.assertEqual(eval_exp({"$__YARD": yard}, hv), Int(1))
+        self.assertTrue(hv.is_linked())
+
 
 class EndToEndTestsBase(unittest.TestCase):
     def _run(self, text: str, env: Optional[Env] = None) -> Object:
@@ -3649,9 +3662,22 @@ class LinkError(Exception):
     pass
 
 
-def link(exp: Object, env: Env) -> None:
+class Yard:
+    def get(self, name: str) -> Optional[Object]:
+        raise NotImplementedError
+
+
+class MemoryYard(Yard):
+    def __init__(self, env: Dict[str, Object]) -> None:
+        self.env: Dict[str, Object] = env
+
+    def get(self, name: str) -> Optional[Object]:
+        return self.env.get(name)
+
+
+def link(exp: Object, yard: Yard) -> None:
     if isinstance(exp, HashVar):
-        value = env.get(exp.name)
+        value = yard.get(exp.name)
         if value is None:
             raise LinkError(f"undefined reference to {exp.name!r}")
         exp.link(value)
@@ -3660,52 +3686,52 @@ def link(exp: Object, env: Env) -> None:
         return
     if isinstance(exp, Closure):
         for key, value in exp.env.items():
-            link(value, env)
-        link(exp.func, env)
+            link(value, yard)
+        link(exp.func, yard)
         return
     if isinstance(exp, Variant):
-        link(exp.value, env)
+        link(exp.value, yard)
         return
     if isinstance(exp, Binop):
-        link(exp.left, env)
-        link(exp.right, env)
+        link(exp.left, yard)
+        link(exp.right, yard)
         return
     if isinstance(exp, List):
         for elem in exp.items:
-            link(elem, env)
+            link(elem, yard)
         return
     if isinstance(exp, Record):
         for value in exp.data.values():
-            link(value, env)
+            link(value, yard)
         return
     if isinstance(exp, Assign):
-        link(exp.value, env)
+        link(exp.value, yard)
         return
     if isinstance(exp, Where):
-        link(exp.body, env)
-        link(exp.binding, env)
+        link(exp.body, yard)
+        link(exp.binding, yard)
         return
     if isinstance(exp, Assert):
-        link(exp.cond, env)
-        link(exp.value, env)
+        link(exp.cond, yard)
+        link(exp.value, yard)
         return
     if isinstance(exp, Function):
-        link(exp.body, env)
+        link(exp.body, yard)
         return
     if isinstance(exp, MatchFunction):
         for case in exp.cases:
-            link(case.body, env)
+            link(case.body, yard)
         return
     if isinstance(exp, Apply):
-        link(exp.func, env)
-        link(exp.arg, env)
+        link(exp.func, yard)
+        link(exp.arg, yard)
         return
     if isinstance(exp, Access):
-        link(exp.obj, env)
+        link(exp.obj, yard)
         return
     if isinstance(exp, Compose):
-        link(exp.inner, env)
-        link(exp.outer, env)
+        link(exp.inner, yard)
+        link(exp.outer, yard)
         return
     raise NotImplementedError(f"linking not implemented for {type(exp).__name__}")
 

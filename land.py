@@ -57,6 +57,15 @@ def upload_scrap():
     return {"num_inserted": 0}
 
 
+@bottle.get("/scrap")
+def list_scraps():
+    with db:
+        cursor = db.cursor()
+        cursor.execute("SELECT hash FROM scrap_object")
+        rows = cursor.fetchall()
+    return {"scraps": [dict(row) for row in rows]}
+
+
 if IN_MEMORY:
 
     @bottle.post("/persist")

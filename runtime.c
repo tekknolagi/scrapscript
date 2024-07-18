@@ -669,19 +669,24 @@ struct object* heap_string_concat(struct object* a, struct object* b) {
   return result;
 }
 
-static ALWAYS_INLINE struct object* small_string_concat(struct object* a,
-                                                        struct object* b) {
-  uword a_size = string_length(a);
-  uword b_size = string_length(b);
-  assert(a_size + b_size <= kMaxSmallStringLength);
-  char data[kMaxSmallStringLength];
-  for (uword i = 0; i < a_size; i++) {
-    data[i] = small_string_at(a, i);
-  }
-  for (uword i = 0; i < b_size; i++) {
-    data[a_size + i] = small_string_at(b, i);
-  }
-  return mksmallstring(data, a_size + b_size);
+static ALWAYS_INLINE struct object* small_string_concat(struct object* a_obj,
+                                                        struct object* b_obj) {
+  // a:         CBAT
+  // b:      FEDT
+  // result: FEDCBAT
+  assert(is_small_string(a_obj));
+  assert(is_small_string(b_obj));
+  uword length = small_string_length(a_obj) + small_string_length(b_obj);
+  assert(length <= kMaxSmallStringLength);
+  uword result = ((uword)b_obj) & ~(uword)0xFFULL;
+  result <<= small_string_length(a_obj) * kBitsPerByte;
+  result |= ((uword)a_obj) & ~(uword)0xFFULL;
+  result |= length << kImmediateTagBits;
+  result |= kSmallStringTag;
+  struct object* result_obj = (struct object*)result;
+  assert(!is_heap_object(result_obj));
+  assert(is_small_string(result_obj));
+  return result_obj;
 }
 
 ALWAYS_INLINE static struct object* string_concat(struct object* a,

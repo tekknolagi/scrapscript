@@ -4462,6 +4462,13 @@ def deserialize_object(obj: Object, _env: Env) -> Object:
     return deserialize(obj.value)
 
 
+def save_state(filename: Object, env: Env) -> Object:
+    rec = Record({key: value for key, value in env.items() if not isinstance(value, NativeFunction)})
+    with open(filename.value, "wb") as f:
+        f.write(serialize(rec))
+    return Hole()
+
+
 STDLIB = {
     "$$add": Closure({}, Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))),
     "$$fetch": NativeFunction("$$fetch", fetch),
@@ -4469,6 +4476,7 @@ STDLIB = {
     "$$serialize": NativeFunction("$$serialize", lambda obj, _env: Bytes(serialize(obj))),
     "$$deserialize": NativeFunction("$$deserialize", deserialize_object),
     "$$listlength": NativeFunction("$$listlength", listlength),
+    "$$save": NativeFunction("$$save", save_state),
 }
 
 

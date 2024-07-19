@@ -770,7 +770,7 @@ class NativeFunctionRelocation(Relocation):
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class NativeFunction(Object):
     name: str
-    func: Callable[[Object], Object]
+    func: Callable[[Object, Env], Object]
 
     def __str__(self) -> str:
         # TODO: Better pretty printing for NativeFunction
@@ -1455,7 +1455,7 @@ def eval_exp(env: Env, exp: Object) -> Object:
         callee = eval_exp(env, exp.func)
         arg = eval_exp(env, exp.arg)
         if isinstance(callee, NativeFunction):
-            return callee.func(arg)
+            return callee.func(arg, env)
         if not isinstance(callee, Closure):
             raise TypeError(f"attempted to apply a non-closure of type {type(callee).__name__}")
         if isinstance(callee.func, Function):
@@ -2998,11 +2998,11 @@ class EvalTests(unittest.TestCase):
         )
 
     def test_eval_native_function_returns_function(self) -> None:
-        exp = NativeFunction("times2", lambda x: Int(x.value * 2))  # type: ignore [attr-defined]
+        exp = NativeFunction("times2", lambda x, _env: Int(x.value * 2))  # type: ignore [attr-defined]
         self.assertIs(eval_exp({}, exp), exp)
 
     def test_eval_apply_native_function_calls_function(self) -> None:
-        exp = Apply(NativeFunction("times2", lambda x: Int(x.value * 2)), Int(3))  # type: ignore [attr-defined]
+        exp = Apply(NativeFunction("times2", lambda x, _env: Int(x.value * 2)), Int(3))  # type: ignore [attr-defined]
         self.assertEqual(eval_exp({}, exp), Int(6))
 
     def test_eval_apply_quote_returns_ast(self) -> None:
@@ -3065,7 +3065,7 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(eval_exp({"a": FALSE}, ast), TRUE)
 
     def test_boolean_and_short_circuit(self) -> None:
-        def raise_func(message: Object) -> Object:
+        def raise_func(message: Object, _env: Env) -> Object:
             if not isinstance(message, String):
                 raise TypeError(f"raise_func expected String, but got {type(message).__name__}")
             raise RuntimeError(message)
@@ -3076,7 +3076,7 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(eval_exp({"error": error}, ast), FALSE)
 
     def test_boolean_or_short_circuit(self) -> None:
-        def raise_func(message: Object) -> Object:
+        def raise_func(message: Object, _env: Env) -> Object:
             if not isinstance(message, String):
                 raise TypeError(f"raise_func expected String, but got {type(message).__name__}")
             raise RuntimeError(message)
@@ -3620,7 +3620,7 @@ class ClosureOptimizeTests(unittest.TestCase):
         self.assertEqual(free_in(Spread("x")), {"x"})
 
     def test_nativefunction(self) -> None:
-        self.assertEqual(free_in(NativeFunction("id", lambda x: x)), set())
+        self.assertEqual(free_in(NativeFunction("id", lambda x, _env: x)), set())
 
     def test_variant(self) -> None:
         self.assertEqual(free_in(Variant("x", Var("y"))), {"y"})
@@ -4388,7 +4388,7 @@ class PrettyPrintTests(unittest.TestCase):
         self.assertEqual(str(obj), "Relocation(name='relocate')")
 
     def test_pretty_print_nativefunction(self) -> None:
-        obj = NativeFunction("times2", lambda x: Int(x.value * 2))  # type: ignore [attr-defined]
+        obj = NativeFunction("times2", lambda x, _env: Int(x.value * 2))  # type: ignore [attr-defined]
         self.assertEqual(str(obj), "NativeFunction(name=times2)")
 
     def test_pretty_print_closure(self) -> None:
@@ -4410,7 +4410,7 @@ class PrettyPrintTests(unittest.TestCase):
         self.assertEqual(str(obj), "#x 123")
 
 
-def fetch(url: Object) -> Object:
+def fetch(url: Object, _env: Env) -> Object:
     if not isinstance(url, String):
         raise TypeError(f"fetch expected String, but got {type(url).__name__}")
     with urllib.request.urlopen(url.value) as f:
@@ -4431,14 +4431,14 @@ def make_object(pyobj: object) -> Object:
     raise NotImplementedError(type(pyobj))
 
 
-def jsondecode(obj: Object) -> Object:
+def jsondecode(obj: Object, _env: Env) -> Object:
     if not isinstance(obj, String):
         raise TypeError(f"jsondecode expected String, but got {type(obj).__name__}")
     data = json.loads(obj.value)
     return make_object(data)
 
 
-def listlength(obj: Object) -> Object:
+def listlength(obj: Object, _env: Env) -> Object:
     # TODO(max): Implement in scrapscript once list pattern matching is
     # implemented.
     if not isinstance(obj, List):
@@ -4457,7 +4457,7 @@ def deserialize(data: bytes) -> Object:
     return deserializer.parse()
 
 
-def deserialize_object(obj: Object) -> Object:
+def deserialize_object(obj: Object, _env: Env) -> Object:
     assert isinstance(obj, Bytes)
     return deserialize(obj.value)
 
@@ -4466,7 +4466,7 @@ STDLIB = {
     "$$add": Closure({}, Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))),
     "$$fetch": NativeFunction("$$fetch", fetch),
     "$$jsondecode": NativeFunction("$$jsondecode", jsondecode),
-    "$$serialize": NativeFunction("$$serialize", lambda obj: Bytes(serialize(obj))),
+    "$$serialize": NativeFunction("$$serialize", lambda obj, _env: Bytes(serialize(obj))),
     "$$deserialize": NativeFunction("$$deserialize", deserialize_object),
     "$$listlength": NativeFunction("$$listlength", listlength),
 }

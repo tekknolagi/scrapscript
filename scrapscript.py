@@ -4469,6 +4469,16 @@ def save_state(filename: Object, env: Env) -> Object:
     return Hole()
 
 
+def load_state(filename: Object, env: Env) -> Env:
+    with open(filename.value, "rb") as f:
+        data = f.read()
+    rec = deserialize(data)
+    assert isinstance(rec, Record)
+    for key, value in rec.data.items():
+        env[key] = value
+    return Hole()
+
+
 STDLIB = {
     "$$add": Closure({}, Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))),
     "$$fetch": NativeFunction("$$fetch", fetch),
@@ -4477,6 +4487,7 @@ STDLIB = {
     "$$deserialize": NativeFunction("$$deserialize", deserialize_object),
     "$$listlength": NativeFunction("$$listlength", listlength),
     "$$save": NativeFunction("$$save", save_state),
+    "$$load": NativeFunction("$$load", load_state),
 }
 
 

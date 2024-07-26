@@ -120,6 +120,7 @@ struct gc_heap {
   uintptr_t limit;
   uintptr_t from_space;
   uintptr_t to_space;
+  uintptr_t base;
   struct space space;
 };
 
@@ -158,7 +159,7 @@ void init_heap(struct gc_heap* heap, struct space space) {
     abort();
   }
   heap->space = space;
-  heap->to_space = heap->hp = space.start;
+  heap->base = heap->to_space = heap->hp = space.start;
   heap->from_space = heap->limit = heap->hp + space.size / 2;
 }
 
@@ -172,7 +173,7 @@ struct gc_obj* copy(struct gc_heap* heap, struct gc_obj* obj) {
 }
 
 void flip(struct gc_heap* heap) {
-  heap->hp = heap->from_space;
+  heap->base = heap->hp = heap->from_space;
   heap->from_space = heap->to_space;
   heap->to_space = heap->hp;
   heap->limit = heap->hp + heap->space.size / 2;
@@ -213,7 +214,7 @@ void visit_field(struct object** pointer, struct gc_heap* heap) {
 }
 
 static bool in_heap(struct gc_heap* heap, struct gc_obj* obj) {
-  return (uword)obj >= heap->to_space && (uword)obj < heap->limit;
+  return (uword)obj >= heap->base && (uword)obj < heap->hp;
 }
 
 void assert_in_heap(struct object** pointer, struct gc_heap* heap) {
@@ -228,8 +229,9 @@ void assert_in_heap(struct object** pointer, struct gc_heap* heap) {
 }
 
 static NEVER_INLINE void heap_verify(struct gc_heap* heap) {
+  assert(heap->base <= heap->hp);
   trace_roots(heap, assert_in_heap);
-  uintptr_t scan = heap->to_space;
+  uintptr_t scan = heap->base;
   while (scan < heap->hp) {
     struct gc_obj* obj = (struct gc_obj*)scan;
     scan += align_size(trace_heap_object(obj, heap, assert_in_heap));

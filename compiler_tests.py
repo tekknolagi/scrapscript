@@ -105,6 +105,9 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_match_record(self) -> None:
         self.assertEqual(self._run("f {a = 4, b = 5} . f = | {a = 1, b = 2} -> 3 | {a = 4, b = 5} -> 6"), "6\n")
 
+    def test_match_record_too_few_keys(self) -> None:
+        self.assertEqual(self._run("f {a = 4, b = 5} . f = | {a = _} -> 3 | {a = _, b = _} -> 6"), "6\n")
+
     @unittest.skip("TODO")
     def test_match_record_spread(self) -> None:
         self.assertEqual(self._run("f {a=1, b=2, c=3} . f = | {a=1, ...rest} -> rest"), "[5]\n")

@@ -212,7 +212,33 @@ void visit_field(struct object** pointer, struct gc_heap* heap) {
   *pointer = heap_tag((uintptr_t)to);
 }
 
+static bool in_heap(struct gc_heap* heap, struct gc_obj* obj) {
+  return (uword)obj >= heap->to_space && (uword)obj < heap->limit;
+}
+
+void assert_in_heap(struct object** pointer, struct gc_heap* heap) {
+  if (!is_heap_object(*pointer)) {
+    return;
+  }
+  struct gc_obj* obj = as_heap_object(*pointer);
+  if (in_const_heap(obj)) {
+    return;
+  }
+  assert(in_heap(heap, obj));
+}
+
+static NEVER_INLINE void heap_verify(struct gc_heap* heap) {
+  uintptr_t scan = heap->to_space;
+  while (scan < heap->hp) {
+    struct gc_obj* obj = (struct gc_obj*)scan;
+    scan += align_size(trace_heap_object(obj, heap, assert_in_heap));
+  }
+}
+
 void collect(struct gc_heap* heap) {
+#ifndef NDEBUG
+  heap_verify(heap);
+#endif
   flip(heap);
   uintptr_t scan = heap->hp;
   trace_roots(heap, visit_field);
@@ -222,6 +248,7 @@ void collect(struct gc_heap* heap) {
   }
   // TODO(max): If we have < 25% heap utilization, shrink the heap
 #ifndef NDEBUG
+  heap_verify(heap);
   // Zero out the rest of the heap for debugging
   memset((void*)scan, 0, heap->limit - scan);
 #endif

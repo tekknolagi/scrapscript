@@ -228,6 +228,7 @@ void assert_in_heap(struct object** pointer, struct gc_heap* heap) {
 }
 
 static NEVER_INLINE void heap_verify(struct gc_heap* heap) {
+  trace_roots(heap, assert_in_heap);
   uintptr_t scan = heap->to_space;
   while (scan < heap->hp) {
     struct gc_obj* obj = (struct gc_obj*)scan;

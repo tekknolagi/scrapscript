@@ -231,14 +231,15 @@ class Compiler:
         if isinstance(pattern, Record):
             self._emit(f"if (!is_record({arg})) {{ goto {fallthrough}; }}")
             updates = {}
+            use_spread = False
             for key, pattern_value in pattern.data.items():
                 assert not isinstance(pattern_value, Spread), "record spread not yet supported"
                 key_idx = self.record_key(key)
                 record_value = self._mktemp(f"record_get({arg}, {key_idx})")
                 self._emit(f"if ({record_value} == NULL) {{ goto {fallthrough}; }}")
                 updates.update(self.try_match(env, record_value, pattern_value, fallthrough))
-            # TODO(max): Check that there are no other fields in the record,
-            # perhaps by length check
+            if not use_spread:
+                self._emit(f"if (record_num_fields({arg}) != {len(pattern.data)}) {{ goto {fallthrough}; }}")
             return updates
         raise NotImplementedError("try_match", pattern)
 

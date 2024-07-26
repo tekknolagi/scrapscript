@@ -484,6 +484,10 @@ struct object* mkrecord(struct gc_heap* heap, size_t num_fields) {
   return result;
 }
 
+size_t record_num_fields(struct object* record) {
+  return as_record(record)->size;
+}
+
 void record_set(struct object* record, size_t index,
                 struct record_field field) {
   struct record* r = as_record(record);

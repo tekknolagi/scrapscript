@@ -225,7 +225,11 @@ void assert_in_heap(struct object** pointer, struct gc_heap* heap) {
   if (in_const_heap(obj)) {
     return;
   }
-  assert(in_heap(heap, obj));
+  if (!in_heap(heap, obj)) {
+    fprintf(stderr, "pointer %p not in heap [%p, %p)\n", obj, heap->to_space,
+            heap->hp);
+    abort();
+  }
 }
 
 static NEVER_INLINE void heap_verify(struct gc_heap* heap) {

@@ -121,6 +121,20 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_match_heap_variant(self) -> None:
         self.assertEqual(self._run("f #bar 1 . f = | # bar 1 -> 3 | # foo () -> 4"), "3\n")
 
+    @unittest.skipIf("STATIC_HEAP" in os.environ.get("CFLAGS", ""), "Can't grow heap in static heap mode")
+    def test_heap_growth(self) -> None:
+        self.assertEqual(
+            self._run(
+                """
+countdown 1000
+. countdown =
+| 0 -> []
+| n -> n >+ countdown (n - 1)
+"""
+            ),
+            "[" + ", ".join(str(i) for i in range(1000, 0, -1)) + "]\n",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

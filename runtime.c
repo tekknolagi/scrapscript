@@ -120,7 +120,7 @@ struct gc_heap {
   uintptr_t limit;
   uintptr_t from_space;
   uintptr_t to_space;
-  size_t size;
+  struct space space;
 };
 
 static uintptr_t align(uintptr_t val, uintptr_t alignment) {
@@ -157,7 +157,7 @@ void init_heap(struct gc_heap* heap, struct space space) {
             space.size, kPageSize);
     abort();
   }
-  heap->size = space.size;
+  heap->space = space;
   heap->to_space = heap->hp = space.start;
   heap->from_space = heap->limit = heap->hp + space.size / 2;
 }
@@ -175,7 +175,7 @@ void flip(struct gc_heap* heap) {
   heap->hp = heap->from_space;
   heap->from_space = heap->to_space;
   heap->to_space = heap->hp;
-  heap->limit = heap->hp + heap->size / 2;
+  heap->limit = heap->hp + heap->space.size / 2;
 }
 
 struct object* heap_tag(uintptr_t addr) {
@@ -220,6 +220,7 @@ void collect(struct gc_heap* heap) {
     struct gc_obj* obj = (struct gc_obj*)scan;
     scan += align_size(trace_heap_object(obj, heap, visit_field));
   }
+  // TODO(max): If we have < 25% heap utilization, shrink the heap
 #ifndef NDEBUG
   // Zero out the rest of the heap for debugging
   memset((void*)scan, 0, heap->limit - scan);
@@ -235,19 +236,15 @@ void collect(struct gc_heap* heap) {
 #endif
 #define ALLOCATOR __attribute__((__malloc__))
 
-static NEVER_INLINE ALLOCATOR struct object* allocate_slow_path(
-    struct gc_heap* heap, size_t size) {
-  // size is already aligned
+#ifndef STATIC_HEAP
+static NEVER_INLINE void heap_grow(struct gc_heap* heap) {
+  struct space old_space = heap->space;
+  struct space new_space = make_space(old_space.size * 2);
+  init_heap(heap, new_space);
   collect(heap);
-  if (UNLIKELY(heap->limit - heap->hp < size)) {
-    fprintf(stderr, "out of memory\n");
-    abort();
-  }
-  uintptr_t addr = heap->hp;
-  uintptr_t new_hp = align_size(addr + size);
-  heap->hp = new_hp;
-  return heap_tag(addr);
+  destroy_space(old_space);
 }
+#endif
 
 bool is_power_of_two(uword x) { return (x & (x - 1)) == 0; }
 
@@ -265,13 +262,26 @@ byte obj_tag(struct gc_obj* obj) { return (obj->tag & 0xff); }
 
 bool obj_has_tag(struct gc_obj* obj, byte tag) { return obj_tag(obj) == tag; }
 
+static NEVER_INLINE void allocate_slow_path(struct gc_heap* heap, uword size) {
+#ifndef STATIC_HEAP
+  heap_grow(heap);
+#endif
+  // size is already aligned
+  if (UNLIKELY(heap->limit - heap->hp < size)) {
+    fprintf(stderr, "out of memory\n");
+    abort();
+  }
+}
+
 static ALWAYS_INLINE ALLOCATOR struct object* allocate(struct gc_heap* heap,
                                                        uword tag, uword size) {
   assert(is_aligned(size, 1 << kPrimaryTagBits) && "need 3 bits for tagging");
   uintptr_t addr = heap->hp;
   uintptr_t new_hp = align_size(addr + size);
   if (UNLIKELY(heap->limit < new_hp)) {
-    return allocate_slow_path(heap, size);
+    allocate_slow_path(heap, size);
+    addr = heap->hp;
+    new_hp = align_size(addr + size);
   }
   heap->hp = new_hp;
   ((struct gc_obj*)addr)->tag = make_tag(tag, size);
@@ -584,7 +594,7 @@ void variant_set(struct object* variant, struct object* value) {
   as_variant(variant)->value = value;
 }
 
-#define MAX_HANDLES 1024
+#define MAX_HANDLES 4096
 
 struct handle_scope {
   struct object*** base;

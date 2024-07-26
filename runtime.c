@@ -242,10 +242,7 @@ static NEVER_INLINE void heap_verify(struct gc_heap* heap) {
   }
 }
 
-void collect(struct gc_heap* heap) {
-#ifndef NDEBUG
-  heap_verify(heap);
-#endif
+void collect_no_verify(struct gc_heap* heap) {
   flip(heap);
   uintptr_t scan = heap->hp;
   trace_roots(heap, visit_field);
@@ -255,9 +252,18 @@ void collect(struct gc_heap* heap) {
   }
   // TODO(max): If we have < 25% heap utilization, shrink the heap
 #ifndef NDEBUG
-  heap_verify(heap);
   // Zero out the rest of the heap for debugging
   memset((void*)scan, 0, heap->limit - scan);
+#endif
+}
+
+void collect(struct gc_heap* heap) {
+#ifndef NDEBUG
+  heap_verify(heap);
+#endif
+  collect_no_verify(heap);
+#ifndef NDEBUG
+  heap_verify(heap);
 #endif
 }
 
@@ -274,8 +280,14 @@ void collect(struct gc_heap* heap) {
 static NEVER_INLINE void heap_grow(struct gc_heap* heap) {
   struct space old_space = heap->space;
   struct space new_space = make_space(old_space.size * 2);
+#ifndef NDEBUG
+  heap_verify(heap);
+#endif
   init_heap(heap, new_space);
-  collect(heap);
+  collect_no_verify(heap);
+#ifndef NDEBUG
+  heap_verify(heap);
+#endif
   destroy_space(old_space);
 }
 #endif

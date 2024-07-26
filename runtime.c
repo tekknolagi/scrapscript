@@ -131,17 +131,8 @@ static uintptr_t align_size(uintptr_t size) {
 }
 
 #ifdef STATIC_HEAP
-#define make_space(mem, sz)                                                    \
-  (struct space) { .start = (uintptr_t)mem, .size = sz }
-void init_heap(struct gc_heap* heap, struct space space) {
-  if (align(space.size, kPageSize) != space.size) {
-    fprintf(stderr, "static heap size (%lu) must be a multiple of %lu\n",
-            space.size, kPageSize);
-    abort();
-  }
-  heap->size = space.size;
-  heap->to_space = heap->hp = space.start;
-  heap->from_space = heap->limit = heap->hp + space.size / 2;
+struct space make_space(void* mem, uintptr_t size) {
+  return (struct space){(uintptr_t)mem, size};
 }
 void destroy_space(struct space space) {}
 #else
@@ -155,15 +146,21 @@ struct space make_space(uintptr_t size) {
   }
   return (struct space){(uintptr_t)mem, size};
 }
-void init_heap(struct gc_heap* heap, struct space space) {
-  heap->size = space.size;
-  heap->to_space = heap->hp = space.start;
-  heap->from_space = heap->limit = heap->hp + space.size / 2;
-}
 void destroy_space(struct space space) {
   munmap((void*)space.start, space.size);
 }
 #endif
+
+void init_heap(struct gc_heap* heap, struct space space) {
+  if (align(space.size, kPageSize) != space.size) {
+    fprintf(stderr, "heap size (%lu) must be a multiple of %lu\n",
+            space.size, kPageSize);
+    abort();
+  }
+  heap->size = space.size;
+  heap->to_space = heap->hp = space.start;
+  heap->from_space = heap->limit = heap->hp + space.size / 2;
+}
 
 struct gc_obj* copy(struct gc_heap* heap, struct gc_obj* obj) {
   size_t size = heap_object_size(obj);

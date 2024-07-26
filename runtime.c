@@ -236,6 +236,7 @@ void collect(struct gc_heap* heap) {
 #endif
 #define ALLOCATOR __attribute__((__malloc__))
 
+#ifndef STATIC_HEAP
 static NEVER_INLINE void heap_grow(struct gc_heap* heap) {
   struct space old_space = heap->space;
   struct space new_space = make_space(old_space.size * 2);
@@ -243,6 +244,7 @@ static NEVER_INLINE void heap_grow(struct gc_heap* heap) {
   collect(heap);
   destroy_space(old_space);
 }
+#endif
 
 bool is_power_of_two(uword x) { return (x & (x - 1)) == 0; }
 
@@ -261,7 +263,9 @@ byte obj_tag(struct gc_obj* obj) { return (obj->tag & 0xff); }
 bool obj_has_tag(struct gc_obj* obj, byte tag) { return obj_tag(obj) == tag; }
 
 static NEVER_INLINE void allocate_slow_path(struct gc_heap* heap, uword size) {
+#ifndef STATIC_HEAP
   heap_grow(heap);
+#endif
   // size is already aligned
   if (UNLIKELY(heap->limit - heap->hp < size)) {
     fprintf(stderr, "out of memory\n");

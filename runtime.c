@@ -120,6 +120,7 @@ struct gc_heap {
   uintptr_t limit;
   uintptr_t from_space;
   uintptr_t to_space;
+  uintptr_t base;
   struct space space;
 };
 
@@ -158,7 +159,7 @@ void init_heap(struct gc_heap* heap, struct space space) {
     abort();
   }
   heap->space = space;
-  heap->to_space = heap->hp = space.start;
+  heap->base = heap->to_space = heap->hp = space.start;
   heap->from_space = heap->limit = heap->hp + space.size / 2;
 }
 
@@ -172,7 +173,7 @@ struct gc_obj* copy(struct gc_heap* heap, struct gc_obj* obj) {
 }
 
 void flip(struct gc_heap* heap) {
-  heap->hp = heap->from_space;
+  heap->base = heap->hp = heap->from_space;
   heap->from_space = heap->to_space;
   heap->to_space = heap->hp;
   heap->limit = heap->hp + heap->space.size / 2;
@@ -213,7 +214,7 @@ void visit_field(struct object** pointer, struct gc_heap* heap) {
 }
 
 static bool in_heap(struct gc_heap* heap, struct gc_obj* obj) {
-  return (uword)obj >= heap->to_space && (uword)obj < heap->limit;
+  return (uword)obj >= heap->base && (uword)obj < heap->hp;
 }
 
 void assert_in_heap(struct object** pointer, struct gc_heap* heap) {
@@ -224,21 +225,24 @@ void assert_in_heap(struct object** pointer, struct gc_heap* heap) {
   if (in_const_heap(obj)) {
     return;
   }
-  assert(in_heap(heap, obj));
+  if (!in_heap(heap, obj)) {
+    fprintf(stderr, "pointer %p not in heap [%p, %p)\n", obj, (void*)heap->to_space,
+            (void*)heap->hp);
+    abort();
+  }
 }
 
 static NEVER_INLINE void heap_verify(struct gc_heap* heap) {
-  uintptr_t scan = heap->to_space;
+  assert(heap->base <= heap->hp);
+  trace_roots(heap, assert_in_heap);
+  uintptr_t scan = heap->base;
   while (scan < heap->hp) {
     struct gc_obj* obj = (struct gc_obj*)scan;
     scan += align_size(trace_heap_object(obj, heap, assert_in_heap));
   }
 }
 
-void collect(struct gc_heap* heap) {
-#ifndef NDEBUG
-  heap_verify(heap);
-#endif
+void collect_no_verify(struct gc_heap* heap) {
   flip(heap);
   uintptr_t scan = heap->hp;
   trace_roots(heap, visit_field);
@@ -248,9 +252,18 @@ void collect(struct gc_heap* heap) {
   }
   // TODO(max): If we have < 25% heap utilization, shrink the heap
 #ifndef NDEBUG
-  heap_verify(heap);
   // Zero out the rest of the heap for debugging
   memset((void*)scan, 0, heap->limit - scan);
+#endif
+}
+
+void collect(struct gc_heap* heap) {
+#ifndef NDEBUG
+  heap_verify(heap);
+#endif
+  collect_no_verify(heap);
+#ifndef NDEBUG
+  heap_verify(heap);
 #endif
 }
 
@@ -267,8 +280,14 @@ void collect(struct gc_heap* heap) {
 static NEVER_INLINE void heap_grow(struct gc_heap* heap) {
   struct space old_space = heap->space;
   struct space new_space = make_space(old_space.size * 2);
+#ifndef NDEBUG
+  heap_verify(heap);
+#endif
   init_heap(heap, new_space);
-  collect(heap);
+  collect_no_verify(heap);
+#ifndef NDEBUG
+  heap_verify(heap);
+#endif
   destroy_space(old_space);
 }
 #endif

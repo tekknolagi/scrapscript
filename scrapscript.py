@@ -1037,6 +1037,7 @@ class Deserializer:
             self.flat = memoryview(self.flat)
 
     def read(self, size: int) -> memoryview:
+        # TODO(max): memoryview(self.flat)[...]
         result = memoryview(self.flat[self.idx : self.idx + size])
         self.idx += size
         return result

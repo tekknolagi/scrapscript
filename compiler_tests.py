@@ -29,8 +29,13 @@ def compile_to_binary(source: str, memory: int, debug: bool) -> str:
 
 class CompilerEndToEndTests(unittest.TestCase):
     def _run(self, code: str) -> str:
+        use_valgrind = bool(os.environ.get("USE_VALGRIND", False))
         binary = compile_to_binary(code, memory=4096, debug=True)
-        result = subprocess.run(binary, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        if use_valgrind:
+            cmd = ["valgrind", binary]
+        else:
+            cmd = [binary]
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
         return result.stdout
 
     def test_int(self) -> None:

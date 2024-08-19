@@ -34,6 +34,7 @@ jobs:
       matrix:
         PYTHON: [python3.8, python3.9, python3.10, python3.11, python3.12, python3.13]
         CC: [gcc, clang, tcc]
+        USE_STATIC_HEAP: ["-DSTATIC_HEAP", ""]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -50,21 +51,13 @@ jobs:
     - name: Run interpreter tests
       run: ${{matrix.PYTHON}} scrapscript.py test
     - name: Run compiler tests
-      run: CC=${{matrix.CC}} ${{matrix.PYTHON}} compiler_tests.py
-    - name: Run compiler tests with static heap
-      run: CC=${{matrix.CC}} CFLAGS="-DSTATIC_HEAP" ${{matrix.PYTHON}} compiler_tests.py
+      run: CC=${{matrix.CC}} CFLAGS="${{matrix.USE_STATIC_HEAP}}" ${{matrix.PYTHON}} compiler_tests.py
     - name: Run compiler tests with ASAN
-      run: CC=${{matrix.CC}} CFLAGS=-fsanitize=address ${{matrix.PYTHON}} compiler_tests.py
-    - name: Run compiler tests with static heap with ASAN
-      run: CC=${{matrix.CC}} CFLAGS="-DSTATIC_HEAP -fsanitize=address" ${{matrix.PYTHON}} compiler_tests.py
+      run: CC=${{matrix.CC}} CFLAGS="-fsanitize=address ${{matrix.USE_STATIC_HEAP}}" ${{matrix.PYTHON}} compiler_tests.py
     - name: Run compiler tests with UBSAN
-      run: CC=${{matrix.CC}} CFLAGS=-fsanitize=undefined ${{matrix.PYTHON}} compiler_tests.py
-    - name: Run compiler tests with static heap with UBSAN
-      run: CC=${{matrix.CC}} CFLAGS="-DSTATIC_HEAP -fsanitize=undefined" ${{matrix.PYTHON}} compiler_tests.py
+      run: CC=${{matrix.CC}} CFLAGS="-fsanitize=undefined ${{matrix.USE_STATIC_HEAP}}" ${{matrix.PYTHON}} compiler_tests.py
     - name: Run compiler tests with Valgrind
-      run: CC=${{matrix.CC}} USE_VALGRIND=1 ${{matrix.PYTHON}} compiler_tests.py
-    - name: Run compiler tests with static heap with Valgrind
-      run: CC=${{matrix.CC}} CFLAGS="-DSTATIC_HEAP" USE_VALGRIND=1 ${{matrix.PYTHON}} compiler_tests.py
+      run: CC=${{matrix.CC}} CFLAGS="${{matrix.USE_STATIC_HEAP}}" USE_VALGRIND=1 ${{matrix.PYTHON}} compiler_tests.py
   build_docker_image:
     runs-on: ubuntu-latest
     permissions:

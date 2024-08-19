@@ -4490,6 +4490,10 @@ id = x -> x
   | [] -> xs
   | [y, ...ys] -> concat (xs +< y) ys
 
+. append = ls -> v -> ls |>
+  | [] -> [v]
+  | [y, ...ys] -> y >+ (append ys v)
+
 . map = f ->
   | [] -> []
   | [x, ...xs] -> f x >+ map f xs

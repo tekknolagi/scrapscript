@@ -55,6 +55,10 @@ jobs:
       run: CC=${{matrix.CC}} CFLAGS=-fsanitize=address ${{matrix.PYTHON}} compiler_tests.py
     - name: Run compiler tests with static heap with ASAN
       run: CC=${{matrix.CC}} CFLAGS="-DSTATIC_HEAP -fsanitize=address" ${{matrix.PYTHON}} compiler_tests.py
+    - name: Run compiler tests with UBSAN
+      run: CC=${{matrix.CC}} CFLAGS=-fsanitize=undefined ${{matrix.PYTHON}} compiler_tests.py
+    - name: Run compiler tests with static heap with UBSAN
+      run: CC=${{matrix.CC}} CFLAGS="-DSTATIC_HEAP -fsanitize=undefined" ${{matrix.PYTHON}} compiler_tests.py
   build_docker_image:
     runs-on: ubuntu-latest
     permissions:

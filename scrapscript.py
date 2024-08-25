@@ -4,6 +4,7 @@ import base64
 import code
 import dataclasses
 import enum
+import functools
 import json
 import logging
 import os
@@ -324,6 +325,7 @@ PS = {
     "||": rp(7),
     "|>": rp(6),
     "<|": lp(6),
+    "#": lp(5.5),
     "->": lp(5),
     "|": rp(4.5),
     ":": lp(4.5),
@@ -360,6 +362,18 @@ def parse_assign(tokens: typing.List[Token], p: float = 0) -> "Assign":
     if not isinstance(assign, Assign):
         raise ParseError("failed to parse variable assignment in record constructor")
     return assign
+
+
+def gensym() -> str:
+    gensym.counter += 1  # type: ignore
+    return f"$v{gensym.counter}"  # type: ignore
+
+
+def gensym_reset() -> None:
+    gensym.counter = -1  # type: ignore
+
+
+gensym_reset()
 
 
 def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
@@ -487,9 +501,13 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         elif op == Operator("<|"):
             l = Apply(l, parse(tokens, pr))
         elif op == Operator(">>"):
-            l = Compose(l, parse(tokens, pr))
+            r = parse(tokens, pr)
+            varname = gensym()
+            l = Function(Var(varname), Apply(r, Apply(l, Var(varname))))
         elif op == Operator("<<"):
-            l = Compose(parse(tokens, pr), l)
+            r = parse(tokens, pr)
+            varname = gensym()
+            l = Function(Var(varname), Apply(l, Apply(r, Var(varname))))
         elif op == Operator("."):
             l = Where(l, parse(tokens, pr))
         elif op == Operator("?"):
@@ -507,62 +525,42 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Object:
     def __str__(self) -> str:
-        raise NotImplementedError("__str__ not implemented for superclass Object")
+        return pretty(self)
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Int(Object):
     value: int
 
-    def __str__(self) -> str:
-        return str(self.value)
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Float(Object):
     value: float
-
-    def __str__(self) -> str:
-        return str(self.value)
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class String(Object):
     value: str
 
-    def __str__(self) -> str:
-        # TODO: handle nested quotes
-        return f'"{self.value}"'
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Bytes(Object):
     value: bytes
-
-    def __str__(self) -> str:
-        return f"~~{base64.b64encode(self.value).decode()}"
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Var(Object):
     name: str
 
-    def __str__(self) -> str:
-        return self.name
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Hole(Object):
-    def __str__(self) -> str:
-        return "()"
+    pass
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Spread(Object):
     name: Optional[str] = None
-
-    def __str__(self) -> str:
-        return "..." if self.name is None else f"...{self.name}"
 
 
 Env = Mapping[str, Object]
@@ -652,17 +650,10 @@ class Binop(Object):
     left: Object
     right: Object
 
-    def __str__(self) -> str:
-        return f"{self.left} {BinopKind.to_str(self.op)} {self.right}"
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class List(Object):
     items: typing.List[Object]
-
-    def __str__(self) -> str:
-        inner = ", ".join(str(item) for item in self.items)
-        return f"[{inner}]"
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -670,18 +661,11 @@ class Assign(Object):
     name: Var
     value: Object
 
-    def __str__(self) -> str:
-        return f"{self.name} = {self.value}"
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Function(Object):
     arg: Object
     body: Object
-
-    def __str__(self) -> str:
-        # TODO: Better pretty printing for Function
-        return self.__repr__()
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -689,39 +673,17 @@ class Apply(Object):
     func: Object
     arg: Object
 
-    def __str__(self) -> str:
-        # TODO: Better pretty printing for Apply
-        return self.__repr__()
-
-
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
-class Compose(Object):
-    inner: Object
-    outer: Object
-
-    def __str__(self) -> str:
-        # TODO: Better pretty printing for Compose
-        return self.__repr__()
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Where(Object):
     body: Object
     binding: Object
 
-    def __str__(self) -> str:
-        # TODO: Better pretty printing for Where
-        return self.__repr__()
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Assert(Object):
     value: Object
     cond: Object
-
-    def __str__(self) -> str:
-        # TODO: Better pretty printing for Assert
-        return self.__repr__()
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -737,34 +699,20 @@ class MatchCase(Object):
     pattern: Object
     body: Object
 
-    def __str__(self) -> str:
-        # TODO: Better pretty printing for MatchCase
-        return self.__repr__()
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class MatchFunction(Object):
     cases: typing.List[MatchCase]
-
-    def __str__(self) -> str:
-        # TODO: Better pretty printing for MatchFunction
-        return self.__repr__()
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Relocation(Object):
     name: str
 
-    def __str__(self) -> str:
-        # TODO: Better pretty printing for Relocation
-        return self.__repr__()
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class NativeFunctionRelocation(Relocation):
-    def __str__(self) -> str:
-        # TODO: Better pretty printing for NativeFunctionRelocation
-        return self.__repr__()
+    pass
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -772,28 +720,16 @@ class NativeFunction(Object):
     name: str
     func: Callable[[Object], Object]
 
-    def __str__(self) -> str:
-        # TODO: Better pretty printing for NativeFunction
-        return f"NativeFunction(name={self.name})"
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Closure(Object):
     env: Env
     func: Union[Function, MatchFunction]
 
-    def __str__(self) -> str:
-        # TODO: Better pretty printing for Closure
-        return self.__repr__()
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Record(Object):
     data: Dict[str, Object]
-
-    def __str__(self) -> str:
-        inner = ", ".join(f"{k} = {self.data[k]}" for k in self.data)
-        return f"{{{inner}}}"
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -801,18 +737,11 @@ class Access(Object):
     obj: Object
     at: Object
 
-    def __str__(self) -> str:
-        # TODO: Better pretty printing for Access
-        return self.__repr__()
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Variant(Object):
     tag: str
     value: Object
-
-    def __str__(self) -> str:
-        return f"#{self.tag} {self.value}"
 
 
 tags = [
@@ -1487,10 +1416,6 @@ def eval_exp(env: Env, exp: Object) -> Object:
                 raise ValueError(f"index {access_at.value} out of bounds for list")
             return obj.items[access_at.value]
         raise TypeError(f"attempted to access from type {type(obj).__name__}")
-    if isinstance(exp, Compose):
-        clo_inner = eval_exp(env, exp.inner)
-        clo_outer = eval_exp(env, exp.outer)
-        return Closure({}, Function(Var("x"), Apply(clo_outer, Apply(clo_inner, Var("x")))))
     elif isinstance(exp, Spread):
         raise RuntimeError("cannot evaluate a spread")
     raise NotImplementedError(f"eval_exp not implemented for {exp}")
@@ -2261,15 +2186,27 @@ class ParserTests(unittest.TestCase):
         )
 
     def test_parse_compose(self) -> None:
-        self.assertEqual(parse([Name("f"), Operator(">>"), Name("g")]), Compose(Var("f"), Var("g")))
+        gensym_reset()
+        self.assertEqual(
+            parse([Name("f"), Operator(">>"), Name("g")]),
+            Function(Var("$v0"), Apply(Var("g"), Apply(Var("f"), Var("$v0")))),
+        )
 
     def test_parse_compose_reverse(self) -> None:
-        self.assertEqual(parse([Name("f"), Operator("<<"), Name("g")]), Compose(Var("g"), Var("f")))
+        gensym_reset()
+        self.assertEqual(
+            parse([Name("f"), Operator("<<"), Name("g")]),
+            Function(Var("$v0"), Apply(Var("f"), Apply(Var("g"), Var("$v0")))),
+        )
 
     def test_parse_double_compose(self) -> None:
+        gensym_reset()
         self.assertEqual(
             parse([Name("f"), Operator("<<"), Name("g"), Operator("<<"), Name("h")]),
-            Compose(Compose(Var("h"), Var("g")), Var("f")),
+            Function(
+                Var("$v1"),
+                Apply(Var("f"), Apply(Function(Var("$v0"), Apply(Var("g"), Apply(Var("h"), Var("$v0")))), Var("$v1"))),
+            ),
         )
 
     def test_boolean_and_binds_tighter_than_or(self) -> None:
@@ -2967,35 +2904,20 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(eval_exp({}, exp), Int(2))
 
     def test_eval_compose(self) -> None:
-        exp = Compose(
-            Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3))),
-            Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2))),
-        )
+        gensym_reset()
+        exp = parse(tokenize("(x -> x + 3) << (x -> x * 2)"))
         env = {"a": Int(1)}
         expected = Closure(
             {},
             Function(
-                Var("x"),
+                Var("$v0"),
                 Apply(
-                    Closure({}, Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2)))),
-                    Apply(Closure({}, Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3)))), Var("x")),
+                    Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3))),
+                    Apply(Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2))), Var("$v0")),
                 ),
             ),
         )
         self.assertEqual(eval_exp(env, exp), expected)
-
-    def test_eval_compose_apply(self) -> None:
-        exp = Apply(
-            Compose(
-                Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3))),
-                Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2))),
-            ),
-            Int(4),
-        )
-        self.assertEqual(
-            eval_exp({}, exp),
-            Int(14),
-        )
 
     def test_eval_native_function_returns_function(self) -> None:
         exp = NativeFunction("times2", lambda x: Int(x.value * 2))  # type: ignore [attr-defined]
@@ -4284,76 +4206,188 @@ class ScrapMonadTests(unittest.TestCase):
         self.assertEqual(next_monad.env, {"a": Int(123), "b": Int(456)})
 
 
+Number = typing.Union[int, float]
+
+
+class Repr(typing.Protocol):
+    def __call__(self, obj: Object, prec: Number = 0) -> str: ...
+
+
+# Can't use reprlib.recursive_repr because it doesn't work if the print
+# function has more than one argument (for example, prec)
+def handle_recursion(func: Repr) -> Repr:
+    cache: typing.List[Object] = []
+
+    @functools.wraps(func)
+    def wrapper(obj: Object, prec: Number = 0) -> str:
+        for cached in cache:
+            if obj is cached:
+                return "..."
+        cache.append(obj)
+        result = func(obj, prec)
+        cache.remove(obj)
+        return result
+
+    return wrapper
+
+
+@handle_recursion
+def pretty(obj: Object, prec: Number = 0) -> str:
+    if isinstance(obj, Int):
+        return str(obj.value)
+    if isinstance(obj, Float):
+        return str(obj.value)
+    if isinstance(obj, String):
+        return json.dumps(obj.value)
+    if isinstance(obj, Bytes):
+        return f"~~{base64.b64encode(obj.value).decode()}"
+    if isinstance(obj, Var):
+        return obj.name
+    if isinstance(obj, Hole):
+        return "()"
+    if isinstance(obj, Spread):
+        return f"...{obj.name}" if obj.name else "..."
+    if isinstance(obj, List):
+        return f"[{', '.join(pretty(item) for item in obj.items)}]"
+    if isinstance(obj, Record):
+        return f"{{{', '.join(f'{key} = {pretty(value)}' for key, value in obj.data.items())}}}"
+    if isinstance(obj, Closure):
+        keys = list(obj.env.keys())
+        return f"Closure({keys}, {pretty(obj.func)})"
+    if isinstance(obj, EnvObject):
+        return f"EnvObject({repr(obj.env)})"
+    if isinstance(obj, NativeFunction):
+        return f"NativeFunction(name={obj.name})"
+    if isinstance(obj, Relocation):
+        return f"Relocation(name={repr(obj.name)})"
+    if isinstance(obj, Variant):
+        op_prec = PS["#"]
+        left_prec, right_prec = op_prec.pl, op_prec.pr
+        result = f"#{obj.tag} {pretty(obj.value, right_prec)}"
+    if isinstance(obj, Assign):
+        op_prec = PS["="]
+        left_prec, right_prec = op_prec.pl, op_prec.pr
+        result = f"{pretty(obj.name, left_prec)} = {pretty(obj.value, right_prec)}"
+    if isinstance(obj, Binop):
+        op_prec = PS[BinopKind.to_str(obj.op)]
+        left_prec, right_prec = op_prec.pl, op_prec.pr
+        result = f"{pretty(obj.left, left_prec)} {BinopKind.to_str(obj.op)} {pretty(obj.right, right_prec)}"
+    if isinstance(obj, Function):
+        op_prec = PS["->"]
+        left_prec, right_prec = op_prec.pl, op_prec.pr
+        assert isinstance(obj.arg, Var)
+        result = f"{obj.arg.name} -> {pretty(obj.body, right_prec)}"
+    if isinstance(obj, MatchFunction):
+        op_prec = PS["|"]
+        left_prec, right_prec = op_prec.pl, op_prec.pr
+        result = "\n".join(
+            f"| {pretty(case.pattern, left_prec)} -> {pretty(case.body, right_prec)}" for case in obj.cases
+        )
+    if isinstance(obj, Where):
+        op_prec = PS["."]
+        left_prec, right_prec = op_prec.pl, op_prec.pr
+        result = f"{pretty(obj.body, left_prec)} . {pretty(obj.binding, right_prec)}"
+    if isinstance(obj, Assert):
+        op_prec = PS["!"]
+        left_prec, right_prec = op_prec.pl, op_prec.pr
+        result = f"{pretty(obj.value, left_prec)} ! {pretty(obj.cond, right_prec)}"
+    if isinstance(obj, Apply):
+        op_prec = PS[""]
+        left_prec, right_prec = op_prec.pl, op_prec.pr
+        result = f"{pretty(obj.func, left_prec)} {pretty(obj.arg, right_prec)}"
+    if isinstance(obj, Access):
+        op_prec = PS["@"]
+        left_prec, right_prec = op_prec.pl, op_prec.pr
+        result = f"{pretty(obj.obj, left_prec)} @ {pretty(obj.at, right_prec)}"
+    if prec >= op_prec.pl:
+        return f"({result})"
+    return result
+
+
 class PrettyPrintTests(unittest.TestCase):
     def test_pretty_print_int(self) -> None:
         obj = Int(1)
-        self.assertEqual(str(obj), "1")
+        self.assertEqual(pretty(obj), "1")
 
     def test_pretty_print_float(self) -> None:
         obj = Float(3.14)
-        self.assertEqual(str(obj), "3.14")
+        self.assertEqual(pretty(obj), "3.14")
 
     def test_pretty_print_string(self) -> None:
         obj = String("hello")
-        self.assertEqual(str(obj), '"hello"')
+        self.assertEqual(pretty(obj), '"hello"')
 
     def test_pretty_print_bytes(self) -> None:
         obj = Bytes(b"abc")
-        self.assertEqual(str(obj), "~~YWJj")
+        self.assertEqual(pretty(obj), "~~YWJj")
 
     def test_pretty_print_var(self) -> None:
         obj = Var("ref")
-        self.assertEqual(str(obj), "ref")
+        self.assertEqual(pretty(obj), "ref")
 
     def test_pretty_print_hole(self) -> None:
         obj = Hole()
-        self.assertEqual(str(obj), "()")
+        self.assertEqual(pretty(obj), "()")
 
     def test_pretty_print_spread(self) -> None:
         obj = Spread()
-        self.assertEqual(str(obj), "...")
+        self.assertEqual(pretty(obj), "...")
 
     def test_pretty_print_named_spread(self) -> None:
         obj = Spread("rest")
-        self.assertEqual(str(obj), "...rest")
+        self.assertEqual(pretty(obj), "...rest")
 
     def test_pretty_print_binop(self) -> None:
         obj = Binop(BinopKind.ADD, Int(1), Int(2))
-        self.assertEqual(str(obj), "1 + 2")
+        self.assertEqual(pretty(obj), "1 + 2")
+
+    def test_pretty_print_binop_precedence(self) -> None:
+        obj = Binop(BinopKind.ADD, Int(1), Binop(BinopKind.MUL, Int(2), Int(3)))
+        self.assertEqual(pretty(obj), "1 + 2 * 3")
+        obj = Binop(BinopKind.MUL, Binop(BinopKind.ADD, Int(1), Int(2)), Int(3))
+        self.assertEqual(pretty(obj), "(1 + 2) * 3")
 
     def test_pretty_print_int_list(self) -> None:
         obj = List([Int(1), Int(2), Int(3)])
-        self.assertEqual(str(obj), "[1, 2, 3]")
+        self.assertEqual(pretty(obj), "[1, 2, 3]")
 
     def test_pretty_print_str_list(self) -> None:
         obj = List([String("1"), String("2"), String("3")])
-        self.assertEqual(str(obj), '["1", "2", "3"]')
+        self.assertEqual(pretty(obj), '["1", "2", "3"]')
+
+    def test_pretty_print_recursion(self) -> None:
+        obj = List([])
+        obj.items.append(obj)
+        self.assertEqual(pretty(obj), "[...]")
 
     def test_pretty_print_assign(self) -> None:
         obj = Assign(Var("x"), Int(3))
-        self.assertEqual(str(obj), "x = 3")
+        self.assertEqual(pretty(obj), "x = 3")
 
     def test_pretty_print_function(self) -> None:
         obj = Function(Var("x"), Binop(BinopKind.ADD, Int(1), Var("x")))
-        self.assertEqual(
-            str(obj),
-            "Function(arg=Var(name='x'), body=Binop(op=<BinopKind.ADD: 1>, left=Int(value=1), right=Var(name='x')))",
-        )
+        self.assertEqual(pretty(obj), "x -> 1 + x")
+
+    def test_pretty_print_nested_function(self) -> None:
+        obj = Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))
+        self.assertEqual(pretty(obj), "x -> y -> x + y")
 
     def test_pretty_print_apply(self) -> None:
         obj = Apply(Var("x"), Var("y"))
-        self.assertEqual(str(obj), "Apply(func=Var(name='x'), arg=Var(name='y'))")
+        self.assertEqual(pretty(obj), "x y")
 
     def test_pretty_print_compose(self) -> None:
-        obj = Compose(
-            Function(Var("x"), Binop(BinopKind.ADD, Var("x"), Int(3))),
-            Function(Var("x"), Binop(BinopKind.MUL, Var("x"), Int(2))),
-        )
+        gensym_reset()
+        obj = parse(tokenize("(x -> x + 3) << (x -> x * 2)"))
         self.assertEqual(
-            str(obj),
-            "Compose(inner=Function(arg=Var(name='x'), body=Binop(op=<BinopKind.ADD: 1>, "
-            "left=Var(name='x'), right=Int(value=3))), outer=Function(arg=Var(name='x'), "
-            "body=Binop(op=<BinopKind.MUL: 3>, left=Var(name='x'), right=Int(value=2))))",
+            pretty(obj),
+            "$v0 -> (x -> x + 3) ((x -> x * 2) $v0)",
+        )
+        gensym_reset()
+        obj = parse(tokenize("(x -> x + 3) >> (x -> x * 2)"))
+        self.assertEqual(
+            pretty(obj),
+            "$v0 -> (x -> x * 2) ((x -> x + 3) $v0)",
         )
 
     def test_pretty_print_where(self) -> None:
@@ -4361,53 +4395,60 @@ class PrettyPrintTests(unittest.TestCase):
             Binop(BinopKind.ADD, Var("a"), Var("b")),
             Assign(Var("a"), Int(1)),
         )
-        self.assertEqual(
-            str(obj),
-            "Where(body=Binop(op=<BinopKind.ADD: 1>, left=Var(name='a'), "
-            "right=Var(name='b')), binding=Assign(name=Var(name='a'), value=Int(value=1)))",
-        )
+        self.assertEqual(pretty(obj), "a + b . a = 1")
 
     def test_pretty_print_assert(self) -> None:
         obj = Assert(Int(123), Variant("true", String("foo")))
-        self.assertEqual(str(obj), "Assert(value=Int(value=123), cond=Variant(tag='true', value=String(value='foo')))")
+        self.assertEqual(pretty(obj), '123 ! #true "foo"')
 
     def test_pretty_print_envobject(self) -> None:
         obj = EnvObject({"x": Int(1)})
-        self.assertEqual(str(obj), "EnvObject(keys=dict_keys(['x']))")
-
-    def test_pretty_print_matchcase(self) -> None:
-        obj = MatchCase(pattern=Int(1), body=Int(2))
-        self.assertEqual(str(obj), "MatchCase(pattern=Int(value=1), body=Int(value=2))")
+        self.assertEqual(pretty(obj), "EnvObject({'x': Int(value=1)})")
 
     def test_pretty_print_matchfunction(self) -> None:
         obj = MatchFunction([MatchCase(Var("y"), Var("x"))])
-        self.assertEqual(str(obj), "MatchFunction(cases=[MatchCase(pattern=Var(name='y'), body=Var(name='x'))])")
+        self.assertEqual(pretty(obj), "| y -> x")
+
+    def test_pretty_print_matchfunction_precedence(self) -> None:
+        obj = MatchFunction(
+            [
+                MatchCase(Var("a"), MatchFunction([MatchCase(Var("b"), Var("c"))])),
+                MatchCase(Var("x"), MatchFunction([MatchCase(Var("y"), Var("z"))])),
+            ]
+        )
+        self.assertEqual(
+            pretty(obj),
+            """\
+| a -> (| b -> c)
+| x -> (| y -> z)""",
+        )
 
     def test_pretty_print_relocation(self) -> None:
         obj = Relocation("relocate")
-        self.assertEqual(str(obj), "Relocation(name='relocate')")
+        self.assertEqual(pretty(obj), "Relocation(name='relocate')")
 
     def test_pretty_print_nativefunction(self) -> None:
         obj = NativeFunction("times2", lambda x: Int(x.value * 2))  # type: ignore [attr-defined]
-        self.assertEqual(str(obj), "NativeFunction(name=times2)")
+        self.assertEqual(pretty(obj), "NativeFunction(name=times2)")
 
     def test_pretty_print_closure(self) -> None:
         obj = Closure({"a": Int(123)}, Function(Var("x"), Var("x")))
-        self.assertEqual(
-            str(obj), "Closure(env={'a': Int(value=123)}, func=Function(arg=Var(name='x'), body=Var(name='x')))"
-        )
+        self.assertEqual(pretty(obj), "Closure(['a'], x -> x)")
 
     def test_pretty_print_record(self) -> None:
         obj = Record({"a": Int(1), "b": Int(2)})
-        self.assertEqual(str(obj), "{a = 1, b = 2}")
+        self.assertEqual(pretty(obj), "{a = 1, b = 2}")
 
     def test_pretty_print_access(self) -> None:
         obj = Access(Record({"a": Int(4)}), Var("a"))
-        self.assertEqual(str(obj), "Access(obj=Record(data={'a': Int(value=4)}), at=Var(name='a'))")
+        self.assertEqual(pretty(obj), "{a = 4} @ a")
 
     def test_pretty_print_variant(self) -> None:
         obj = Variant("x", Int(123))
-        self.assertEqual(str(obj), "#x 123")
+        self.assertEqual(pretty(obj), "#x 123")
+
+        obj = Variant("x", Function(Var("a"), Var("b")))
+        self.assertEqual(pretty(obj), "#x (a -> b)")
 
 
 def fetch(url: Object) -> Object:
@@ -4585,7 +4626,7 @@ class ScrapRepl(code.InteractiveConsole):
                 self.env.update(result.env)
             else:
                 self.env["_"] = result
-                print(result)
+                print(pretty(result))
         except UnexpectedEOFError:
             # Need to read more text
             return True
@@ -4606,7 +4647,7 @@ def eval_command(args: argparse.Namespace) -> None:
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
     result = eval_exp(boot_env(), ast)
-    print(result)
+    print(pretty(result))
 
 
 def apply_command(args: argparse.Namespace) -> None:
@@ -4618,7 +4659,7 @@ def apply_command(args: argparse.Namespace) -> None:
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
     result = eval_exp(boot_env(), ast)
-    print(result)
+    print(pretty(result))
 
 
 def repl_command(args: argparse.Namespace) -> None:

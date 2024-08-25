@@ -2200,11 +2200,12 @@ class ParserTests(unittest.TestCase):
         )
 
     def test_parse_double_compose(self) -> None:
+        gensym_reset()
         self.assertEqual(
             parse([Name("f"), Operator("<<"), Name("g"), Operator("<<"), Name("h")]),
             Function(
-                Var("$v2"),
-                Apply(Var("f"), Apply(Function(Var("$v1"), Apply(Var("g"), Apply(Var("h"), Var("$v1")))), Var("$v2"))),
+                Var("$v1"),
+                Apply(Var("f"), Apply(Function(Var("$v0"), Apply(Var("g"), Apply(Var("h"), Var("$v0")))), Var("$v1"))),
             ),
         )
 

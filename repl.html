@@ -68,7 +68,7 @@ function updateHistory(inp, out) {
 async function sendRequest(exp) {
     const scrap = document.scrapscript;
     const [result, monad] = document.monad.bind(scrap.parse(scrap.tokenize(exp)));
-    return {result, monad, ok: true};
+    return {scrap.pretty(result), monad, ok: true};
 }
 
 let input = document.getElementById("input");

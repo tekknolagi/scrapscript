@@ -4205,13 +4205,16 @@ class ScrapMonadTests(unittest.TestCase):
         self.assertEqual(next_monad.env, {"a": Int(123), "b": Int(456)})
 
 
+Number = typing.Union[int, float]
+
+
 # Can't use reprlib.recursive_repr because it doesn't work if the print
 # function has more than one argument (for example, prec)
 def handle_recursion(func: typing.Callable) -> typing.Callable:
     cache = []
 
     @functools.wraps(func)
-    def wrapper(obj: Object, prec: int | float = 0) -> typing.Any:
+    def wrapper(obj: Object, prec: Number = 0) -> typing.Any:
         for cached in cache:
             if obj is cached:
                 return "..."
@@ -4224,7 +4227,7 @@ def handle_recursion(func: typing.Callable) -> typing.Callable:
 
 
 @handle_recursion
-def pretty(obj: Object, prec: int | float = 0) -> str:
+def pretty(obj: Object, prec: Number = 0) -> str:
     if isinstance(obj, Int):
         return str(obj.value)
     if isinstance(obj, Float):

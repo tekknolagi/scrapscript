@@ -4,6 +4,7 @@ import base64
 import code
 import dataclasses
 import enum
+import functools
 import json
 import logging
 import os
@@ -4204,8 +4205,25 @@ class ScrapMonadTests(unittest.TestCase):
         self.assertEqual(next_monad.env, {"a": Int(123), "b": Int(456)})
 
 
-# import reprlib
-# @reprlib.recursive_repr()
+# Can't use reprlib.recursive_repr because it doesn't work if the print
+# function has more than one argument (for example, prec)
+def handle_recursion(func: typing.Callable) -> typing.Callable:
+    cache = []
+
+    @functools.wraps(func)
+    def wrapper(obj: Object, prec: int | float = 0) -> typing.Any:
+        for cached in cache:
+            if obj is cached:
+                return "..."
+        cache.append(obj)
+        result = func(obj, prec)
+        cache.remove(obj)
+        return result
+
+    return wrapper
+
+
+@handle_recursion
 def pretty(obj: Object, prec: int | float = 0) -> str:
     if isinstance(obj, Int):
         return str(obj.value)
@@ -4329,10 +4347,10 @@ class PrettyPrintTests(unittest.TestCase):
         obj = List([String("1"), String("2"), String("3")])
         self.assertEqual(pretty(obj), '["1", "2", "3"]')
 
-    # def test_pretty_print_recursion(self) -> None:
-    #     obj = List([])
-    #     obj.items.append(obj)
-    #     self.assertEqual(pretty(obj), "[...]")
+    def test_pretty_print_recursion(self) -> None:
+        obj = List([])
+        obj.items.append(obj)
+        self.assertEqual(pretty(obj), "[...]")
 
     def test_pretty_print_assign(self) -> None:
         obj = Assign(Var("x"), Int(3))

@@ -4210,8 +4210,7 @@ Number = typing.Union[int, float]
 
 
 class Repr(typing.Protocol):
-    def __call__(self, obj: Object, prec: Number = 0) -> str:
-        ...
+    def __call__(self, obj: Object, prec: Number = 0) -> str: ...
 
 
 # Can't use reprlib.recursive_repr because it doesn't work if the print

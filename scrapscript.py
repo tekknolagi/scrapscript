@@ -365,12 +365,12 @@ def parse_assign(tokens: typing.List[Token], p: float = 0) -> "Assign":
 
 
 def gensym() -> str:
-    gensym.counter += 1
-    return f"$v{gensym.counter}"
+    gensym.counter += 1  # type: ignore
+    return f"$v{gensym.counter}"  # type: ignore
 
 
 def gensym_reset() -> None:
-    gensym.counter = -1
+    gensym.counter = -1  # type: ignore
 
 
 gensym_reset()
@@ -4208,13 +4208,18 @@ class ScrapMonadTests(unittest.TestCase):
 Number = typing.Union[int, float]
 
 
+class Repr(typing.Protocol):
+    def __call__(self, obj: Object, prec: Number = 0) -> str:
+        ...
+
+
 # Can't use reprlib.recursive_repr because it doesn't work if the print
 # function has more than one argument (for example, prec)
-def handle_recursion(func: typing.Callable) -> typing.Callable:
-    cache = []
+def handle_recursion(func: Repr) -> Repr:
+    cache: typing.List[Object] = []
 
     @functools.wraps(func)
-    def wrapper(obj: Object, prec: Number = 0) -> typing.Any:
+    def wrapper(obj: Object, prec: Number = 0) -> str:
         for cached in cache:
             if obj is cached:
                 return "..."

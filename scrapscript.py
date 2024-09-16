@@ -522,8 +522,16 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
     return l
 
 
+object_id_counter = 0
+
+
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Object:
+    def __post_init__(self) -> None:
+        global object_id_counter
+        object.__setattr__(self, "id", object_id_counter)
+        object_id_counter += 1
+
     def __str__(self) -> str:
         return pretty(self)
 

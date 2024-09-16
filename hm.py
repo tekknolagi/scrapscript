@@ -1,9 +1,26 @@
+from __future__ import annotations
 import dataclasses
 import unittest
 
 
+@dataclasses.dataclass
 class Ty:
-    pass
+    forwarded: typing.Optional[Ty] = dataclasses.field(default=None, init=False)
+
+    def find(self) -> Ty:
+        result = self
+        while isinstance(result, Ty):
+            next = result.forwarded
+            if next is None:
+                return result
+            result = next
+        return result
+
+    def _set_forwarded(self, other: Ty) -> None:
+        self.forwarded = other
+
+    def make_equal_to(self, other: Ty) -> None:
+        self.find()._set_forwarded(other)
 
 
 @dataclasses.dataclass
@@ -57,9 +74,6 @@ class Forall(Ty):
     def __repr__(self) -> str:
         return f"forall {', '.join(map(str, self.bound))}. {self.ty}"
 
-
-Int = TyCon([], "int")
-Float = TyCon([], "float")
 
 var_counter = iter(range(1000))
 
@@ -173,6 +187,126 @@ class BasicTests(unittest.TestCase):
             generalize(TyCon([TyVar("b"), TyVar("a")], "list")),
             Forall([TyVar("a"), TyVar("b")], TyCon([TyVar("b"), TyVar("a")], "list")),
         )
+
+
+from scrapscript import (
+    Object,
+    Int,
+    Float,
+    String,
+    Bytes,
+    Var,
+    Hole,
+    Spread,
+    Binop,
+    BinopKind,
+    List,
+    Assign,
+    Function,
+    Apply,
+    Where,
+    Assert,
+    EnvObject,
+    MatchCase,
+    MatchFunction,
+    Closure,
+    Record,
+    Access,
+    Variant,
+)
+
+
+IntType = TyCon([], "int")
+StringType = TyCon([], "string")
+FloatType = TyCon([], "float")
+
+
+@dataclasses.dataclass
+class Typer:
+    # Map object ids to types.
+    env: dict[int, Ty] = dataclasses.field(default_factory=dict)
+
+    def annotation(self, exp: Object) -> Ty:
+        result = self.env.get(exp.id)
+        if result is None:
+            result = fresh_var()
+            self.env[exp.id] = result
+        return result
+
+    def constrain(self, varenv: dict[str, Ty], exp: Object):
+        ann = self.annotation(exp)
+        if isinstance(exp, Int):
+            return self.unify(ann, IntType)
+        if isinstance(exp, String):
+            return self.unify(ann, StringType)
+        if isinstance(exp, Binop):
+            left = self.annotation(exp.left)
+            right = self.annotation(exp.right)
+            if exp.op == BinopKind.ADD:
+                return self.unify(left, IntType) and self.unify(right, IntType) and self.unify(ann, IntType)
+        if isinstance(exp, Function):
+            arg = fresh_var()
+            body = self.constrain({**varenv, exp.arg.name: arg}, exp.body)
+            return self.unify(ann, TyFun(arg, body))
+        if isinstance(exp, Var):
+            return varenv[exp.name]
+        raise ValueError(f"unexpected expression {exp}")
+
+    def unify(self, left: Ty, right: Ty) -> bool:
+        left = left.find()
+        right = right.find()
+        if left == right:
+            return True
+        if isinstance(left, TyVar):
+            left.make_equal_to(right)
+            return True
+        if isinstance(right, TyVar):
+            right.make_equal_to(left)
+            return True
+        return False
+
+
+class TyperTests(unittest.TestCase):
+    def setUp(self):
+        global var_counter
+        var_counter = iter(range(1000))
+
+    def test_annotation(self):
+        self.assertEqual(Typer().annotation(Int(42)), TyVar("t0"))
+
+    def test_constrain_int(self):
+        typer = Typer()
+        exp = Int(42)
+        result = typer.constrain({}, exp)
+        self.assertTrue(result)
+        self.assertIn(exp.id, typer.env)
+        self.assertEqual(typer.env[exp.id].find(), IntType)
+
+    def test_constrain_string(self):
+        typer = Typer()
+        exp = String("hello")
+        result = typer.constrain({}, exp)
+        self.assertTrue(result)
+        self.assertIn(exp.id, typer.env)
+        self.assertEqual(typer.env[exp.id].find(), StringType)
+
+    def test_constrain_add(self):
+        typer = Typer()
+        exp = Binop(BinopKind.ADD, Int(1), Int(2))
+        result = typer.constrain({}, exp)
+        self.assertTrue(result)
+        self.assertIn(exp.id, typer.env)
+        self.assertEqual(typer.env[exp.left.id].find(), IntType)
+        self.assertEqual(typer.env[exp.right.id].find(), IntType)
+        self.assertEqual(typer.env[exp.id].find(), IntType)
+
+    def test_constrain_function(self):
+        typer = Typer()
+        exp = Function(Var("x"), Var("x"))
+        result = typer.constrain({}, exp)
+        self.assertTrue(result)
+        self.assertIn(exp.id, typer.env)
+        self.assertEqual(typer.env[exp.id].find(), TyFun(TyVar("t1"), TyVar("t1")))
 
 
 if __name__ == "__main__":

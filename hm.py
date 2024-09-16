@@ -249,27 +249,58 @@ class Typer:
             body = self.constrain({**varenv, exp.arg.name: arg}, exp.body)
             return self.unify(ann, TyFun(arg, body))
         if isinstance(exp, Var):
-            return varenv[exp.name]
+            if var_ty := varenv.get(exp.name):
+                if isinstance(var_ty, Forall):
+                    var_ty = instantiate(var_ty)
+                return self.unify(ann, var_ty)
+            raise NameError(f"unbound variable {exp.name}")
+        if isinstance(exp, Where):
+            assert isinstance(exp.binding, Assign)
+            name = exp.binding.name
+            name_ty = self.annotation(name)
+            value = exp.binding.value
+            value_ty = self.constrain(varenv, value)
+            if isinstance(value, Function):
+                value_ty = generalize(value_ty)
+            body = exp.body
+            self.unify(name_ty, value_ty)
+            body_ty = self.constrain({**varenv, name.name: name_ty}, body)
+            return self.unify(ann, body_ty)
+        if isinstance(exp, Apply):
+            func_ty = self.constrain(varenv, exp.func)
+            arg_ty = self.constrain(varenv, exp.arg)
+            self.unify(func_ty, TyFun(arg_ty, ann))
+            return ann
         raise ValueError(f"unexpected expression {exp}")
 
-    def unify(self, left: Ty, right: Ty) -> bool:
+    def unify(self, left: Ty, right: Ty) -> Ty:
         left = left.find()
         right = right.find()
         if left == right:
-            return True
+            return left
         if isinstance(left, TyVar):
             left.make_equal_to(right)
-            return True
+            return right
         if isinstance(right, TyVar):
             right.make_equal_to(left)
-            return True
-        return False
+            return left
+        if isinstance(left, TyFun) and isinstance(right, TyFun):
+            left.make_equal_to(right)
+            self.unify(left.arg, right.arg)
+            self.unify(left.ret, right.ret)
+            return left
+        raise TypeError(f"cannot unify {left} and {right}")
 
 
 class TyperTests(unittest.TestCase):
     def setUp(self):
         global var_counter
         var_counter = iter(range(1000))
+
+    def test_unify_int_str_raises_type_error(self):
+        typer = Typer()
+        with self.assertRaisesRegex(TypeError, "cannot unify int and string"):
+            typer.unify(IntType, StringType)
 
     def test_annotation(self):
         self.assertEqual(Typer().annotation(Int(42)), TyVar("t0"))
@@ -278,7 +309,6 @@ class TyperTests(unittest.TestCase):
         typer = Typer()
         exp = Int(42)
         result = typer.constrain({}, exp)
-        self.assertTrue(result)
         self.assertIn(exp.id, typer.env)
         self.assertEqual(typer.env[exp.id].find(), IntType)
 
@@ -286,7 +316,6 @@ class TyperTests(unittest.TestCase):
         typer = Typer()
         exp = String("hello")
         result = typer.constrain({}, exp)
-        self.assertTrue(result)
         self.assertIn(exp.id, typer.env)
         self.assertEqual(typer.env[exp.id].find(), StringType)
 
@@ -294,7 +323,6 @@ class TyperTests(unittest.TestCase):
         typer = Typer()
         exp = Binop(BinopKind.ADD, Int(1), Int(2))
         result = typer.constrain({}, exp)
-        self.assertTrue(result)
         self.assertIn(exp.id, typer.env)
         self.assertEqual(typer.env[exp.left.id].find(), IntType)
         self.assertEqual(typer.env[exp.right.id].find(), IntType)
@@ -304,9 +332,64 @@ class TyperTests(unittest.TestCase):
         typer = Typer()
         exp = Function(Var("x"), Var("x"))
         result = typer.constrain({}, exp)
-        self.assertTrue(result)
         self.assertIn(exp.id, typer.env)
         self.assertEqual(typer.env[exp.id].find(), TyFun(TyVar("t1"), TyVar("t1")))
+
+    def test_constrain_var_instantiates_forall(self):
+        typer = Typer()
+        exp = Var("x")
+        exp_ty = Forall([TyVar("a")], TyVar("a"))
+        result = typer.constrain({"x": exp_ty}, exp)
+        self.assertEqual(result, TyVar("t1"))
+
+    def test_constrain_var_looks_in_varenv(self):
+        typer = Typer()
+        exp = Var("x")
+        result = typer.constrain({"x": IntType}, exp)
+        self.assertEqual(result, IntType)
+
+        with self.assertRaisesRegex(NameError, "unbound variable y"):
+            typer.constrain({}, Var("y"))
+
+    def test_constrain_where_binds_name(self):
+        typer = Typer()
+        exp = Where(Var("x"), Assign(Var("x"), Int(42)))
+        result = typer.constrain({}, exp)
+        self.assertIn(exp.id, typer.env)
+        self.assertEqual(typer.env[exp.id].find(), IntType)
+
+    def test_constrain_where_function_generalizes(self):
+        typer = Typer()
+        exp = Where(Var("f"), Assign(Var("f"), Function(Var("x"), Var("x"))))
+        result = typer.constrain({}, exp)
+        self.assertIn(exp.id, typer.env)
+        self.assertEqual(
+            typer.env[exp.id].find(),
+            Forall([TyVar("t3")], TyFun(TyVar("t3"), TyVar("t3"))),
+        )
+
+    def test_constrain_apply_function(self):
+        typer = Typer()
+        exp = Apply(Var("f"), Int(42))
+        f_ty = TyFun(IntType, TyFun(StringType, IntType))
+        result = typer.constrain({"f": f_ty}, exp)
+        self.assertEqual(typer.env[exp.id].find(), TyFun(StringType, IntType))
+        self.assertEqual(result.find(), TyFun(StringType, IntType))
+
+    def test_constrain_forall_function(self):
+        typer = Typer()
+        x = Var("x")
+        apply = Apply(Var("f"), Int(42))
+        # Applying f to two different types, using Where for sequence
+        exp = Where(
+            apply,
+            Assign(x, Apply(Var("f"), String("hello"))),
+        )
+        exp_ty = Forall([TyVar("a")], TyFun(TyVar("a"), TyVar("a")))
+        result = typer.constrain({"f": exp_ty}, exp)
+        self.assertIn(exp.id, typer.env)
+        self.assertEqual(typer.env[apply.id].find(), IntType)
+        self.assertEqual(typer.env[x.id].find(), StringType)
 
 
 if __name__ == "__main__":

@@ -30,31 +30,50 @@ class TyVar(Ty):
     def __hash__(self) -> int:
         return hash(self.name)
 
-    def __eq__(self, other) -> bool:
-        return isinstance(other, TyVar) and self.name == other.name
-
     def __repr__(self) -> str:
         return f"'{self.name}"
 
 
 @dataclasses.dataclass
 class TyCon(Ty):
-    params: list[Ty]
+    _params: list[Ty]
     name: str
 
     def __repr__(self) -> str:
         if self.params:
-            return f"{' '.join(map(lambda x: str(x.find()), self.params))} {self.name}"
+            return f"{' '.join(map(lambda x: str(x), self.params))} {self.name}"
         return self.name
+
+    @property
+    def params(self) -> list[Ty]:
+        return [param.find() for param in self._params]
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, TyCon):
+            return NotImplemented
+        return self.name == other.name and self.params == other.params
 
 
 @dataclasses.dataclass
 class TyFun(Ty):
-    arg: Ty
-    ret: Ty
+    _arg: Ty
+    _ret: Ty
 
     def __repr__(self) -> str:
         return f"{self.arg.find()} -> {self.ret.find()}"
+
+    @property
+    def arg(self) -> Ty:
+        return self._arg.find()
+
+    @property
+    def ret(self) -> Ty:
+        return self._ret.find()
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, TyFun):
+            return NotImplemented
+        return self.arg == other.arg and self.ret == other.ret
 
 
 # @dataclasses.dataclass
@@ -221,6 +240,7 @@ from scrapscript import (
 IntType = TyCon([], "int")
 StringType = TyCon([], "string")
 FloatType = TyCon([], "float")
+DynType = TyCon([], "dyn")
 
 
 @dataclasses.dataclass
@@ -248,7 +268,7 @@ class Typer:
             if not exp.items:
                 return self.unify(ann, Forall([item_type], TyCon([item_type], "list")))
             for item in exp.items:
-                self.unify(item_type, self.constrain(varenv, item))
+                item_type = self.unify(item_type, self.constrain(varenv, item))
             self.unify(ann, TyCon([item_type], "list"))
             return ann
         if isinstance(exp, Binop):
@@ -321,14 +341,14 @@ class Typer:
             return left
         if isinstance(left, TyCon) and isinstance(right, TyCon):
             if len(left.params) != len(right.params):
-                raise TypeError(f"cannot unify {left} and {right}")
+                return DynType
             if left.name != right.name:
-                raise TypeError(f"cannot unify {left} and {right}")
+                return DynType
             left.make_equal_to(right)
             for l, r in zip(left.params, right.params):
                 self.unify(l, r)
             return left
-        raise TypeError(f"cannot unify {left} and {right}")
+        return DynType
 
 
 class TyperTests(unittest.TestCase):
@@ -338,8 +358,13 @@ class TyperTests(unittest.TestCase):
 
     def test_unify_int_str_raises_type_error(self):
         typer = Typer()
-        with self.assertRaisesRegex(TypeError, "cannot unify int and string"):
-            typer.unify(IntType, StringType)
+        result = typer.unify(IntType, StringType)
+        self.assertEqual(result, DynType)
+
+    def test_unify_tycon_different_params(self):
+        typer = Typer()
+        result = typer.unify(TyCon([], "foo"), TyCon([IntType, StringType], "bar"))
+        self.assertEqual(result, DynType)
 
     def test_annotation(self):
         self.assertEqual(Typer().annotation(Int(42)), TyVar("t0"))
@@ -447,26 +472,50 @@ class TyperTests(unittest.TestCase):
         )
 
     def test_constrain_list_of_ints(self):
-        pass
+        typer = Typer()
+        exp = List([Int(1), Int(2)])
+        result = typer.constrain({}, exp)
+        self.assertEqual(result.find(), TyCon([IntType], "list"))
+
+    def test_constrain_mixed_list(self):
+        typer = Typer()
+        exp = List([Int(1), String("hi")])
+        result = typer.constrain({}, exp)
+        self.assertEqual(result.find(), TyCon([DynType], "list"))
 
     def test_constrain_polymorphic_empty_list(self):
         typer = Typer()
-        exp = parse(tokenize("""
+        exp = parse(
+            tokenize("""
         l1
         . l1 = "hello" >+ empty
         . l0 = 1 >+ empty
-        . empty = []"""))
+        . empty = []""")
+        )
         result = typer.constrain({}, exp)
-        self.assertEqual(typer.env[exp.id].find(), TyCon([StringType], "list"))
+        self.assertEqual(result.find(), TyCon([StringType], "list"))
 
         typer = Typer()
-        exp = parse(tokenize("""
+        exp = parse(
+            tokenize("""
         l0
         . l1 = "hello" >+ empty
         . l0 = 1 >+ empty
-        . empty = []"""))
+        . empty = []""")
+        )
         result = typer.constrain({}, exp)
-        self.assertEqual(typer.env[exp.id].find(), TyCon([IntType], "list"))
+        self.assertEqual(result.find(), TyCon([IntType], "list"))
+
+        typer = Typer()
+        exp = parse(
+            tokenize("""
+        empty
+        . l1 = "hello" >+ empty
+        . l0 = 1 >+ empty
+        . empty = []""")
+        )
+        result = typer.constrain({}, exp)
+        self.assertEqual(result.find(), Forall([TyVar("t37")], TyCon([TyVar("t37")], "list")))
 
 
 if __name__ == "__main__":

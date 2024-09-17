@@ -35,6 +35,24 @@ class TyVar(Ty):
 
 
 @dataclasses.dataclass
+class TyField(Ty):
+    name: str
+    _ty: Ty
+
+    def __repr__(self) -> str:
+        return f"{self.name}:{self.ty}"
+
+    @property
+    def ty(self) -> Ty:
+        return self._ty.find()
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, TyField):
+            return NotImplemented
+        return self.name == other.name and self.ty == other.ty
+
+
+@dataclasses.dataclass
 class TyCon(Ty):
     _params: list[Ty]
     name: str
@@ -271,6 +289,12 @@ class Typer:
                 item_type = self.unify(item_type, self.constrain(varenv, item))
             self.unify(ann, TyCon([item_type], "list"))
             return ann
+        if isinstance(exp, Record):
+            field_types = []
+            for name, value in exp.data.items():
+                field_type = self.constrain(varenv, value)
+                field_types.append(TyField(name, field_type))
+            return self.unify(ann, TyCon(field_types, "record"))
         if isinstance(exp, Binop):
             left = self.constrain(varenv, exp.left)
             right = self.constrain(varenv, exp.right)
@@ -516,6 +540,33 @@ class TyperTests(unittest.TestCase):
         )
         result = typer.constrain({}, exp)
         self.assertEqual(result.find(), Forall([TyVar("t37")], TyCon([TyVar("t37")], "list")))
+
+    def test_constrain_empty_rec(self):
+        typer = Typer()
+        exp = Record({})
+        result = typer.constrain({}, exp)
+        self.assertEqual(result.find(), TyCon([], "record"))
+
+    def test_constrain_one_field_rec(self):
+        typer = Typer()
+        exp = Record({"a": Int(123)})
+        result = typer.constrain({}, exp)
+        self.assertEqual(result.find(), TyCon([TyField("a", IntType)], "record"))
+
+    def test_constrain_two_field_rec(self):
+        typer = Typer()
+        exp = Record({"a": Int(123), "b": String("hello")})
+        result = typer.constrain({}, exp)
+        self.assertEqual(
+            result.find(),
+            TyCon(
+                [
+                    TyField("a", IntType),
+                    TyField("b", StringType),
+                ],
+                "record",
+            ),
+        )
 
 
 if __name__ == "__main__":

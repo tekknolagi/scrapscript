@@ -245,9 +245,11 @@ class Typer:
             return self.unify(ann, StringType)
         if isinstance(exp, List):
             item_type = fresh_var()
-            self.unify(ann, TyCon([item_type], "list"))
+            if not exp.items:
+                return self.unify(ann, Forall([item_type], TyCon([item_type], "list")))
             for item in exp.items:
                 self.unify(item_type, self.constrain(varenv, item))
+            self.unify(ann, TyCon([item_type], "list"))
             return ann
         if isinstance(exp, Binop):
             left = self.constrain(varenv, exp.left)
@@ -263,6 +265,11 @@ class Typer:
             if exp.op == BinopKind.LIST_APPEND:
                 self.unify(left, TyCon([right], "list"))
                 self.unify(ann, left)
+                return ann
+            if exp.op == BinopKind.LIST_CONS:
+                ty = TyCon([left], "list")
+                self.unify(right, ty)
+                self.unify(ann, ty)
                 return ann
             raise ValueError(f"unexpected binop {exp.op}")
         if isinstance(exp, Function):
@@ -428,6 +435,38 @@ class TyperTests(unittest.TestCase):
         exp = parse(tokenize("f 1 . f = x -> x"))
         result = typer.constrain({}, exp)
         self.assertEqual(typer.env[exp.id].find(), IntType)
+
+    def test_constrain_empty_list(self):
+        typer = Typer()
+        exp = List([])
+        result = typer.constrain({}, exp)
+        self.assertIn(exp.id, typer.env)
+        self.assertEqual(
+            typer.env[exp.id].find(),
+            Forall([TyVar("t1")], TyCon([TyVar("t1")], "list")),
+        )
+
+    def test_constrain_list_of_ints(self):
+        pass
+
+    def test_constrain_polymorphic_empty_list(self):
+        typer = Typer()
+        exp = parse(tokenize("""
+        l1
+        . l1 = "hello" >+ empty
+        . l0 = 1 >+ empty
+        . empty = []"""))
+        result = typer.constrain({}, exp)
+        self.assertEqual(typer.env[exp.id].find(), TyCon([StringType], "list"))
+
+        typer = Typer()
+        exp = parse(tokenize("""
+        l0
+        . l1 = "hello" >+ empty
+        . l0 = 1 >+ empty
+        . empty = []"""))
+        result = typer.constrain({}, exp)
+        self.assertEqual(typer.env[exp.id].find(), TyCon([IntType], "list"))
 
 
 if __name__ == "__main__":

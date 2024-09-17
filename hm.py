@@ -44,7 +44,7 @@ class TyCon(Ty):
 
     def __repr__(self) -> str:
         if self.params:
-            return f"{' '.join(map(str, self.params))} {self.name}"
+            return f"{' '.join(map(lambda x: str(x.find()), self.params))} {self.name}"
         return self.name
 
 
@@ -54,7 +54,7 @@ class TyFun(Ty):
     ret: Ty
 
     def __repr__(self) -> str:
-        return f"{self.arg} -> {self.ret}"
+        return f"{self.arg.find()} -> {self.ret.find()}"
 
 
 # @dataclasses.dataclass
@@ -72,7 +72,7 @@ class Forall(Ty):
     ty: Ty
 
     def __repr__(self) -> str:
-        return f"forall {', '.join(map(str, self.bound))}. {self.ty}"
+        return f"forall {', '.join(map(lambda x: str(x.find()), self.bound))}. {self.ty.find()}"
 
 
 var_counter = iter(range(1000))

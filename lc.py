@@ -90,6 +90,36 @@ def generalize(ty: Ty) -> Forall:
         result = Forall(TyVar(var), result)
     return result
 
+def contains(ty: MonoType, var: TyVar) -> bool:
+    if isinstance(ty, TyVar):
+        return ty.name == var.name
+    if isinstance(ty, TyCon):
+        return any(contains(arg, var) for arg in ty.args)
+    if isinstance(ty, Forall):
+        return var.name in free_vars(ty)
+    raise NotImplementedError
+
+def unify(ty1: MonoType, ty2: MonoType) -> Substitution:
+    if isinstance(ty1, TyVar) and isinstance(ty2, TyVar) and ty1.name == ty2.name:
+        return Substitution({})
+    if isinstance(ty1, TyVar):
+        if contains(ty2, ty1):
+            raise ValueError(f"recursive type {ty1} ; {ty2}")
+        return Substitution({ty1.name: ty2})
+    if isinstance(ty2, TyVar):
+        return unify(ty2, ty1)  # flip it and reverse it
+    if isinstance(ty1, TyCon) and isinstance(ty2, TyCon):
+        if ty1.name != ty2.name:
+            raise TypeError(f"TyCon mismatch: {ty1.name} != {ty2.name}")
+        if len(ty1.args) != len(ty2.args):
+            raise TypeError(f"TyCon arity mismatch: {len(ty1.args)} != {len(ty2.args)}")
+        result = {}
+        for l, r in zip(ty1.args, ty2.args):
+            item = unify(l, r)
+            result.update(item.raw)
+        return Substitution(result)
+    raise NotImplementedError
+
 class ApplyTest(unittest.TestCase):
     def test_apply_var(self):
         sub = Substitution({'a': TyVar('b')})
@@ -154,5 +184,69 @@ class GeneralizeTest(unittest.TestCase):
         ty = Forall(TyVar('a'), ty_func([TyVar('a'), TyVar('b')]))
         self.assertEqual(generalize(ty), Forall(TyVar('b'), ty))
 
+class ContainsTest(unittest.TestCase):
+    def test_contains_tyvar(self):
+        self.assertTrue(contains(TyVar("a"), TyVar("a")))
+        self.assertFalse(contains(TyVar("a"), TyVar("b")))
+
+    def test_contains_tycon(self):
+        self.assertTrue(contains(ty_func([TyVar("a"), TyVar("b")]), TyVar("a")))
+        self.assertTrue(contains(ty_func([TyVar("a"), TyVar("b")]), TyVar("b")))
+        self.assertFalse(contains(ty_func([TyVar("a"), TyVar("b")]), TyVar("c")))
+
+    def test_contains_forall(self):
+        self.assertFalse(contains(Forall(TyVar("a"), TyVar("a")), TyVar("a")))
+        self.assertFalse(contains(Forall(TyVar("a"), TyVar("a")), TyVar("b")))
+        self.assertTrue(contains(Forall(TyVar("a"), TyVar("b")), TyVar("b")))
+
+class UnifyTest(unittest.TestCase):
+    def test_unify_same_tyvar(self):
+        self.assertEqual(unify(TyVar('a'), TyVar('a')), Substitution({}))
+
+    def test_unify_recursive(self):
+        with self.assertRaisesRegex(ValueError, "recursive type"):
+            unify(TyVar('a'), TyCon('List', [TyVar('a')]))
+
+        with self.assertRaisesRegex(ValueError, "recursive type"):
+            unify(TyCon('List', [TyVar('a')]), TyVar('a'))
+
+    def test_unify_different_tyvar(self):
+        self.assertEqual(unify(TyVar('a'), TyVar('b')), Substitution({'a': TyVar('b')}))
+        self.assertEqual(unify(TyVar('b'), TyVar('a')), Substitution({'b': TyVar('a')}))
+
+    def test_unify_mismatched_tycon_name(self):
+        l = TyCon("foo", [TyVar("a"), TyVar("b")])
+        r = TyCon("bar", [TyVar("c"), TyVar("d")])
+        with self.assertRaisesRegex(TypeError, "TyCon mismatch"):
+            unify(l, r)
+
+    def test_unify_mismatched_tycon_args(self):
+        l = TyCon("foo", [TyVar("a"), TyVar("b")])
+        r = TyCon("foo", [TyVar("c")])
+        with self.assertRaisesRegex(TypeError, "TyCon arity mismatch"):
+            unify(l, r)
+
+    def test_unify_matching_tycon_of_tyvar(self):
+        l = ty_func([TyVar("a"), TyVar("b")])
+        r = ty_func([TyVar("c"), TyVar("d")])
+        self.assertEqual(
+            unify(l, r),
+            Substitution({"a": TyVar("c"), "b": TyVar("d")}),
+        )
+
+    def test_unify_matching_tycon(self):
+        func = ty_func([TyVar("a"), TyVar("b")])
+        l = ty_func([func, TyVar("c")])
+        r = ty_func([TyVar("d"), TyVar("e")])
+        self.assertEqual(
+            unify(l, r),
+            Substitution({"d": func, "c": TyVar("e")}),
+        )
+        self.assertEqual(
+            unify(r, l),
+            Substitution({"d": func, "e": TyVar("c")}),
+        )
+
 if __name__ == '__main__':
+    __import__("sys").modules["unittest.util"]._MAX_LENGTH = 999999999
     unittest.main()

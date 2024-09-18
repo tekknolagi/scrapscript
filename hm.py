@@ -35,24 +35,6 @@ class TyVar(Ty):
 
 
 @dataclasses.dataclass
-class TyField(Ty):
-    name: str
-    _ty: Ty
-
-    def __repr__(self) -> str:
-        return f"{self.name}:{self.ty}"
-
-    @property
-    def ty(self) -> Ty:
-        return self._ty.find()
-
-    def __eq__(self, other) -> bool:
-        if not isinstance(other, TyField):
-            return NotImplemented
-        return self.name == other.name and self.ty == other.ty
-
-
-@dataclasses.dataclass
 class TyCon(Ty):
     _params: list[Ty]
     name: str
@@ -70,6 +52,23 @@ class TyCon(Ty):
         if not isinstance(other, TyCon):
             return NotImplemented
         return self.name == other.name and self.params == other.params
+
+
+@dataclasses.dataclass
+class TyRecord(Ty):
+    _data: dict[str, Ty]
+
+    def __repr__(self) -> str:
+        return str(self.data)
+
+    @property
+    def data(self) -> dict[str, Ty]:
+        return {name: ty.find() for name, ty in self._data.items()}
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, TyRecord):
+            return NotImplemented
+        return self.data == other.data
 
 
 @dataclasses.dataclass
@@ -289,11 +288,8 @@ class Typer:
             self.unify(ann, TyCon([item_type], "list"))
             return ann
         if isinstance(exp, Record):
-            field_types = []
-            for name, value in exp.data.items():
-                field_type = self.constrain(varenv, value)
-                field_types.append(TyField(name, field_type))
-            return self.unify(ann, TyCon(field_types, "record"))
+            data_ty = {name: self.constrain(varenv, value) for name, value in exp.data.items()}
+            return self.unify(ann, TyRecord(data_ty))
         if isinstance(exp, Binop):
             left = self.constrain(varenv, exp.left)
             right = self.constrain(varenv, exp.right)
@@ -547,13 +543,13 @@ class TyperTests(unittest.TestCase):
         typer = Typer()
         exp = Record({})
         result = typer.constrain({}, exp)
-        self.assertEqual(result.find(), TyCon([], "record"))
+        self.assertEqual(result.find(), TyRecord({}))
 
     def test_constrain_one_field_rec(self):
         typer = Typer()
         exp = Record({"a": Int(123)})
         result = typer.constrain({}, exp)
-        self.assertEqual(result.find(), TyCon([TyField("a", IntType)], "record"))
+        self.assertEqual(result.find(), TyRecord({"a": IntType}))
 
     def test_constrain_two_field_rec(self):
         typer = Typer()
@@ -561,13 +557,7 @@ class TyperTests(unittest.TestCase):
         result = typer.constrain({}, exp)
         self.assertEqual(
             result.find(),
-            TyCon(
-                [
-                    TyField("a", IntType),
-                    TyField("b", StringType),
-                ],
-                "record",
-            ),
+            TyRecord({"a": IntType, "b": StringType}),
         )
 
 

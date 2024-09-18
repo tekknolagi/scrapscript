@@ -336,7 +336,32 @@ class Typer:
             arg_ty = self.constrain(varenv, exp.arg)
             self.unify(func_ty, TyFun(arg_ty, ann))
             return ann
+        if isinstance(exp, MatchCase):
+            pattern_ty, pattern_env = self.constrain_pattern(varenv, exp.pattern)
+            body_ty = self.constrain({**varenv, **pattern_env}, exp.body)
+            return self.unify(ann, TyFun(pattern_ty, body_ty))
         raise ValueError(f"unexpected expression {type(exp)} {exp}")
+
+    def constrain_pattern(self, varenv: dict[str, Ty], pattern: Object) -> tuple[ty, dict[str, Ty]]:
+        if isinstance(pattern, Int):
+            return IntType, {}
+        if isinstance(pattern, String):
+            return StringType, {}
+        if isinstance(pattern, Var):
+            var_ty = fresh_var()
+            return var_ty, {pattern.name: var_ty}
+        if isinstance(pattern, List):
+            item_ty = fresh_var()
+            if not pattern.items:
+                return Forall([item_ty], TyCon([item_ty], "list")), {}
+            list_item_ty = fresh_var()
+            result_env = {}
+            for item in pattern.items:
+                item_ty, item_env = self.constrain_pattern(varenv, item)
+                list_item_ty = self.unify(list_item_ty, item_ty)
+                result_env.update(item_env)
+            return TyCon([list_item_ty], "list"), result_env
+        raise ValueError(f"unexpected pattern {type(pattern)} {pattern}")
 
     def unify(self, left: Ty, right: Ty) -> Ty:
         left = left.find()
@@ -558,6 +583,72 @@ class TyperTests(unittest.TestCase):
         self.assertEqual(
             result.find(),
             TyRecord({"a": IntType, "b": StringType}),
+        )
+
+    def test_constrain_match_case_int_int(self):
+        typer = Typer()
+        exp = MatchCase(Int(1), Int(2))
+        result = typer.constrain({}, exp)
+        self.assertEqual(result.find(), TyFun(IntType, IntType))
+
+    def test_constrain_match_case_string_int(self):
+        typer = Typer()
+        exp = MatchCase(String("x"), Int(2))
+        result = typer.constrain({}, exp)
+        self.assertEqual(result.find(), TyFun(StringType, IntType))
+
+    def test_constrain_match_case_var_int(self):
+        typer = Typer()
+        exp = MatchCase(Var("_"), Int(2))
+        result = typer.constrain({}, exp)
+        self.assertEqual(result.find(), TyFun(TyVar("t1"), IntType))
+
+    def test_constrain_match_case_var_var(self):
+        typer = Typer()
+        exp = MatchCase(Var("_"), Var("_"))
+        result = typer.constrain({}, exp)
+        self.assertEqual(result.find(), TyFun(TyVar("t1"), TyVar("t1")))
+
+    def test_constrain_match_case_var_plus_one(self):
+        typer = Typer()
+        exp = MatchCase(Var("_"), Binop(BinopKind.ADD, Var("_"), Int(1)))
+        result = typer.constrain({}, exp)
+        self.assertEqual(result.find(), TyFun(IntType, IntType))
+
+    def test_constrain_match_case_empty_list(self):
+        typer = Typer()
+        exp = MatchCase(List([]), Int(1))
+        result = typer.constrain({}, exp)
+        self.assertEqual(
+            result.find(),
+            TyFun(Forall([TyVar("t1")], TyCon([TyVar("t1")], "list")), IntType),
+        )
+
+    def test_constrain_match_case_var_list(self):
+        typer = Typer()
+        exp = MatchCase(List([Var("_")]), Int(1))
+        result = typer.constrain({}, exp)
+        self.assertEqual(
+            result.find(),
+            TyFun(TyCon([TyVar("t3")], "list"), IntType),
+        )
+
+    def test_constrain_match_case_var_list_plus_one(self):
+        typer = Typer()
+        exp = MatchCase(List([Var("_")]), Binop(BinopKind.ADD, Var("_"), Int(2)))
+        result = typer.constrain({}, exp)
+        self.assertEqual(
+            result.find(),
+            TyFun(TyCon([IntType], "list"), IntType),
+        )
+
+    def test_constrain_match_case_var_int_list(self):
+        typer = Typer()
+        exp = MatchCase(List([Int(1), Var("x")]), Var("x"))
+        result = typer.constrain({}, exp)
+        self.assertEqual(
+            result.find(),
+            TyFun(TyCon([IntType], "list"), IntType),
         )
 
 

@@ -115,6 +115,7 @@ def unify(ty1: MonoType, ty2: MonoType) -> Substitution:
             raise TypeError(f"TyCon arity mismatch: {len(ty1.args)} != {len(ty2.args)}")
         result = {}
         for l, r in zip(ty1.args, ty2.args):
+            # TODO(max): Iteratively apply(result) to l and r and unify(l, r)???
             item = unify(l, r)
             result.update(item.raw)
         return Substitution(result)

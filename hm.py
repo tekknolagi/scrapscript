@@ -324,12 +324,13 @@ class Typer:
             name = exp.binding.name
             name_ty = self.annotation(name)
             value = exp.binding.value
-            value_ty = self.constrain(varenv, value)
+            new_env = {**varenv, name.name: name_ty}
+            value_ty = self.constrain(new_env, value)
             if isinstance(value, Function):
                 value_ty = generalize(value_ty)
             body = exp.body
             self.unify(name_ty, value_ty)
-            body_ty = self.constrain({**varenv, name.name: name_ty}, body)
+            body_ty = self.constrain(new_env, body)
             return self.unify(ann, body_ty)
         if isinstance(exp, Apply):
             func_ty = self.constrain(varenv, exp.func)
@@ -479,6 +480,12 @@ class TyperTests(unittest.TestCase):
             typer.env[exp.id].find(),
             Forall([TyVar("t3")], TyFun(TyVar("t3"), TyVar("t3"))),
         )
+
+    def test_constrain_where_recursive_function_returns_a_to_b(self):
+        typer = Typer()
+        exp = parse(tokenize("f . f = x -> f x"))
+        result = typer.constrain({}, exp)
+        self.assertEqual(result.find(), TyFun(TyVar("t7"), TyVar("t8")))
 
     def test_constrain_apply_function(self):
         typer = Typer()

@@ -72,6 +72,23 @@ class TyRecord(Ty):
 
 
 @dataclasses.dataclass
+class TyUnion(Ty):
+    _types: list[Ty]
+
+    def __repr__(self) -> str:
+        return f"{' | '.join(map(str, self.types))}"
+
+    @property
+    def types(self) -> list[Ty]:
+        return [ty.find() for ty in self._types]
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, TyUnion):
+            return NotImplemented
+        return self.types == other.types
+
+
+@dataclasses.dataclass
 class TyFun(Ty):
     _arg: Ty
     _ret: Ty
@@ -337,7 +354,28 @@ class Typer:
             arg_ty = self.constrain(varenv, exp.arg)
             self.unify(func_ty, TyFun(arg_ty, ann))
             return ann
+        if isinstance(exp, MatchFunction):
+            assert exp.cases, "empty match function"
+            case_tys = [self.constrain_case(varenv, case) for case in exp.cases]
+            arg = self.union([case_ty.arg for case_ty in case_tys])
+            ret = self.union([case_ty.ret for case_ty in case_tys])
+            return self.unify(ann, TyFun(arg, ret))
         raise ValueError(f"unexpected expression {type(exp)} {exp}")
+
+    def union(self, tys: list[Ty]) -> Ty:
+        flat = []
+        for ty in tys:
+            if isinstance(ty, TyUnion):
+                flat.extend(ty.types)
+            else:
+                flat.append(ty)
+        unique = []
+        for ty in flat:
+            if ty not in unique:
+                unique.append(ty)
+        if len(unique) == 1:
+            return unique[0]
+        return TyUnion(unique)
 
     def constrain_case(self, varenv: dict[str, Ty], case: MatchCase) -> Ty:
         pattern_ty, pattern_env = self.constrain_pattern(varenv, case.pattern)
@@ -414,6 +452,29 @@ class TyperTests(unittest.TestCase):
         typer = Typer()
         with self.assertRaisesRegex(TypeError, "cannot unify foo and int string bar"):
             typer.unify(TyCon([], "foo"), TyCon([IntType, StringType], "bar"))
+
+    def test_union_one_type_returns_type(self):
+        typer = Typer()
+        self.assertEqual(typer.union([IntType]), IntType)
+
+    def test_union_two_same_types_returns_type(self):
+        typer = Typer()
+        self.assertEqual(typer.union([IntType, IntType]), IntType)
+
+    def test_union_two_different_types_returns_union(self):
+        typer = Typer()
+        self.assertEqual(typer.union([IntType, StringType]), TyUnion([IntType, StringType]))
+
+    def test_union_union_types_returns_union(self):
+        typer = Typer()
+        result = typer.union(
+            [
+                TyUnion([IntType, StringType]),
+                StringType,
+                TyUnion([IntType, FloatType]),
+            ]
+        )
+        self.assertEqual(result, TyUnion([IntType, StringType, FloatType]))
 
     def test_annotation(self):
         self.assertEqual(Typer().annotation(Int(42)), TyVar("t0"))
@@ -658,6 +719,35 @@ class TyperTests(unittest.TestCase):
             result.find(),
             TyFun(TyCon([IntType], "list"), IntType),
         )
+
+    def test_constrain_match_function_one_case(self):
+        typer = Typer()
+        exp = MatchFunction([MatchCase(Int(1), Int(2))])
+        result = typer.constrain({}, exp)
+        self.assertEqual(result.find(), TyFun(IntType, IntType))
+
+    def test_constrain_match_function_mismatched_cases(self):
+        typer = Typer()
+        exp = MatchFunction(
+            [
+                MatchCase(Int(1), Int(2)),
+                MatchCase(Int(2), Int(2)),
+            ]
+        )
+        result = typer.constrain({}, exp)
+        self.assertEqual(result.find(), TyFun(IntType, IntType))
+
+    def test_constrain_match_function_mismatched_cases(self):
+        typer = Typer()
+        exp = MatchFunction(
+            [
+                MatchCase(Int(1), Int(2)),
+                MatchCase(String("x"), Int(2)),
+                MatchCase(Int(3), Float(2.0)),
+            ]
+        )
+        result = typer.constrain({}, exp)
+        self.assertEqual(result.find(), TyFun(TyUnion([IntType, StringType]), TyUnion([IntType, FloatType])))
 
 
 if __name__ == "__main__":

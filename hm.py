@@ -418,6 +418,17 @@ class Typer:
             return self.unify(instantiate(left), right)
         if isinstance(right, Forall):
             return self.unify(left, instantiate(right))
+        if isinstance(left, TyUnion) and isinstance(right, TyUnion):
+            intersection = [ty for ty in left.types if ty in right.types]
+            return self.union(intersection)
+        if isinstance(left, TyUnion):
+            if right in left.types:
+                return right
+            self.error(left, right)
+        if isinstance(right, TyUnion):
+            if left in right.types:
+                return left
+            self.error(left, right)
         if isinstance(left, TyFun) and isinstance(right, TyFun):
             left.make_equal_to(right)
             self.unify(left.arg, right.arg)
@@ -748,6 +759,20 @@ class TyperTests(unittest.TestCase):
         )
         result = typer.constrain({}, exp)
         self.assertEqual(result.find(), TyFun(TyUnion([IntType, StringType]), TyUnion([IntType, FloatType])))
+
+    def test_constrain_apply_match_function_union(self):
+        typer = Typer()
+        exp = Apply(Var("f"), Int(1))
+        f_ty = TyFun(TyUnion([IntType, StringType]), IntType)
+        result = typer.constrain({"f": f_ty}, exp)
+        self.assertEqual(result.find(), IntType)
+
+    def test_constrain_apply_match_function_union_mismatch(self):
+        typer = Typer()
+        exp = Apply(Var("f"), Int(1))
+        f_ty = TyFun(TyUnion([FloatType, StringType]), IntType)
+        with self.assertRaisesRegex(TypeError, "cannot unify float | string and int"):
+            typer.constrain({"f": f_ty}, exp)
 
 
 if __name__ == "__main__":

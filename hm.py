@@ -258,7 +258,6 @@ from scrapscript import (
 IntType = TyCon([], "int")
 StringType = TyCon([], "string")
 FloatType = TyCon([], "float")
-DynType = TyCon([], "dyn")
 
 
 @dataclasses.dataclass
@@ -365,14 +364,17 @@ class Typer:
             return left
         if isinstance(left, TyCon) and isinstance(right, TyCon):
             if len(left.params) != len(right.params):
-                return DynType
+                self.error(left, right)
             if left.name != right.name:
-                return DynType
+                self.error(left, right)
             left.make_equal_to(right)
             for l, r in zip(left.params, right.params):
                 self.unify(l, r)
             return left
-        return DynType
+        self.error(left, right)
+
+    def error(self, left: Ty, right: Ty) -> None:
+        raise TypeError(f"cannot unify {left} and {right}")
 
 
 class TyperTests(unittest.TestCase):
@@ -382,13 +384,13 @@ class TyperTests(unittest.TestCase):
 
     def test_unify_int_str_raises_type_error(self):
         typer = Typer()
-        result = typer.unify(IntType, StringType)
-        self.assertEqual(result, DynType)
+        with self.assertRaisesRegex(TypeError, "cannot unify int and string"):
+            typer.unify(IntType, StringType)
 
     def test_unify_tycon_different_params(self):
         typer = Typer()
-        result = typer.unify(TyCon([], "foo"), TyCon([IntType, StringType], "bar"))
-        self.assertEqual(result, DynType)
+        with self.assertRaisesRegex(TypeError, "cannot unify foo and int string bar"):
+            typer.unify(TyCon([], "foo"), TyCon([IntType, StringType], "bar"))
 
     def test_annotation(self):
         self.assertEqual(Typer().annotation(Int(42)), TyVar("t0"))
@@ -504,8 +506,8 @@ class TyperTests(unittest.TestCase):
     def test_constrain_mixed_list(self):
         typer = Typer()
         exp = List([Int(1), String("hi")])
-        result = typer.constrain({}, exp)
-        self.assertEqual(result.find(), TyCon([DynType], "list"))
+        with self.assertRaisesRegex(TypeError, "cannot unify int and string"):
+            typer.constrain({}, exp)
 
     def test_constrain_polymorphic_empty_list(self):
         typer = Typer()

@@ -314,6 +314,14 @@ class Typer:
                 self.unify(left, IntType)
                 self.unify(right, IntType)
                 return self.unify(ann, IntType)
+            if exp.op == BinopKind.SUB:
+                self.unify(left, IntType)
+                self.unify(right, IntType)
+                return self.unify(ann, IntType)
+            if exp.op == BinopKind.MUL:
+                self.unify(left, IntType)
+                self.unify(right, IntType)
+                return self.unify(ann, IntType)
             if exp.op == BinopKind.STRING_CONCAT:
                 self.unify(left, StringType)
                 self.unify(right, StringType)

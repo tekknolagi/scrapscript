@@ -49,9 +49,13 @@ def apply(sub: Substitution, ty: Ty) -> Ty:
     if isinstance(ty, TyCon):
         return TyCon(ty.name, [apply(sub, arg) for arg in ty.args])
     if isinstance(ty, Forall):
-        wo_quantifier = Substitution({k: v for k, v in sub.raw.items()
-                                      if k != ty.tyvar.name})
-        return Forall(ty.tyvar, apply(wo_quantifier, ty.ty))
+        q = ty.tyvar.name
+        if q in sub.raw or any(q in free_vars(t) for t in sub.raw.values()):
+            # Rename
+            q_prime = fresh_tyvar()
+            renamed_ty = apply(Substitution({q: q_prime}), ty.ty)
+            return Forall(q_prime, apply(sub, renamed_ty))
+        return Forall(ty.tyvar, apply(sub, ty.ty))
     raise NotImplementedError
 
 def apply_tyenv(sub: Substitution, ty: TyEnv) -> TyEnv:
@@ -137,7 +141,7 @@ class ApplyTest(unittest.TestCase):
     def test_apply_forall(self):
         sub = Substitution({'a': TyVar('b')})
         ty = Forall(TyVar('a'), TyVar('a'))
-        self.assertEqual(apply(sub, ty), Forall(TyVar('a'), TyVar('a')))
+        self.assertEqual(apply(sub, ty), Forall(TyVar('t1'), TyVar('t1')))
 
     def test_apply_tyenv(self):
         sub = Substitution({'a': TyVar('b')})

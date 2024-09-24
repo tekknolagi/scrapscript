@@ -221,5 +221,27 @@ class BindTests(unittest.TestCase):
             bind_var(ty, "a")
 
 
+def generalize(ty: MonoType, ctx: Context) -> Forall:
+    tyvars = ftv_ty(ty) - ftv_ctx(ctx)
+    return Forall([TyVar(name) for name in sorted(tyvars)], ty)
+
+
+class GeneralizeTests(FreshTests):
+    def test_tyvar(self) -> None:
+        self.assertEqual(generalize(TyVar("a"), {}), Forall([TyVar("a")], TyVar("a")))
+
+    def test_tyvar_bound_in_ctx(self) -> None:
+        self.assertEqual(
+            generalize(TyVar("a"), {"f": Forall([TyVar("a")], TyVar("a"))}),
+            Forall([TyVar("a")], TyVar("a")),
+        )
+
+    def test_tyvar_free_in_ctx(self) -> None:
+        self.assertEqual(
+            generalize(TyVar("a"), {"f": Forall([TyVar("b")], TyVar("a"))}),
+            Forall([], TyVar("a")),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

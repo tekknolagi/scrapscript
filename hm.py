@@ -53,6 +53,9 @@ class TyCon(Ty):
             return NotImplemented
         return self.name == other.name and self.params == other.params
 
+    def __hash__(self) -> int:
+        return hash((self.name, tuple(self.params)))
+
 
 @dataclasses.dataclass
 class TyRecord(Ty):
@@ -347,13 +350,16 @@ class Typer:
         if isinstance(exp, Where):
             assert isinstance(exp.binding, Assign)
             name = exp.binding.name
-            name_ty = self.annotation(name)
+            name_ty = generalize(self.annotation(name))
+            print("name_ty is", name_ty.find())
             value = exp.binding.value
             new_env = {**varenv, name.name: name_ty}
             value_ty = self.constrain(new_env, value)
-            if isinstance(value, Function):
-                value_ty = generalize(value_ty)
+            #if isinstance(value, Function):
+            value_ty = generalize(value_ty)
             body = exp.body
+            print("name_ty is", name_ty.find())
+            value = exp.binding.value
             self.unify(name_ty, value_ty)
             body_ty = self.constrain(new_env, body)
             return self.unify(ann, body_ty)
@@ -423,8 +429,12 @@ class Typer:
             right.make_equal_to(left)
             return left
         if isinstance(left, Forall):
+            print("right is", right)
+            print("instantiating left", left)
             return self.unify(instantiate(left), right)
         if isinstance(right, Forall):
+            raise ("left is", left)
+            print("instantiating right", right)
             return self.unify(left, instantiate(right))
         if isinstance(left, TyUnion) and isinstance(right, TyUnion):
             intersection = [ty for ty in left.types if ty in right.types]
@@ -561,11 +571,11 @@ class TyperTests(unittest.TestCase):
             Forall([TyVar("t3")], TyFun(TyVar("t3"), TyVar("t3"))),
         )
 
-    def test_constrain_where_recursive_function_returns_a_to_b(self):
+    def test_constrain_where_recursive_function_returns_forall_a_to_b(self):
         typer = Typer()
         exp = parse(tokenize("f . f = x -> f x"))
         result = typer.constrain({}, exp)
-        self.assertEqual(result.find(), TyFun(TyVar("t7"), TyVar("t8")))
+        self.assertEqual(result.find(), Forall([TyVar("t7"), TyVar("t8")], TyFun(TyVar("t7"), TyVar("t8"))))
 
     def test_constrain_apply_function(self):
         typer = Typer()

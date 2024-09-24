@@ -221,5 +221,10 @@ class BindTests(unittest.TestCase):
             bind_var(ty, "a")
 
 
+def generalize(ty: MonoType, ctx: Context) -> Forall:
+    tyvars = ftv_ty(ty) - ftv_ctx(ctx)
+    return Forall([TyVar(name) for name in sorted(tyvars)], ty)
+
+
 if __name__ == "__main__":
     unittest.main()

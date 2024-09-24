@@ -34,7 +34,7 @@ class TyVar(MonoType):
 @dataclasses.dataclass
 class TyCon(MonoType):
     name: str
-    args: list[Ty]
+    args: list[MonoType]
 
     def __repr__(self) -> str:
         if not self.args:
@@ -45,7 +45,7 @@ class TyCon(MonoType):
 @dataclasses.dataclass
 class Forall(Ty):
     tyvars: list[TyVar]
-    ty: Ty
+    ty: MonoType
 
     def __repr__(self) -> str:
         return f"(forall {', '.join(map(repr, self.tyvars))}. {self.ty})"
@@ -116,21 +116,21 @@ class FtvTest(unittest.TestCase):
         self.assertEqual(ftv_ctx({"f": Forall([TyVar("a")], TyVar("b"))}), {"b"})
 
 
-Subst = typing.Mapping[str, Ty]
+Subst = typing.Mapping[str, MonoType]
 
 
-# TODO(max): Maybe return MonoType
-# TODO(max): Maybe split into MonoType and Forall functions
-def apply_ty(ty: Ty, subst: Subst) -> Ty:
+def apply_ty(ty: MonoType, subst: Subst) -> MonoType:
     if isinstance(ty, TyVar):
         return subst.get(ty.name, ty)
     if isinstance(ty, TyCon):
         return TyCon(ty.name, [apply_ty(arg, subst) for arg in ty.args])
-    if isinstance(ty, Forall):
-        ty_args = {arg.name for arg in ty.tyvars}
-        new_subst = {name: ty for name, ty in subst.items() if name not in ty_args}
-        return Forall(ty.tyvars, apply_ty(ty.ty, new_subst))
     raise TypeError(f"Unknown type: {ty}")
+
+
+def apply_scheme(ty: Forall, subst: Subst) -> Forall:
+    ty_args = {arg.name for arg in ty.tyvars}
+    new_subst = {name: ty for name, ty in subst.items() if name not in ty_args}
+    return Forall(ty.tyvars, apply_ty(ty.ty, new_subst))
 
 
 class ApplyTest(unittest.TestCase):
@@ -149,8 +149,8 @@ class ApplyTest(unittest.TestCase):
 
     def test_forall(self) -> None:
         ty = Forall([TyVar("a")], func_type(TyVar("a"), TyVar("b")))
-        self.assertEqual(apply_ty(ty, {"a": TyVar("c")}), ty)
-        self.assertEqual(apply_ty(ty, {"b": TyVar("c")}), Forall([TyVar("a")], func_type(TyVar("a"), TyVar("c"))))
+        self.assertEqual(apply_scheme(ty, {"a": TyVar("c")}), ty)
+        self.assertEqual(apply_scheme(ty, {"b": TyVar("c")}), Forall([TyVar("a")], func_type(TyVar("a"), TyVar("c"))))
 
 
 def compose(s1: Subst, s2: Subst) -> Subst:
@@ -196,7 +196,7 @@ class FreshTests(unittest.TestCase):
         self.assertEqual(fresh_tyvar("x"), TyVar("x1"))
 
 
-def bind_var(ty: Ty, name: str) -> Subst:
+def bind_var(ty: MonoType, name: str) -> Subst:
     if isinstance(ty, TyVar) and ty.name == name:
         return {}
     if name in ftv_ty(ty):

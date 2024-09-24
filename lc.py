@@ -51,3 +51,11 @@ IntType = TyCon("int", [])
 BoolType = TyCon("bool", [])
 IdFunc = Forall(TyVar("a"), TyCon("->", [TyVar("a"), TyVar("a")]))
 NotFunc = TyCon("->", [BoolType, BoolType])
+
+
+def func_type(*args):
+    return TyCon("->", list(args))
+
+
+def tuple_type(*args):
+    return TyCon("*", list(args))

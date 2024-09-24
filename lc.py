@@ -133,6 +133,10 @@ def apply_scheme(ty: Forall, subst: Subst) -> Forall:
     return Forall(ty.tyvars, apply_ty(ty.ty, new_subst))
 
 
+def apply_ctx(ctx: Context, subst: Subst) -> Context:
+    return {name: apply_scheme(scheme, subst) for name, scheme in ctx.items()}
+
+
 class ApplyTest(unittest.TestCase):
     def test_tyvar(self) -> None:
         self.assertEqual(apply_ty(TyVar("a"), {"a": TyVar("b")}), TyVar("b"))
@@ -316,12 +320,20 @@ def infer_w(expr: Object, ctx: Context) -> tuple[Subst, MonoType]:
         if scheme is None:
             raise TypeError(f"Unbound variable {expr.name}")
         return {}, instantiate(scheme)
+    if isinstance(expr, Int):
+        return {}, IntType
     if isinstance(expr, Function):
         arg_tyvar = fresh_tyvar("a")
         assert isinstance(expr.arg, Var)
         body_ctx = {**ctx, expr.arg.name: Forall([], arg_tyvar)}
         body_subst, body_ty = infer_w(expr.body, body_ctx)
         return body_subst, func_type(apply_ty(arg_tyvar, body_subst), body_ty)
+    if isinstance(expr, Apply):
+        s1, ty = infer_w(expr.func, ctx)
+        s2, p = infer_w(expr.arg, apply_ctx(ctx, s1))
+        r = fresh_tyvar("a")
+        s3 = unify(apply_ty(ty, s2), TyCon("->", [p, r]))
+        return compose(compose(s3, s2), s1), apply_ty(r, s3)
     raise TypeError(f"Unexpected type {type(expr)}")
 
 
@@ -334,6 +346,11 @@ class InferTests(FreshTests):
         subst, ty = infer_w(Var("a"), {"a": Forall([TyVar("b")], TyVar("b"))})
         self.assertEqual(subst, {})
         self.assertEqual(ty, TyVar("t0"))
+
+    def test_int(self) -> None:
+        subst, ty = infer_w(Int(123), {})
+        self.assertEqual(subst, {})
+        self.assertEqual(ty, IntType)
 
     def test_function_returns_arg(self) -> None:
         subst, ty = infer_w(Function(Var("x"), Var("x")), {})
@@ -349,6 +366,13 @@ class InferTests(FreshTests):
         subst, ty = infer_w(Function(Var("x"), Function(Var("y"), Var("y"))), {})
         self.assertEqual(subst, {})
         self.assertEqual(ty, func_type(TyVar("a0"), func_type(TyVar("a1"), TyVar("a1"))))
+
+    def test_apply_id_int(self) -> None:
+        func = Function(Var("x"), Var("x"))
+        arg = Int(123)
+        subst, ty = infer_w(Apply(func, arg), {})
+        self.assertEqual(subst, {"a0": IntType, "a1": IntType})
+        self.assertEqual(ty, IntType)
 
 
 if __name__ == "__main__":

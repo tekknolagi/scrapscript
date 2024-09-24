@@ -141,8 +141,7 @@ class ApplyTest(unittest.TestCase):
 
 
 def compose(s1: Subst, s2: Subst) -> Subst:
-    new_s2 = {tyvar: apply_ty(ty, s1) for tyvar, ty in s2.items()}
-    result = new_s2.copy()
+    result = {tyvar: apply_ty(ty, s1) for tyvar, ty in s2.items()}
     result.update(s1)
     return result
 

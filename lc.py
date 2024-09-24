@@ -46,6 +46,9 @@ class Forall(Ty):
     tyvar: TyVar
     ty: Ty
 
+    def __repr__(self):
+        return f"(forall {self.tyvar}. {self.ty})"
+
 
 UnitType = TyCon("()", [])
 IntType = TyCon("int", [])

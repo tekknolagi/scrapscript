@@ -228,6 +228,7 @@ class BindTests(unittest.TestCase):
 
 
 def generalize(ty: MonoType, ctx: Context) -> Forall:
+    # TODO(max): Freshen?
     tyvars = ftv_ty(ty) - ftv_ctx(ctx)
     return Forall([TyVar(name) for name in sorted(tyvars)], ty)
 

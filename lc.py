@@ -158,6 +158,11 @@ class ComposeTest(unittest.TestCase):
         s2 = {"a": TyVar("c")}
         self.assertEqual(compose(s1, s2), {"a": TyVar("b")})
 
+    def test_union(self) -> None:
+        s1 = {"a": TyVar("b")}
+        s2 = {"c": TyVar("d")}
+        self.assertEqual(compose(s1, s2), {"a": TyVar("b"), "c": TyVar("d")})
+
 
 if __name__ == "__main__":
     unittest.main()

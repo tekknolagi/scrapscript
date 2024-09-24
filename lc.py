@@ -257,5 +257,59 @@ class InstantiateTests(FreshTests):
         self.assertEqual(instantiate(scheme), func_type(TyVar("t0"), TyVar("b")))
 
 
+def unify_fail(ty1: MonoType, ty2: MonoType) -> None:
+    raise TypeError(f"Unification failed for {ty1} and {ty2}")
+
+
+def unify(ty1: MonoType, ty2: MonoType) -> Subst:
+    if isinstance(ty1, TyVar):
+        return bind_var(ty2, ty1.name)
+    if isinstance(ty2, TyVar):  # Mirror
+        return unify(ty2, ty1)
+    if isinstance(ty1, TyCon) and isinstance(ty2, TyCon):
+        if ty1.name != ty2.name:
+            unify_fail(ty1, ty2)
+        if len(ty1.args) != len(ty2.args):
+            unify_fail(ty1, ty2)
+        result: Subst = {}
+        for l, r in zip(ty1.args, ty2.args):
+            result = compose(
+                unify(apply_ty(l, result), apply_ty(r, result)),
+                result,
+            )
+        return result
+    raise TypeError(f"ICE: Unexpected type {type(ty1)}")
+
+
+class UnifyTests(FreshTests):
+    def test_tyvar_tyvar(self) -> None:
+        self.assertEqual(unify(TyVar("a"), TyVar("b")), {"a": TyVar("b")})
+        self.assertEqual(unify(TyVar("b"), TyVar("a")), {"b": TyVar("a")})
+
+    def test_tyvar_tycon(self) -> None:
+        self.assertEqual(unify(TyVar("a"), IntType), {"a": IntType})
+        self.assertEqual(unify(IntType, TyVar("a")), {"a": IntType})
+
+    def test_tycon_tycon_name_mismatch(self) -> None:
+        with self.assertRaisesRegex(TypeError, "Unification failed"):
+            unify(IntType, BoolType)
+
+    def test_tycon_tycon_arity_mismatch(self) -> None:
+        l = TyCon("x", [TyVar("a")])
+        r = TyCon("x", [])
+        with self.assertRaisesRegex(TypeError, "Unification failed"):
+            unify(l, r)
+
+    def test_tycon_tycon_unifies_arg(self) -> None:
+        l = TyCon("x", [TyVar("a")])
+        r = TyCon("x", [TyVar("b")])
+        self.assertEqual(unify(l, r), {"a": TyVar("b")})
+
+    def test_tycon_tycon_unifies_args(self) -> None:
+        l = func_type(TyVar("a"), TyVar("b"))
+        r = func_type(TyVar("c"), TyVar("d"))
+        self.assertEqual(unify(l, r), {"a": TyVar("c"), "b": TyVar("d")})
+
+
 if __name__ == "__main__":
     unittest.main()

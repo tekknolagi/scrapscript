@@ -245,8 +245,7 @@ class GeneralizeTests(FreshTests):
         )
 
 
-# TODO(max): Maybe return MonoType
-def instantiate(scheme: Forall) -> Ty:
+def instantiate(scheme: Forall) -> MonoType:
     fresh = {tyvar.name: fresh_tyvar() for tyvar in scheme.tyvars}
     return apply_ty(scheme.ty, fresh)
 
@@ -309,6 +308,47 @@ class UnifyTests(FreshTests):
         l = func_type(TyVar("a"), TyVar("b"))
         r = func_type(TyVar("c"), TyVar("d"))
         self.assertEqual(unify(l, r), {"a": TyVar("c"), "b": TyVar("d")})
+
+
+def infer_w(expr: Object, ctx: Context) -> tuple[Subst, MonoType]:
+    if isinstance(expr, Var):
+        scheme = ctx.get(expr.name)
+        if scheme is None:
+            raise TypeError(f"Unbound variable {expr.name}")
+        return {}, instantiate(scheme)
+    if isinstance(expr, Function):
+        arg_tyvar = fresh_tyvar("a")
+        assert isinstance(expr.arg, Var)
+        body_ctx = {**ctx, expr.arg.name: Forall([], arg_tyvar)}
+        body_subst, body_ty = infer_w(expr.body, body_ctx)
+        return body_subst, func_type(apply_ty(arg_tyvar, body_subst), body_ty)
+    raise TypeError(f"Unexpected type {type(expr)}")
+
+
+class InferTests(FreshTests):
+    def test_unbound_var(self) -> None:
+        with self.assertRaisesRegex(TypeError, "Unbound variable"):
+            infer_w(Var("a"), {})
+
+    def test_var_instantiates_scheme(self) -> None:
+        subst, ty = infer_w(Var("a"), {"a": Forall([TyVar("b")], TyVar("b"))})
+        self.assertEqual(subst, {})
+        self.assertEqual(ty, TyVar("t0"))
+
+    def test_function_returns_arg(self) -> None:
+        subst, ty = infer_w(Function(Var("x"), Var("x")), {})
+        self.assertEqual(subst, {})
+        self.assertEqual(ty, func_type(TyVar("a0"), TyVar("a0")))
+
+    def test_nested_function_outer(self) -> None:
+        subst, ty = infer_w(Function(Var("x"), Function(Var("y"), Var("x"))), {})
+        self.assertEqual(subst, {})
+        self.assertEqual(ty, func_type(TyVar("a0"), func_type(TyVar("a1"), TyVar("a0"))))
+
+    def test_nested_function_inner(self) -> None:
+        subst, ty = infer_w(Function(Var("x"), Function(Var("y"), Var("y"))), {})
+        self.assertEqual(subst, {})
+        self.assertEqual(ty, func_type(TyVar("a0"), func_type(TyVar("a1"), TyVar("a1"))))
 
 
 if __name__ == "__main__":

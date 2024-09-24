@@ -164,5 +164,25 @@ class ComposeTest(unittest.TestCase):
         self.assertEqual(compose(s1, s2), {"a": TyVar("b"), "c": TyVar("d")})
 
 
+fresh_var_counter = 0
+
+
+def fresh_tyvar(prefix: str = "t") -> TyVar:
+    global fresh_var_counter
+    result = f"{prefix}{fresh_var_counter}"
+    fresh_var_counter += 1
+    return TyVar(result)
+
+
+class FreshTests(unittest.TestCase):
+    def setUp(self) -> None:
+        global fresh_var_counter
+        fresh_var_counter = 0
+
+    def test_fresh(self) -> None:
+        self.assertEqual(fresh_tyvar(), TyVar("t0"))
+        self.assertEqual(fresh_tyvar("x"), TyVar("x1"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -43,18 +43,32 @@ class TyCon(MonoType):
 
 @dataclasses.dataclass
 class Forall(Ty):
-    tyvar: TyVar
+    tyvars: list[TyVar]
     ty: Ty
 
     def __repr__(self):
-        return f"(forall {self.tyvar}. {self.ty})"
+        return f"(forall {', '.join(map(repr, self.tyvars))}. {self.ty})"
 
 
 UnitType = TyCon("()", [])
 IntType = TyCon("int", [])
 BoolType = TyCon("bool", [])
-IdFunc = Forall(TyVar("a"), TyCon("->", [TyVar("a"), TyVar("a")]))
+IdFunc = Forall([TyVar("a")], TyCon("->", [TyVar("a"), TyVar("a")]))
 NotFunc = TyCon("->", [BoolType, BoolType])
+
+
+class ReprTest(unittest.TestCase):
+    def test_tyvar(self):
+        self.assertEqual(repr(TyVar("a")), "'a")
+
+    def test_tycon(self):
+        self.assertEqual(repr(TyCon("int", [])), "int")
+
+    def test_tycon_args(self):
+        self.assertEqual(repr(TyCon("->", [IntType, IntType])), "(int->int)")
+
+    def test_forall(self):
+        self.assertEqual(repr(Forall([TyVar("a"), TyVar("b")], TyVar("a"))), "(forall 'a, 'b. 'a)")
 
 
 def func_type(*args):
@@ -63,3 +77,7 @@ def func_type(*args):
 
 def tuple_type(*args):
     return TyCon("*", list(args))
+
+
+if __name__ == "__main__":
+    unittest.main()

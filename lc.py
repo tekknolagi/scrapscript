@@ -119,6 +119,8 @@ class FtvTest(unittest.TestCase):
 Subst = typing.Mapping[str, Ty]
 
 
+# TODO(max): Maybe return MonoType
+# TODO(max): Maybe split into MonoType and Forall functions
 def apply_ty(ty: Ty, subst: Subst) -> Ty:
     if isinstance(ty, TyVar):
         return subst.get(ty.name, ty)
@@ -241,6 +243,18 @@ class GeneralizeTests(FreshTests):
             generalize(TyVar("a"), {"f": Forall([TyVar("b")], TyVar("a"))}),
             Forall([], TyVar("a")),
         )
+
+
+# TODO(max): Maybe return MonoType
+def instantiate(scheme: Forall) -> Ty:
+    fresh = {tyvar.name: fresh_tyvar() for tyvar in scheme.tyvars}
+    return apply_ty(scheme.ty, fresh)
+
+
+class InstantiateTests(FreshTests):
+    def test_freshen_type_variables(self) -> None:
+        scheme = Forall([TyVar("a")], func_type(TyVar("a"), TyVar("b")))
+        self.assertEqual(instantiate(scheme), func_type(TyVar("t0"), TyVar("b")))
 
 
 if __name__ == "__main__":

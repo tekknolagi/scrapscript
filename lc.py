@@ -47,6 +47,7 @@ class Forall(Ty):
     ty: Ty
 
 
+UnitType = TyCon("()", [])
 IntType = TyCon("int", [])
 BoolType = TyCon("bool", [])
 IdFunc = Forall(TyVar("a"), TyCon("->", [TyVar("a"), TyVar("a")]))

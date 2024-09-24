@@ -1,6 +1,7 @@
 from __future__ import annotations
 import dataclasses
 import unittest
+import typing
 from scrapscript import (
     Object,
     Int,
@@ -33,7 +34,7 @@ class TyVar(MonoType):
 @dataclasses.dataclass
 class TyCon(MonoType):
     name: str
-    args: list[MonoType]
+    args: list[Ty]
 
     def __repr__(self) -> str:
         if not self.args:
@@ -102,6 +103,60 @@ class FtvTest(unittest.TestCase):
     def test_forall(self) -> None:
         self.assertEqual(ftv_ty(Forall([TyVar("a"), TyVar("b")], TyVar("a"))), set())
         self.assertEqual(ftv_ty(Forall([TyVar("a"), TyVar("b")], TyVar("c"))), {"c"})
+
+
+Subst = typing.Mapping[str, Ty]
+
+
+def apply_ty(ty: Ty, subst: Subst) -> Ty:
+    if isinstance(ty, TyVar):
+        return subst.get(ty.name, ty)
+    if isinstance(ty, TyCon):
+        return TyCon(ty.name, [apply_ty(arg, subst) for arg in ty.args])
+    if isinstance(ty, Forall):
+        ty_args = {arg.name for arg in ty.tyvars}
+        new_subst = {name: ty for name, ty in subst.items() if name not in ty_args}
+        return Forall(ty.tyvars, apply_ty(ty.ty, new_subst))
+    raise TypeError(f"Unknown type: {ty}")
+
+
+class ApplyTest(unittest.TestCase):
+    def test_tyvar(self) -> None:
+        self.assertEqual(apply_ty(TyVar("a"), {"a": TyVar("b")}), TyVar("b"))
+        self.assertEqual(apply_ty(TyVar("a"), {}), TyVar("a"))
+
+    def test_tycon(self) -> None:
+        self.assertEqual(apply_ty(TyCon("int", []), {}), TyCon("int", []))
+
+    def test_tycon_args(self) -> None:
+        self.assertEqual(
+            apply_ty(TyCon("->", [TyVar("a"), TyVar("b")]), {"a": TyVar("c")}),
+            TyCon("->", [TyVar("c"), TyVar("b")]),
+        )
+
+    def test_forall(self) -> None:
+        ty = Forall([TyVar("a")], func_type(TyVar("a"), TyVar("b")))
+        self.assertEqual(apply_ty(ty, {"a": TyVar("c")}), ty)
+        self.assertEqual(apply_ty(ty, {"b": TyVar("c")}), Forall([TyVar("a")], func_type(TyVar("a"), TyVar("c"))))
+
+
+def compose(s1: Subst, s2: Subst) -> Subst:
+    new_s2 = {tyvar: apply_ty(ty, s1) for tyvar, ty in s2.items()}
+    result = new_s2.copy()
+    result.update(s1)
+    return result
+
+
+class ComposeTest(unittest.TestCase):
+    def test_s1_applied_inside_s2(self) -> None:
+        s1 = {"a": TyVar("b")}
+        s2 = {"c": TyVar("a")}
+        self.assertEqual(compose(s1, s2), {"a": TyVar("b"), "c": TyVar("b")})
+
+    def test_left_takes_precedence(self) -> None:
+        s1 = {"a": TyVar("b")}
+        s2 = {"a": TyVar("c")}
+        self.assertEqual(compose(s1, s2), {"a": TyVar("b")})
 
 
 if __name__ == "__main__":

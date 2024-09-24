@@ -101,6 +101,7 @@ class FtvTest(unittest.TestCase):
 
     def test_forall(self) -> None:
         self.assertEqual(ftv_ty(Forall([TyVar("a"), TyVar("b")], TyVar("a"))), set())
+        self.assertEqual(ftv_ty(Forall([TyVar("a"), TyVar("b")], TyVar("c"))), {"c"})
 
 
 if __name__ == "__main__":

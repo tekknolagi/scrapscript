@@ -1,6 +1,8 @@
+from __future__ import annotations
 import dataclasses
 import unittest
 from scrapscript import (
+    Object,
     Int,
     Var,
     Function,
@@ -21,10 +23,21 @@ class MonoType(Ty):
 class TyVar(MonoType):
     name: str
 
+    def __repr__(self):
+        return f"'{self.name}"
+
 @dataclasses.dataclass
 class TyCon(MonoType):
     name: str
     args: list[MonoType]
+
+    def __repr__(self):
+        if not self.args:
+            return self.name
+        return f"({self.name.join(map(repr, self.args))})"
+
+IntType = TyCon("int", [])
+BoolType = TyCon("bool", [])
 
 def ty_func(tys: list[MonoType]) -> TyCon:
     return TyCon('->', tys)
@@ -42,6 +55,17 @@ TyEnv = dict[str, Ty]
 @dataclasses.dataclass
 class Substitution:
     raw: TyEnv
+
+    def __call__(self, other):
+        if isinstance(other, Ty):
+            return apply(self, other)
+        if isinstance(other, Substitution):
+            return Substitution(apply_tyenv(self, other.raw))
+        assert isinstance(other, dict), f"it's a {type(other)}"
+        return apply_tyenv(self, other)
+
+    def union(self, other: Substitution) -> Substitution:
+        return Substitution({**self.raw, **other.raw})
 
 def apply(sub: Substitution, ty: Ty) -> Ty:
     if isinstance(ty, TyVar):
@@ -119,12 +143,39 @@ def unify(ty1: MonoType, ty2: MonoType) -> Substitution:
             raise TypeError(f"TyCon mismatch: {ty1.name} != {ty2.name}")
         if len(ty1.args) != len(ty2.args):
             raise TypeError(f"TyCon arity mismatch: {len(ty1.args)} != {len(ty2.args)}")
-        result = {}
+        s = Substitution({})
         for l, r in zip(ty1.args, ty2.args):
-            # TODO(max): Iteratively apply(result) to l and r and unify(l, r)???
-            item = unify(l, r)
-            result.update(item.raw)
-        return Substitution(result)
+            s1 = unify(l, r)
+            s2 = unify(apply(s1, l), apply(s1, r))
+            # s = s1.union(s2).union(s)
+            # s = unify(s(l), s(r))(s)
+            # TODO(max): Iteratively apply(s) to l and r and unify(l, r)???
+            # unify(apply(Substitution(s), l),
+            #           apply(Substitution(s), r))
+            # a = apply_tyenv(u, s)
+            # s.update(a)
+        return s
+    raise NotImplementedError
+
+def algorithm_w(env: TyEnv, expr: Object) -> tuple[Substitution, MonoType]:
+    if isinstance(expr, Int):
+        return Substitution({}), IntType
+    if isinstance(expr, Var):
+        ty = env.get(expr.name)
+        if ty is None:
+            raise TypeError(f"unbound local {expr.name}")
+        return Substitution({}), instantiate(ty)
+    if isinstance(expr, Function):
+        beta = fresh_tyvar()
+        assert isinstance(expr.arg, Var)
+        s1, t1 = algorithm_w({**env, expr.arg.name: beta}, expr.body)
+        return s1, apply(s1, ty_func([beta, t1]))
+    if isinstance(expr, Apply):
+        s1, t1 = algorithm_w(env, expr.func)
+        s2, t2 = algorithm_w(apply_tyenv(s1, env), expr.arg)
+        beta = fresh_tyvar()
+        s3 = unify(apply(s2, t1), ty_func([t2, beta]))
+        return Substitution(apply_tyenv(s3, apply_tyenv(s2, s1.raw))), apply(s3, beta)
     raise NotImplementedError
 
 class ApplyTest(unittest.TestCase):
@@ -253,6 +304,52 @@ class UnifyTest(unittest.TestCase):
             unify(r, l),
             Substitution({"d": func, "e": TyVar("c")}),
         )
+
+class AlgorithmWTest(unittest.TestCase):
+    def setUp(self):
+        global current_tyvar
+        current_tyvar = 0
+
+    def test_int(self):
+        subst, ty = algorithm_w({}, Int(123))
+        self.assertEqual(subst, Substitution({}))
+        self.assertEqual(ty, IntType)
+
+    def test_unbound_var_raises(self):
+        with self.assertRaisesRegex(TypeError, "unbound local"):
+            algorithm_w({}, Var("x"))
+
+    def test_var_returns_empty_subst(self):
+        subst, _ = algorithm_w({"x": IntType}, Var("x"))
+        self.assertEqual(subst, Substitution({}))
+
+    def test_var_returns_associated_type(self):
+        _, ty = algorithm_w({"x": IntType}, Var("x"))
+        self.assertEqual(ty, IntType)
+
+    def test_var_returns_associated_instantiated_type(self):
+        _, ty = algorithm_w({"x": Forall(TyVar("a"), TyVar("a"))}, Var("x"))
+        self.assertEqual(ty, TyVar("t1"))
+
+    def test_function_returning_int(self):
+        subst, ty = algorithm_w({}, Function(Var("x"), Int(123)))
+        self.assertEqual(subst, Substitution({}))
+        self.assertEqual(ty, ty_func([TyVar("t1"), IntType]))
+
+    def test_function_returning_arg(self):
+        subst, ty = algorithm_w({}, Function(Var("x"), Var("x")))
+        self.assertEqual(subst, Substitution({}))
+        self.assertEqual(ty, ty_func([TyVar("t1"), TyVar("t1")]))
+
+    def test_apply(self):
+        env = {"not": ty_func([BoolType, BoolType]),
+               "even": ty_func([IntType, BoolType]),
+               }
+        subst, ty = algorithm_w(env,
+                                Function(Var("x"), Apply(Var("not"),
+                                                         Var("x"))))
+        self.assertEqual(subst, Substitution({}))
+        self.assertEqual(ty, ty_func([BoolType, BoolType]))
 
 if __name__ == '__main__':
     __import__("sys").modules["unittest.util"]._MAX_LENGTH = 999999999

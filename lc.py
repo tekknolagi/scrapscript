@@ -183,5 +183,32 @@ class FreshTests(unittest.TestCase):
         self.assertEqual(fresh_tyvar("x"), TyVar("x1"))
 
 
+def bind_var(ty: Ty, name: str) -> Subst:
+    if isinstance(ty, TyVar) and ty.name == name:
+        return {}
+    if name in ftv_ty(ty):
+        raise TypeError(f"Occurs check failed for {name} in {ty}")
+    return {name: ty}
+
+
+class BindTests(unittest.TestCase):
+    def test_tyvar_with_matching_name_returns_empty_subst(self) -> None:
+        self.assertEqual(bind_var(TyVar("a"), "a"), {})
+
+    def test_tyvar_with_non_matching_name_returns_singleton(self) -> None:
+        self.assertEqual(bind_var(TyVar("a"), "b"), {"b": TyVar("a")})
+
+    def test_tycon_returns_singleton(self) -> None:
+        self.assertEqual(
+            bind_var(func_type(TyVar("a"), TyVar("b")), "c"),
+            {"c": func_type(TyVar("a"), TyVar("b"))},
+        )
+
+    def test_name_in_freevars_raises_type_error(self) -> None:
+        ty = func_type(TyVar("a"), TyVar("b"))
+        with self.assertRaisesRegex(TypeError, "Occurs check"):
+            bind_var(ty, "a")
+
+
 if __name__ == "__main__":
     unittest.main()

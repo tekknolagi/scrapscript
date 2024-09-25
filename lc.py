@@ -10,6 +10,8 @@ from scrapscript import (
     Apply,
     Where,
     Assign,
+    Binop,
+    BinopKind,
 )
 
 
@@ -73,7 +75,10 @@ class ReprTest(unittest.TestCase):
 
 
 def func_type(*args: MonoType) -> TyCon:
-    return TyCon("->", list(args))
+    assert len(args) >= 2
+    if len(args) == 2:
+        return TyCon("->", list(args))
+    return TyCon("->", [args[0], func_type(*args[1:])])
 
 
 def tuple_type(*args: MonoType) -> TyCon:
@@ -335,6 +340,10 @@ def infer_w(expr: Object, ctx: Context) -> tuple[Subst, MonoType]:
         r = fresh_tyvar("a")
         s3 = unify(apply_ty(ty, s2), TyCon("->", [p, r]))
         return compose(compose(s3, s2), s1), apply_ty(r, s3)
+    if isinstance(expr, Binop):
+        left, right = expr.left, expr.right
+        op = Var(BinopKind.to_str(expr.op))
+        return infer_w(Apply(Apply(op, left), right), ctx)
     raise TypeError(f"Unexpected type {type(expr)}")
 
 
@@ -381,6 +390,22 @@ class InferTests(FreshTests):
         subst, ty = infer_w(Apply(func, arg), {})
         self.assertEqual(subst, {"a0": IntType, "a2": func_type(TyVar("a1"), IntType)})
         self.assertEqual(ty, func_type(TyVar("a1"), IntType))
+
+    def test_binop_add_constrains_int(self) -> None:
+        expr = Binop(BinopKind.ADD, Var("x"), Var("y"))
+        subst, ty = infer_w(
+            expr,
+            {
+                "x": Forall([], TyVar("a")),
+                "y": Forall([], TyVar("b")),
+                "+": Forall([], func_type(IntType, IntType, IntType)),
+            },
+        )
+        self.assertEqual(
+            subst,
+            {"a": IntType, "a0": func_type(IntType, IntType), "b": IntType, "a1": IntType},
+        )
+        self.assertEqual(ty, IntType)
 
 
 if __name__ == "__main__":

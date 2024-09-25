@@ -407,6 +407,15 @@ class InferTests(FreshTests):
         )
         self.assertEqual(ty, IntType)
 
+    def test_binop_add_function_constrains_int(self) -> None:
+        expr = Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))
+        subst, ty = infer_w(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
+        self.assertEqual(
+            subst,
+            {"a0": IntType, "a2": func_type(IntType, IntType), "a1": IntType, "a3": IntType},
+        )
+        self.assertEqual(ty, func_type(IntType, IntType, IntType))
+
 
 if __name__ == "__main__":
     unittest.main()

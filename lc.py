@@ -375,6 +375,13 @@ class InferTests(FreshTests):
         self.assertEqual(subst, {"a0": IntType, "a1": IntType})
         self.assertEqual(ty, IntType)
 
+    def test_apply_two_arg_returns_function(self) -> None:
+        func = Function(Var("x"), Function(Var("y"), Var("x")))
+        arg = Int(123)
+        subst, ty = infer_w(Apply(func, arg), {})
+        self.assertEqual(subst, {"a0": IntType, "a2": func_type(TyVar("a1"), IntType)})
+        self.assertEqual(ty, func_type(TyVar("a1"), IntType))
+
 
 if __name__ == "__main__":
     unittest.main()

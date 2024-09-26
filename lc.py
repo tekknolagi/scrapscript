@@ -17,11 +17,11 @@ from scrapscript import (
 
 
 @dataclasses.dataclass
-class Ty:
-    forwarded: Ty | None = dataclasses.field(init=False, default=None)
+class MonoType:
+    forwarded: MonoType | None = dataclasses.field(init=False, default=None)
 
-    def find(self) -> Ty:
-        result: Ty = self
+    def find(self) -> MonoType:
+        result: MonoType = self
         while isinstance(result, TyVar):
             it = result.forwarded
             if it is None:
@@ -29,14 +29,9 @@ class Ty:
             result = it
         return result
 
-    def _set_forwarded(self, other: Ty) -> None:
+    def _set_forwarded(self, other: MonoType) -> None:
         assert type(self) == type(other)
         assert self == other, f"{self} != {other}"
-
-
-@dataclasses.dataclass
-class MonoType(Ty):
-    pass
 
 
 @dataclasses.dataclass
@@ -46,10 +41,10 @@ class TyVar(MonoType):
     def __repr__(self) -> str:
         return f"'{self.name}"
 
-    def make_equal_to(self, other: Ty) -> None:
+    def make_equal_to(self, other: MonoType) -> None:
         self.find()._set_forwarded(other)
 
-    def _set_forwarded(self, other: Ty) -> None:
+    def _set_forwarded(self, other: MonoType) -> None:
         self.forwarded = other
 
 
@@ -65,7 +60,7 @@ class TyCon(MonoType):
 
 
 @dataclasses.dataclass
-class Forall(Ty):
+class Forall:
     tyvars: list[TyVar]
     ty: MonoType
 
@@ -106,21 +101,23 @@ def tuple_type(*args: MonoType) -> TyCon:
     return TyCon("*", list(args))
 
 
-def ftv_ty(ty: Ty) -> set[str]:
+def ftv_ty(ty: MonoType) -> set[str]:
     if isinstance(ty, TyVar):
         return {ty.name}
     if isinstance(ty, TyCon):
         return set().union(*map(ftv_ty, ty.args))
-    if isinstance(ty, Forall):
-        return ftv_ty(ty.ty) - set(tyvar.name for tyvar in ty.tyvars)
     raise TypeError(f"Unknown type: {ty}")
+
+
+def ftv_scheme(ty: Forall) -> set[str]:
+    return ftv_ty(ty.ty) - set(tyvar.name for tyvar in ty.tyvars)
 
 
 Context = typing.Mapping[str, Forall]
 
 
 def ftv_ctx(ctx: Context) -> set[str]:
-    return set().union(*(ftv_ty(scheme) for scheme in ctx.values()))
+    return set().union(*(ftv_scheme(scheme) for scheme in ctx.values()))
 
 
 class FtvTest(unittest.TestCase):
@@ -134,8 +131,8 @@ class FtvTest(unittest.TestCase):
         self.assertEqual(ftv_ty(TyCon("->", [TyVar("a"), TyVar("b")])), {"a", "b"})
 
     def test_forall(self) -> None:
-        self.assertEqual(ftv_ty(Forall([TyVar("a"), TyVar("b")], TyVar("a"))), set())
-        self.assertEqual(ftv_ty(Forall([TyVar("a"), TyVar("b")], TyVar("c"))), {"c"})
+        self.assertEqual(ftv_scheme(Forall([TyVar("a"), TyVar("b")], TyVar("a"))), set())
+        self.assertEqual(ftv_scheme(Forall([TyVar("a"), TyVar("b")], TyVar("c"))), {"c"})
 
     def test_context(self) -> None:
         self.assertEqual(ftv_ctx({"id": IdFunc}), set())
@@ -225,7 +222,7 @@ class FreshTests(unittest.TestCase):
         self.assertEqual(fresh_tyvar(), TyVar("t0"))
         self.assertEqual(fresh_tyvar("x"), TyVar("x1"))
 
-    def assertTyEqual(self, l: Ty, r: Ty) -> bool:
+    def assertTyEqual(self, l: MonoType, r: MonoType) -> bool:
         l = l.find()
         r = r.find()
         if isinstance(l, TyVar) and isinstance(r, TyVar):
@@ -240,8 +237,10 @@ class FreshTests(unittest.TestCase):
             for l_arg, r_arg in zip(l.args, r.args):
                 self.assertTyEqual(l_arg, r_arg)
             return True
-        if isinstance(l, Forall) or isinstance(r, Forall):
-            raise NotImplementedError
+        # if isinstance(l, Forall) and isinstance(r, Forall):
+        #     if l.tyvars != r.tyvars:
+        #         self.fail(f"Type mismatch: {l} != {r}")
+        #     return self.assertTyEqual(l.ty, r.ty)
         self.fail(f"Type mismatch: {l} != {r}")
 
 
@@ -461,7 +460,7 @@ class InferWTests(FreshTests):
         )
 
 
-def unify_j(ty1: Ty, ty2: Ty) -> None:
+def unify_j(ty1: MonoType, ty2: MonoType) -> None:
     ty1 = ty1.find()
     ty2 = ty2.find()
     if isinstance(ty1, TyVar):
@@ -556,7 +555,7 @@ def infer_j(expr: Object, ctx: Context) -> TyVar:
 
 
 class InferWSBSTests(FreshTests):
-    def infer(self, expr: Object, ctx: Context) -> Ty:
+    def infer(self, expr: Object, ctx: Context) -> MonoType:
         _, ty = infer_w(expr, ctx)
         return ty
 

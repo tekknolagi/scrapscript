@@ -347,7 +347,7 @@ def infer_w(expr: Object, ctx: Context) -> tuple[Subst, MonoType]:
     raise TypeError(f"Unexpected type {type(expr)}")
 
 
-class InferTests(FreshTests):
+class InferWTests(FreshTests):
     def test_unbound_var(self) -> None:
         with self.assertRaisesRegex(TypeError, "Unbound variable"):
             infer_w(Var("a"), {})

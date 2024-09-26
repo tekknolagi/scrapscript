@@ -509,7 +509,10 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
             varname = gensym()
             l = Function(Var(varname), Apply(l, Apply(r, Var(varname))))
         elif op == Operator("."):
-            l = Where(l, parse(tokens, pr))
+            r = parse(tokens, pr)
+            if not isinstance(r, Assign):
+                raise ParseError(f"expected assignment in where clause but got {r!r}")
+            l = Where(l, r)
         elif op == Operator("?"):
             l = Assert(l, parse(tokens, pr))
         elif op == Operator("@"):
@@ -685,7 +688,7 @@ class Apply(Object):
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Where(Object):
     body: Object
-    binding: Object
+    binding: Assign
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -1109,6 +1112,8 @@ class Deserializer:
             assert not is_ref
             body = self.parse()
             binding = self.parse()
+            if not isinstance(binding, Assign):
+                raise ParseError(f"expected assignment in where clause but got {binding!r}")
             return Where(body, binding)
         if ty == TYPE_ACCESS:
             assert not is_ref
@@ -1312,7 +1317,6 @@ def free_in(exp: Object) -> Set[str]:
         # (possibly extra) freevar.
         return free_in(exp.obj) | free_in(exp.at)
     if isinstance(exp, Where):
-        assert isinstance(exp.binding, Assign)
         return (free_in(exp.body) - {exp.binding.name.name}) | free_in(exp.binding)
     if isinstance(exp, Assign):
         return free_in(exp.value)
@@ -1366,7 +1370,6 @@ def eval_exp(env: Env, exp: Object) -> Object:
             value = improve_closure(value)
         return EnvObject({**env, exp.name.name: value})
     if isinstance(exp, Where):
-        assert isinstance(exp.binding, Assign)
         res_env = eval_exp(env, exp.binding)
         assert isinstance(res_env, EnvObject)
         new_env = {**env, **res_env.env}
@@ -2046,12 +2049,27 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse([Name("f"), Name("a"), Name("b")]), Apply(Apply(Var("f"), Var("a")), Var("b")))
 
     def test_parse_where(self) -> None:
-        self.assertEqual(parse([Name("a"), Operator("."), Name("b")]), Where(Var("a"), Var("b")))
+        self.assertEqual(
+            parse([Name("a"), Operator("."), Name("b"), Operator("="), Name("c")]),
+            Where(Var("a"), Assign(Var("b"), Var("c"))),
+        )
 
     def test_parse_nested_where(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator("."), Name("b"), Operator("."), Name("c")]),
-            Where(Where(Var("a"), Var("b")), Var("c")),
+            parse(
+                [
+                    Name("a"),
+                    Operator("."),
+                    Name("b"),
+                    Operator("="),
+                    Name("c"),
+                    Operator("."),
+                    Name("d"),
+                    Operator("="),
+                    Name("e"),
+                ]
+            ),
+            Where(Where(Var("a"), Assign(Var("b"), Var("c"))), Assign(Var("d"), Var("e"))),
         )
 
     def test_parse_assert(self) -> None:
@@ -2065,8 +2083,8 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_mixed_assert_where(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator("?"), Name("b"), Operator("."), Name("c")]),
-            Where(Assert(Var("a"), Var("b")), Var("c")),
+            parse([Name("a"), Operator("?"), Name("b"), Operator("."), Name("c"), Operator("="), Name("d")]),
+            Where(Assert(Var("a"), Var("b")), Assign(Var("c"), Var("d"))),
         )
 
     def test_parse_hastype(self) -> None:
@@ -2156,8 +2174,8 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_right_eval_with_defs_returns_binop(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator("!"), Name("b"), Operator("."), Name("c")]),
-            Binop(BinopKind.RIGHT_EVAL, Var("a"), Where(Var("b"), Var("c"))),
+            parse([Name("a"), Operator("!"), Name("b"), Operator("."), Name("c"), Operator("="), Name("d")]),
+            Binop(BinopKind.RIGHT_EVAL, Var("a"), Where(Var("b"), Assign(Var("c"), Var("d")))),
         )
 
     def test_parse_match_no_cases_raises_parse_error(self) -> None:
@@ -4077,8 +4095,8 @@ class SerializerTests(unittest.TestCase):
         self.assertEqual(self._serialize(obj), TYPE_APPLY + b"v\x02fv\x02x")
 
     def test_where(self) -> None:
-        obj = Where(Var("a"), Var("b"))
-        self.assertEqual(self._serialize(obj), TYPE_WHERE + b"v\x02av\x02b")
+        obj = Where(Var("a"), Assign(Var("a"), Var("b")))
+        self.assertEqual(self._serialize(obj), TYPE_WHERE + b"v\x02a=v\x02av\x02b")
 
     def test_access(self) -> None:
         obj = Access(Var("a"), Var("b"))
@@ -4189,7 +4207,7 @@ class RoundTripSerializationTests(unittest.TestCase):
         self._rt(Apply(Var("f"), Var("x")))
 
     def test_where(self) -> None:
-        self._rt(Where(Var("a"), Var("b")))
+        self._rt(Where(Var("a"), Assign(Var("a"), Var("b"))))
 
     def test_access(self) -> None:
         self._rt(Access(Var("a"), Var("b")))

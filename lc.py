@@ -5,6 +5,7 @@ import typing
 from scrapscript import (
     Object,
     Int,
+    Float,
     Var,
     Function,
     Apply,
@@ -74,6 +75,7 @@ class Forall(Ty):
 
 UnitType = TyCon("()", [])
 IntType = TyCon("int", [])
+FloatType = TyCon("float", [])
 BoolType = TyCon("bool", [])
 IdFunc = Forall([TyVar("a")], TyCon("->", [TyVar("a"), TyVar("a")]))
 NotFunc = TyCon("->", [BoolType, BoolType])
@@ -366,6 +368,8 @@ def infer_w(expr: Object, ctx: Context) -> tuple[Subst, MonoType]:
         return {}, instantiate(scheme)
     if isinstance(expr, Int):
         return {}, IntType
+    if isinstance(expr, Float):
+        return {}, FloatType
     if isinstance(expr, Function):
         arg_tyvar = fresh_tyvar("a")
         assert isinstance(expr.arg, Var)
@@ -382,6 +386,17 @@ def infer_w(expr: Object, ctx: Context) -> tuple[Subst, MonoType]:
         left, right = expr.left, expr.right
         op = Var(BinopKind.to_str(expr.op))
         return infer_w(Apply(Apply(op, left), right), ctx)
+    if isinstance(expr, Where):
+        name, value, body = expr.binding.name, expr.binding.value, expr.body
+        s1, ty1 = infer_w(value, ctx)
+        ctx1 = dict(ctx)  # copy
+        assert ctx1 is not ctx
+        # TODO(max): Figure out why we remove the name here
+        ctx1.pop(name.name, None)
+        scheme = generalize(ty1, apply_ctx(ctx1, s1))
+        ctx2 = {**ctx, name.name: scheme}
+        s2, ty2 = infer_w(body, apply_ctx(ctx2, s1))
+        return compose(s2, s1), ty2
     raise TypeError(f"Unexpected type {type(expr)}")
 
 
@@ -597,6 +612,28 @@ class InferWSBSTests(FreshTests):
         expr = Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))
         ty = self.infer(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
         self.assertTyEqual(ty, func_type(IntType, IntType, IntType))
+
+    def test_let(self) -> None:
+        expr = Where(Var("f"), Assign(Var("f"), Function(Var("x"), Var("x"))))
+        ty = self.infer(expr, {})
+        self.assertTyEqual(ty, func_type(TyVar("t1"), TyVar("t1")))
+
+    def test_apply_monotype_to_different_types_raises(self) -> None:
+        expr = Where(
+            Where(Var("x"), Assign(Var("x"), Apply(Var("f"), Int(123)))),
+            Assign(Var("y"), Apply(Var("f"), Float(123.0))),
+        )
+        ctx = {"f": Forall([], func_type(TyVar("a"), TyVar("a")))}
+        with self.assertRaisesRegex(TypeError, "Unification failed"):
+            self.infer(expr, ctx)
+
+    def test_apply_polytype_to_different_types(self) -> None:
+        expr = Where(
+            Where(Var("x"), Assign(Var("x"), Apply(Var("f"), Int(123)))),
+            Assign(Var("y"), Apply(Var("f"), Float(123.0))),
+        )
+        ty = self.infer(expr, {"f": Forall([TyVar("a")], func_type(TyVar("a"), TyVar("a")))})
+        self.assertTyEqual(ty, IntType)
 
 
 class InferJSBSTests(FreshTests):

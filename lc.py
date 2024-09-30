@@ -15,6 +15,7 @@ from scrapscript import (
     BinopKind,
     MatchFunction,
     MatchCase,
+    List,
     parse,
     tokenize,
 )
@@ -584,6 +585,13 @@ def infer_j(expr: Object, ctx: Context) -> TyVar:
         body_ty = infer_j(body, {**ctx, name: value_scheme})
         unify_j(result, body_ty)
         return result
+    if isinstance(expr, List):
+        list_item_ty = fresh_tyvar("a")
+        for item in expr.items:
+            item_ty = infer_j(item, ctx)
+            unify_j(list_item_ty, item_ty)
+        unify_j(result, TyCon("list", [list_item_ty]))
+        return result
     if isinstance(expr, MatchFunction):
         for case in expr.cases:
             case_ty = infer_j(case, ctx)
@@ -716,6 +724,21 @@ class InferJSBSTests(FreshTests):
         arg = Int(123)
         ty = infer_j(Apply(func, arg), {}).find()
         self.assertTyEqual(ty, func_type(TyVar("a4"), IntType))
+
+    def test_empty_list(self) -> None:
+        expr = List([])
+        ty = infer_j(expr, {})
+        self.assertTyEqual(ty, TyCon("list", [TyVar("a1")]))
+
+    def test_list_int(self) -> None:
+        expr = List([Int(123)])
+        ty = infer_j(expr, {})
+        self.assertTyEqual(ty, TyCon("list", [IntType]))
+
+    def test_list_mismatch(self) -> None:
+        expr = List([Int(123), Float(123.0)])
+        with self.assertRaisesRegex(TypeError, "Unification failed"):
+            infer_j(expr, {})
 
     def test_binop_add_constrains_int(self) -> None:
         expr = Binop(BinopKind.ADD, Var("x"), Var("y"))

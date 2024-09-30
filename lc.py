@@ -35,8 +35,7 @@ class MonoType:
         return result
 
     def _set_forwarded(self, other: MonoType) -> None:
-        assert type(self) == type(other)
-        assert self == other, f"{self} != {other}"
+        raise NotImplementedError
 
 
 @dataclasses.dataclass

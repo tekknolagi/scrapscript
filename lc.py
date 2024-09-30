@@ -852,6 +852,18 @@ class InferJSBSTests(FreshTests):
                 })
         self.assertTyEqual(ty, func_type(list_type(IntType), IntType))
 
+    def test_match_list_to_list(self) -> None:
+        expr = parse(tokenize("| [] -> [] | x -> x"))
+        ty = infer_j(expr, {})
+        self.assertTyEqual(ty, func_type(list_type(TyVar("a3")),
+                                         list_type(TyVar("a3"))))
+
+    def test_match_list_int_to_list(self) -> None:
+        expr = parse(tokenize("| [] -> [3] | x -> x"))
+        ty = infer_j(expr, {})
+        self.assertTyEqual(ty, func_type(list_type(IntType),
+                                         list_type(IntType)))
+
     # def test_inc(self) -> None:
     #     expr = parse(tokenize("inc . inc = | 0 -> 1 | 1 -> 2 | a -> a + 1"))
     #     ty = infer_j(expr, {})

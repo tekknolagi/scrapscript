@@ -102,6 +102,10 @@ def func_type(*args: MonoType) -> TyCon:
     return TyCon("->", [args[0], func_type(*args[1:])])
 
 
+def list_type(arg: MonoType) -> TyCon:
+    return TyCon("list", [arg])
+
+
 def tuple_type(*args: MonoType) -> TyCon:
     return TyCon("*", list(args))
 
@@ -545,6 +549,11 @@ def collect_vars_in_pattern(pattern: Object) -> Context:
         return {}
     if isinstance(pattern, Var):
         return {pattern.name: Forall([], fresh_tyvar())}
+    if isinstance(pattern, List):
+        result = {}
+        for item in pattern.items:
+            result.update(collect_vars_in_pattern(item))
+        return result
     raise TypeError(f"Unexpected type {type(pattern)}")
 
 
@@ -590,7 +599,7 @@ def infer_j(expr: Object, ctx: Context) -> TyVar:
         for item in expr.items:
             item_ty = infer_j(item, ctx)
             unify_j(list_item_ty, item_ty)
-        unify_j(result, TyCon("list", [list_item_ty]))
+        unify_j(result, list_type(list_item_ty))
         return result
     if isinstance(expr, MatchFunction):
         for case in expr.cases:
@@ -822,6 +831,27 @@ class InferJSBSTests(FreshTests):
                 "+": Forall([], func_type(IntType, IntType, IntType)),
                 })
         self.assertTyEqual(ty, func_type(IntType, IntType))
+
+    def test_match_list_of_int(self) -> None:
+        expr = parse(tokenize("| [x] -> x + 1"))
+        ty = infer_j(expr, {
+                "+": Forall([], func_type(IntType, IntType, IntType)),
+                })
+        self.assertTyEqual(ty, func_type(list_type(IntType), IntType))
+
+    def test_match_list_of_int_to_list(self) -> None:
+        expr = parse(tokenize("| [x] -> [x + 1]"))
+        ty = infer_j(expr, {
+                "+": Forall([], func_type(IntType, IntType, IntType)),
+                })
+        self.assertTyEqual(ty, func_type(list_type(IntType), list_type(IntType)))
+
+    def test_match_list_of_int_to_list(self) -> None:
+        expr = parse(tokenize("| [] -> 0 | [x] -> 1 | [x, y] -> x+y"))
+        ty = infer_j(expr, {
+                "+": Forall([], func_type(IntType, IntType, IntType)),
+                })
+        self.assertTyEqual(ty, func_type(list_type(IntType), IntType))
 
     # def test_inc(self) -> None:
     #     expr = parse(tokenize("inc . inc = | 0 -> 1 | 1 -> 2 | a -> a + 1"))

@@ -549,7 +549,7 @@ def collect_vars_in_pattern(pattern: Object) -> Context:
     if isinstance(pattern, Var):
         return {pattern.name: Forall([], fresh_tyvar())}
     if isinstance(pattern, List):
-        result = {}
+        result: dict[str, Forall] = {}
         for item in pattern.items:
             result.update(collect_vars_in_pattern(item))
         return result
@@ -824,7 +824,7 @@ class InferJSBSTests(FreshTests):
                 })
         self.assertTyEqual(ty, func_type(IntType, IntType))
 
-    def test_match_var(self) -> None:
+    def test_match_int_var(self) -> None:
         expr = parse(tokenize("| 0 -> 1 | x -> x"))
         ty = infer_j(expr, {
                 "+": Forall([], func_type(IntType, IntType, IntType)),
@@ -845,7 +845,7 @@ class InferJSBSTests(FreshTests):
                 })
         self.assertTyEqual(ty, func_type(list_type(IntType), list_type(IntType)))
 
-    def test_match_list_of_int_to_list(self) -> None:
+    def test_match_list_of_int_to_int(self) -> None:
         expr = parse(tokenize("| [] -> 0 | [x] -> 1 | [x, y] -> x+y"))
         ty = infer_j(expr, {
                 "+": Forall([], func_type(IntType, IntType, IntType)),

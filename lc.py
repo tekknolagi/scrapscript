@@ -13,6 +13,10 @@ from scrapscript import (
     Assign,
     Binop,
     BinopKind,
+    MatchFunction,
+    MatchCase,
+    parse,
+    tokenize,
 )
 
 
@@ -535,6 +539,14 @@ def recursive_find(ty: MonoType) -> MonoType:
     raise TypeError(type(ty))
 
 
+def collect_vars_in_pattern(pattern: Object) -> Context:
+    if isinstance(pattern, (Int, Float)):
+        return {}
+    if isinstance(pattern, Var):
+        return {pattern.name: Forall([], fresh_tyvar())}
+    raise TypeError(f"Unexpected type {type(pattern)}")
+
+
 def infer_j(expr: Object, ctx: Context) -> TyVar:
     result = fresh_tyvar()
     if isinstance(expr, Var):
@@ -571,6 +583,18 @@ def infer_j(expr: Object, ctx: Context) -> TyVar:
         value_scheme = generalize(recursive_find(value_ty), ctx)
         body_ty = infer_j(body, {**ctx, name: value_scheme})
         unify_j(result, body_ty)
+        return result
+    if isinstance(expr, MatchFunction):
+        for case in expr.cases:
+            case_ty = infer_j(case, ctx)
+            unify_j(result, case_ty)
+        return result
+    if isinstance(expr, MatchCase):
+        pattern_ctx = collect_vars_in_pattern(expr.pattern)
+        body_ctx = {**ctx, **pattern_ctx}
+        pattern_ty = infer_j(expr.pattern, body_ctx)
+        body_ty = infer_j(expr.body, body_ctx)
+        unify_j(result, func_type(pattern_ty, body_ty))
         return result
     raise TypeError(f"Unexpected type {type(expr)}")
 
@@ -736,6 +760,50 @@ class InferJSBSTests(FreshTests):
         ctx = {"f": Forall([], func_type(TyVar("a"), TyVar("a")))}
         with self.assertRaisesRegex(TypeError, "Unification failed"):
             infer_j(expr, ctx)
+
+    # def test_recursive(self) -> None:
+    #     expr = parse(tokenize("fact . fact = | 0 -> 1 | n -> n * fact (n-1)"))
+    #     ty = infer_j(expr, {})
+    #     self.assertTyEqual(ty, func_type(IntType, IntType))
+
+    def test_match_int_int(self) -> None:
+        expr = parse(tokenize("| 0 -> 1"))
+        ty = infer_j(expr, {})
+        self.assertTyEqual(ty, func_type(IntType, IntType))
+
+    def test_match_int_int_two_cases(self) -> None:
+        expr = parse(tokenize("| 0 -> 1 | 1 -> 2"))
+        ty = infer_j(expr, {})
+        self.assertTyEqual(ty, func_type(IntType, IntType))
+
+    def test_match_int_int_int_float(self) -> None:
+        expr = parse(tokenize("| 0 -> 1 | 1 -> 2.0"))
+        with self.assertRaisesRegex(TypeError, "Unification failed"):
+            infer_j(expr, {})
+
+    def test_match_int_int_float_int(self) -> None:
+        expr = parse(tokenize("| 0 -> 1 | 1.0 -> 2"))
+        with self.assertRaisesRegex(TypeError, "Unification failed"):
+            infer_j(expr, {})
+
+    def test_match_var(self) -> None:
+        expr = parse(tokenize("| x -> x + 1"))
+        ty = infer_j(expr, {
+                "+": Forall([], func_type(IntType, IntType, IntType)),
+                })
+        self.assertTyEqual(ty, func_type(IntType, IntType))
+
+    def test_match_var(self) -> None:
+        expr = parse(tokenize("| 0 -> 1 | x -> x"))
+        ty = infer_j(expr, {
+                "+": Forall([], func_type(IntType, IntType, IntType)),
+                })
+        self.assertTyEqual(ty, func_type(IntType, IntType))
+
+    # def test_inc(self) -> None:
+    #     expr = parse(tokenize("inc . inc = | 0 -> 1 | 1 -> 2 | a -> a + 1"))
+    #     ty = infer_j(expr, {})
+    #     self.assertTyEqual(ty, func_type(IntType, IntType))
 
 
 if __name__ == "__main__":

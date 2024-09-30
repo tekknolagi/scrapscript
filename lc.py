@@ -38,7 +38,7 @@ class MonoType:
 class TyVar(MonoType):
     name: str
 
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         return f"'{self.name}"
 
     def make_equal_to(self, other: MonoType) -> None:
@@ -53,10 +53,10 @@ class TyCon(MonoType):
     name: str
     args: list[MonoType]
 
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         if not self.args:
             return self.name
-        return f"({self.name.join(map(repr, self.args))})"
+        return f"({self.name.join(map(str, self.args))})"
 
 
 @dataclasses.dataclass
@@ -64,8 +64,8 @@ class Forall:
     tyvars: list[TyVar]
     ty: MonoType
 
-    def __repr__(self) -> str:
-        return f"(forall {', '.join(map(repr, self.tyvars))}. {self.ty})"
+    def __str__(self) -> str:
+        return f"(forall {', '.join(map(str, self.tyvars))}. {self.ty})"
 
 
 UnitType = TyCon("()", [])
@@ -76,18 +76,18 @@ IdFunc = Forall([TyVar("a")], TyCon("->", [TyVar("a"), TyVar("a")]))
 NotFunc = TyCon("->", [BoolType, BoolType])
 
 
-class ReprTest(unittest.TestCase):
+class StrTest(unittest.TestCase):
     def test_tyvar(self) -> None:
-        self.assertEqual(repr(TyVar("a")), "'a")
+        self.assertEqual(str(TyVar("a")), "'a")
 
     def test_tycon(self) -> None:
-        self.assertEqual(repr(TyCon("int", [])), "int")
+        self.assertEqual(str(TyCon("int", [])), "int")
 
     def test_tycon_args(self) -> None:
-        self.assertEqual(repr(TyCon("->", [IntType, IntType])), "(int->int)")
+        self.assertEqual(str(TyCon("->", [IntType, IntType])), "(int->int)")
 
     def test_forall(self) -> None:
-        self.assertEqual(repr(Forall([TyVar("a"), TyVar("b")], TyVar("a"))), "(forall 'a, 'b. 'a)")
+        self.assertEqual(str(Forall([TyVar("a"), TyVar("b")], TyVar("a"))), "(forall 'a, 'b. 'a)")
 
 
 def func_type(*args: MonoType) -> TyCon:

@@ -524,6 +524,17 @@ class UnifyJTests(FreshTests):
         self.assertIsNot(a.find(), b.find())
 
 
+def recursive_find(ty: MonoType) -> MonoType:
+    if isinstance(ty, TyVar):
+        found = ty.find()
+        if ty is found:
+            return found
+        return recursive_find(found)
+    if isinstance(ty, TyCon):
+        return TyCon(ty.name, [recursive_find(arg) for arg in ty.args])
+    raise TypeError(type(ty))
+
+
 def infer_j(expr: Object, ctx: Context) -> TyVar:
     result = fresh_tyvar()
     if isinstance(expr, Var):
@@ -535,6 +546,9 @@ def infer_j(expr: Object, ctx: Context) -> TyVar:
     if isinstance(expr, Int):
         unify_j(result, IntType)
         return result
+    if isinstance(expr, Float):
+        unify_j(result, FloatType)
+        return result
     if isinstance(expr, Function):
         arg_tyvar = fresh_tyvar("a")
         assert isinstance(expr.arg, Var)
@@ -545,12 +559,19 @@ def infer_j(expr: Object, ctx: Context) -> TyVar:
     if isinstance(expr, Apply):
         func_ty = infer_j(expr.func, ctx)
         arg_ty = infer_j(expr.arg, ctx)
-        unify_j(func_ty, TyCon("->", [arg_ty, result]))
+        unify_j(func_ty, func_type(arg_ty, result))
         return result
     if isinstance(expr, Binop):
         left, right = expr.left, expr.right
         op = Var(BinopKind.to_str(expr.op))
         return infer_j(Apply(Apply(op, left), right), ctx)
+    if isinstance(expr, Where):
+        name, value, body = expr.binding.name.name, expr.binding.value, expr.body
+        value_ty = infer_j(value, ctx)
+        value_scheme = generalize(recursive_find(value_ty), ctx)
+        body_ty = infer_j(body, {**ctx, name: value_scheme})
+        unify_j(result, body_ty)
+        return result
     raise TypeError(f"Unexpected type {type(expr)}")
 
 
@@ -688,6 +709,33 @@ class InferJSBSTests(FreshTests):
         expr = Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))
         ty = infer_j(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
         self.assertTyEqual(ty, func_type(IntType, IntType, IntType))
+
+    def test_id(self) -> None:
+        expr = Function(Var("x"), Var("x"))
+        ty = infer_j(expr, {})
+        self.assertTyEqual(ty, func_type(TyVar("a1"), TyVar("a1")))
+
+    def test_let(self) -> None:
+        expr = Where(Var("f"), Assign(Var("f"), Function(Var("x"), Var("x"))))
+        ty = infer_j(expr, {})
+        self.assertTyEqual(ty, func_type(TyVar("t5"), TyVar("t5")))
+
+    def test_apply_polytype_to_different_types(self) -> None:
+        expr = Where(
+            Where(Var("x"), Assign(Var("x"), Apply(Var("f"), Int(123)))),
+            Assign(Var("y"), Apply(Var("f"), Float(123.0))),
+        )
+        ty = infer_j(expr, {"f": Forall([TyVar("a")], func_type(TyVar("a"), TyVar("a")))})
+        self.assertTyEqual(ty, IntType)
+
+    def test_apply_monotype_to_different_types_raises(self) -> None:
+        expr = Where(
+            Where(Var("x"), Assign(Var("x"), Apply(Var("f"), Int(123)))),
+            Assign(Var("y"), Apply(Var("f"), Float(123.0))),
+        )
+        ctx = {"f": Forall([], func_type(TyVar("a"), TyVar("a")))}
+        with self.assertRaisesRegex(TypeError, "Unification failed"):
+            infer_j(expr, ctx)
 
 
 if __name__ == "__main__":

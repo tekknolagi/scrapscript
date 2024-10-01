@@ -644,7 +644,13 @@ def infer_j(expr: Object, ctx: Context) -> TyVar:
         return infer_j(Apply(Apply(op, left), right), ctx)
     if isinstance(expr, Where):
         name, value, body = expr.binding.name.name, expr.binding.value, expr.body
-        value_ty = infer_j(value, ctx)
+        if isinstance(value, (Function, MatchFunction)):
+            # Letrec
+            func_ty = fresh_tyvar()
+            value_ty = infer_j(value, {**ctx, name: Forall([], func_ty)})
+        else:
+            # Let
+            value_ty = infer_j(value, ctx)
         value_scheme = generalize(recursive_find(value_ty), ctx)
         body_ty = infer_j(body, {**ctx, name: value_scheme})
         unify_j(result, body_ty)
@@ -911,6 +917,18 @@ class InferJSBSTests(FreshTests):
                 "+": Forall([], func_type(IntType, IntType, IntType)),
                 })
         self.assertTyEqual(ty, func_type(list_type(IntType), IntType))
+
+    def test_recursive(self) -> None:
+        expr = parse(tokenize("""
+        length
+        . length =
+        | [] -> 0
+        | [x, ...xs] -> 1 + length xs
+        """))
+        ty = infer_j(expr, {
+            "+": Forall([], func_type(IntType, IntType, IntType)),
+        })
+        self.assertTyEqual(ty, func_type(list_type(TyVar("t22")), IntType))
 
     def test_match_list_to_list(self) -> None:
         expr = parse(tokenize("| [] -> [] | x -> x"))

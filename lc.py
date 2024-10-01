@@ -61,6 +61,8 @@ class TyCon(MonoType):
     def __str__(self) -> str:
         if not self.args:
             return self.name
+        if len(self.args) == 1:
+            return f"({self.args[0]} {self.name})"
         return f"({self.name.join(map(str, self.args))})"
 
 
@@ -96,6 +98,9 @@ class StrTest(unittest.TestCase):
 
     def test_tycon(self) -> None:
         self.assertEqual(str(TyCon("int", [])), "int")
+
+    def test_tycon_one_arg(self) -> None:
+        self.assertEqual(str(TyCon("list", [IntType])), "(int list)")
 
     def test_tycon_args(self) -> None:
         self.assertEqual(str(TyCon("->", [IntType, IntType])), "(int->int)")

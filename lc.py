@@ -70,7 +70,7 @@ class TyRecord(MonoType):
     rest: TyVar = dataclasses.field(default_factory=lambda: fresh_tyvar("r"))
 
     def __str__(self) -> str:
-        return f"{{{', '.join(f'{name}: {ty}' for name, ty in self.fields.items())}}}+{self.rest.find()}"
+        return f"{{{', '.join(f'{name}: {ty}' for name, ty in self.fields.items())}}}+{self.rest}"
 
 
 @dataclasses.dataclass

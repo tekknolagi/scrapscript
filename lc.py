@@ -858,10 +858,13 @@ class InferJSBSTests(FreshTests):
         with self.assertRaisesRegex(TypeError, "Unification failed"):
             infer_j(expr, ctx)
 
-    # def test_recursive(self) -> None:
-    #     expr = parse(tokenize("fact . fact = | 0 -> 1 | n -> n * fact (n-1)"))
-    #     ty = infer_j(expr, {})
-    #     self.assertTyEqual(ty, func_type(IntType, IntType))
+    def test_recursive_fact(self) -> None:
+        expr = parse(tokenize("fact . fact = | 0 -> 1 | n -> n * fact (n-1)"))
+        ty = infer_j(expr, {
+            "*" : Forall([], func_type(IntType, IntType, IntType)),
+            "-": Forall([], func_type(IntType, IntType, IntType)),
+        })
+        self.assertTyEqual(ty, func_type(IntType, IntType))
 
     def test_match_int_int(self) -> None:
         expr = parse(tokenize("| 0 -> 1"))

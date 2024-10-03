@@ -40,15 +40,9 @@ class MonoType:
         raise NotImplementedError
 
 
-ALL_TYVARS = []
-
-
 @dataclasses.dataclass
 class TyVar(MonoType):
     name: str
-
-    def __post_init__(self) -> None:
-        ALL_TYVARS.append(self)
 
     def __str__(self) -> str:
         return f"'{self.name}"

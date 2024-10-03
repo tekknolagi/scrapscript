@@ -631,14 +631,6 @@ def render_graphviz(label: str) -> None:
     global FRAME_IDX
     result = "digraph G {"
     result += f'label={label};'
-    # subgraphs = set(var.find() for var in ALL_TYVARS)
-    # for subgraph in subgraphs:
-    #     result += f"subgraph cluster_{subgraph.name} {{"
-    #     # result += f'label="{subgraph.name}";'
-    #     for var in ALL_TYVARS:
-    #         if var.find() is subgraph:
-    #             result += f'"{var.name}";'
-    #     result += "}"
     for var in ALL_TYVARS:
         if var.forwarded is None:
             result += f'"{var}";'

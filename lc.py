@@ -276,10 +276,6 @@ class FreshTests(unittest.TestCase):
             for name in l.fields:
                 self.assertTyEqual(l.fields[name], r.fields[name])
             return True
-        # if isinstance(l, Forall) and isinstance(r, Forall):
-        #     if l.tyvars != r.tyvars:
-        #         self.fail(f"Type mismatch: {l} != {r}")
-        #     return self.assertTyEqual(l.ty, r.ty)
         self.fail(f"Type mismatch: {l} != {r}")
 
 

@@ -873,10 +873,13 @@ class InferJSBSTests(FreshTests):
 
     def test_recursive_fact(self) -> None:
         expr = parse(tokenize("fact . fact = | 0 -> 1 | n -> n * fact (n-1)"))
-        ty = infer_j(expr, {
-            "*" : Forall([], func_type(IntType, IntType, IntType)),
-            "-": Forall([], func_type(IntType, IntType, IntType)),
-        })
+        ty = infer_j(
+            expr,
+            {
+                "*": Forall([], func_type(IntType, IntType, IntType)),
+                "-": Forall([], func_type(IntType, IntType, IntType)),
+            },
+        )
         self.assertTyEqual(ty, func_type(IntType, IntType))
 
     def test_match_int_int(self) -> None:
@@ -901,63 +904,81 @@ class InferJSBSTests(FreshTests):
 
     def test_match_var(self) -> None:
         expr = parse(tokenize("| x -> x + 1"))
-        ty = infer_j(expr, {
+        ty = infer_j(
+            expr,
+            {
                 "+": Forall([], func_type(IntType, IntType, IntType)),
-                })
+            },
+        )
         self.assertTyEqual(ty, func_type(IntType, IntType))
 
     def test_match_int_var(self) -> None:
         expr = parse(tokenize("| 0 -> 1 | x -> x"))
-        ty = infer_j(expr, {
+        ty = infer_j(
+            expr,
+            {
                 "+": Forall([], func_type(IntType, IntType, IntType)),
-                })
+            },
+        )
         self.assertTyEqual(ty, func_type(IntType, IntType))
 
     def test_match_list_of_int(self) -> None:
         expr = parse(tokenize("| [x] -> x + 1"))
-        ty = infer_j(expr, {
+        ty = infer_j(
+            expr,
+            {
                 "+": Forall([], func_type(IntType, IntType, IntType)),
-                })
+            },
+        )
         self.assertTyEqual(ty, func_type(list_type(IntType), IntType))
 
     def test_match_list_of_int_to_list(self) -> None:
         expr = parse(tokenize("| [x] -> [x + 1]"))
-        ty = infer_j(expr, {
+        ty = infer_j(
+            expr,
+            {
                 "+": Forall([], func_type(IntType, IntType, IntType)),
-                })
+            },
+        )
         self.assertTyEqual(ty, func_type(list_type(IntType), list_type(IntType)))
 
     def test_match_list_of_int_to_int(self) -> None:
         expr = parse(tokenize("| [] -> 0 | [x] -> 1 | [x, y] -> x+y"))
-        ty = infer_j(expr, {
+        ty = infer_j(
+            expr,
+            {
                 "+": Forall([], func_type(IntType, IntType, IntType)),
-                })
+            },
+        )
         self.assertTyEqual(ty, func_type(list_type(IntType), IntType))
 
     def test_recursive(self) -> None:
-        expr = parse(tokenize("""
+        expr = parse(
+            tokenize("""
         length
         . length =
         | [] -> 0
         -- Unfortunately broken because this was written without Spread support
         | xs -> 1 + length xs
-        """))
-        ty = infer_j(expr, {
-            "+": Forall([], func_type(IntType, IntType, IntType)),
-        })
+        """)
+        )
+        ty = infer_j(
+            expr,
+            {
+                "+": Forall([], func_type(IntType, IntType, IntType)),
+            },
+        )
         self.assertTyEqual(ty, func_type(list_type(TyVar("t19")), IntType))
 
     def test_match_list_to_list(self) -> None:
         expr = parse(tokenize("| [] -> [] | x -> x"))
         ty = infer_j(expr, {})
-        self.assertTyEqual(ty, func_type(list_type(TyVar("t3")),
-                                         list_type(TyVar("t3"))))
+        self.assertTyEqual(ty, func_type(list_type(TyVar("t3")), list_type(TyVar("t3"))))
 
     def test_match_list_int_to_list(self) -> None:
         expr = parse(tokenize("| [] -> [3] | x -> x"))
         ty = infer_j(expr, {})
-        self.assertTyEqual(ty, func_type(list_type(IntType),
-                                         list_type(IntType)))
+        self.assertTyEqual(ty, func_type(list_type(IntType), list_type(IntType)))
 
     def test_empty_record(self) -> None:
         expr = Record({})
@@ -971,16 +992,13 @@ class InferJSBSTests(FreshTests):
 
     def test_inc(self) -> None:
         expr = parse(tokenize("inc . inc = | 0 -> 1 | 1 -> 2 | a -> a + 1"))
-        ty = infer_j(expr, {
-            "+": Forall([], func_type(IntType, IntType, IntType)),
-        })
+        ty = infer_j(
+            expr,
+            {
+                "+": Forall([], func_type(IntType, IntType, IntType)),
+            },
+        )
         self.assertTyEqual(ty, func_type(IntType, IntType))
-
-def infer_bi(expr: Object, ctx: Context) -> MonoType:
-    raise TypeError(f"Unexpected type {type(expr)}")
-
-def check_bi(expr: Object, expected: MonoType, ctx: Context) -> Context:
-    raise TypeError(f"Unexpected type {type(expr)}")
 
 
 if __name__ == "__main__":

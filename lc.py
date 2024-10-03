@@ -16,6 +16,7 @@ from scrapscript import (
     MatchFunction,
     MatchCase,
     List,
+    Spread,
     Record,
     parse,
     tokenize,
@@ -39,9 +40,15 @@ class MonoType:
         raise NotImplementedError
 
 
+ALL_TYVARS = []
+
+
 @dataclasses.dataclass
 class TyVar(MonoType):
     name: str
+
+    def __post_init__(self) -> None:
+        ALL_TYVARS.append(self)
 
     def __str__(self) -> str:
         return f"'{self.name}"
@@ -69,7 +76,7 @@ class TyCon(MonoType):
 @dataclasses.dataclass
 class TyRecord(MonoType):
     fields: dict[str, MonoType]
-    rest: TyVar = dataclasses.field(default_factory=lambda: fresh_tyvar("r"))
+    rest: TyVar = dataclasses.field(default_factory=lambda: fresh_tyvar())
 
     def __str__(self) -> str:
         return f"{{{', '.join(f'{name}: {ty}' for name, ty in self.fields.items())}}}+{self.rest}"
@@ -402,7 +409,7 @@ def infer_w(expr: Object, ctx: Context) -> tuple[Subst, MonoType]:
     if isinstance(expr, Float):
         return {}, FloatType
     if isinstance(expr, Function):
-        arg_tyvar = fresh_tyvar("a")
+        arg_tyvar = fresh_tyvar()
         assert isinstance(expr.arg, Var)
         body_ctx = {**ctx, expr.arg.name: Forall([], arg_tyvar)}
         body_subst, body_ty = infer_w(expr.body, body_ctx)
@@ -410,7 +417,7 @@ def infer_w(expr: Object, ctx: Context) -> tuple[Subst, MonoType]:
     if isinstance(expr, Apply):
         s1, ty = infer_w(expr.func, ctx)
         s2, p = infer_w(expr.arg, apply_ctx(ctx, s1))
-        r = fresh_tyvar("a")
+        r = fresh_tyvar()
         s3 = unify_w(apply_ty(ty, s2), TyCon("->", [p, r]))
         return compose(compose(s3, s2), s1), apply_ty(r, s3)
     if isinstance(expr, Binop):
@@ -607,13 +614,46 @@ def collect_vars_in_pattern(pattern: Object) -> Context:
     if isinstance(pattern, List):
         result: dict[str, Forall] = {}
         for item in pattern.items:
+            if isinstance(item, Spread):
+                if item.name is not None:
+                    result[item.name] = Forall([], list_type(fresh_tyvar()))
+                    break
             result.update(collect_vars_in_pattern(item))
         return result
     raise TypeError(f"Unexpected type {type(pattern)}")
 
 
+
+FRAME_IDX = 0
+
+
+def render_graphviz(label: str) -> None:
+    global FRAME_IDX
+    result = "digraph G {"
+    result += f'label={label};'
+    # subgraphs = set(var.find() for var in ALL_TYVARS)
+    # for subgraph in subgraphs:
+    #     result += f"subgraph cluster_{subgraph.name} {{"
+    #     # result += f'label="{subgraph.name}";'
+    #     for var in ALL_TYVARS:
+    #         if var.find() is subgraph:
+    #             result += f'"{var.name}";'
+    #     result += "}"
+    for var in ALL_TYVARS:
+        if var.forwarded is None:
+            result += f'"{var}";'
+        else:
+            result += f'"{var}" -> "{var.forwarded}";'
+    result += "}"
+    with open(f"output/frame_{FRAME_IDX}.dot", "w") as f:
+        f.write(result)
+    FRAME_IDX += 1
+
+
 def infer_j(expr: Object, ctx: Context) -> TyVar:
     result = fresh_tyvar()
+    import scrapscript
+    render_graphviz(f'"{scrapscript.pretty(expr)}: {str(result)}"')
     if isinstance(expr, Var):
         scheme = ctx.get(expr.name)
         if scheme is None:
@@ -627,7 +667,7 @@ def infer_j(expr: Object, ctx: Context) -> TyVar:
         unify_j(result, FloatType)
         return result
     if isinstance(expr, Function):
-        arg_tyvar = fresh_tyvar("a")
+        arg_tyvar = fresh_tyvar()
         assert isinstance(expr.arg, Var)
         body_ctx = {**ctx, expr.arg.name: Forall([], arg_tyvar)}
         body_ty = infer_j(expr.body, body_ctx)
@@ -656,7 +696,7 @@ def infer_j(expr: Object, ctx: Context) -> TyVar:
         unify_j(result, body_ty)
         return result
     if isinstance(expr, List):
-        list_item_ty = fresh_tyvar("a")
+        list_item_ty = fresh_tyvar()
         for item in expr.items:
             item_ty = infer_j(item, ctx)
             unify_j(list_item_ty, item_ty)
@@ -677,6 +717,8 @@ def infer_j(expr: Object, ctx: Context) -> TyVar:
     if isinstance(expr, Record):
         fields = {name: infer_j(value, ctx) for name, value in expr.data.items()}
         unify_j(result, TyRecord(fields))
+        return result
+    if isinstance(expr, Spread):
         return result
     raise TypeError(f"Unexpected type {type(expr)}")
 
@@ -961,6 +1003,49 @@ class InferJSBSTests(FreshTests):
     #     ty = infer_j(expr, {})
     #     self.assertTyEqual(ty, func_type(IntType, IntType))
 
+def infer_bi(expr: Object, ctx: Context) -> MonoType:
+    raise TypeError(f"Unexpected type {type(expr)}")
 
-if __name__ == "__main__":
-    unittest.main()
+def check_bi(expr: Object, expected: MonoType, ctx: Context) -> Context:
+    raise TypeError(f"Unexpected type {type(expr)}")
+
+
+# if __name__ == "__main__":
+#     unittest.main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+expr = parse(tokenize("""
+sum [1, 2]
+. sum =
+| [] -> 0
+| [x, ...xs] -> x + sum xs
+"""))
+ty = infer_j(expr, {
+    "+": Forall([], func_type(IntType, IntType, IntType)),
+})
+render_graphviz(f'"end: {ty}"')

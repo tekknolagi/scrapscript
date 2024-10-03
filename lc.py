@@ -116,7 +116,7 @@ class StrTest(unittest.TestCase):
         self.assertEqual(str(Forall([TyVar("a"), TyVar("b")], TyVar("a"))), "(forall 'a, 'b. 'a)")
 
     def test_record(self) -> None:
-        self.assertEqual(str(TyRecord({"a": IntType, "b": FloatType})), "{a: int, b: float}+'r1")
+        self.assertEqual(str(TyRecord({"a": IntType, "b": FloatType})), "{a: int, b: float}+'t1")
 
 
 def func_type(*args: MonoType) -> TyCon:
@@ -467,13 +467,13 @@ class InferWTests(FreshTests):
         func = Function(Var("x"), Var("x"))
         arg = Int(123)
         subst, _ = infer_w(Apply(func, arg), {})
-        self.assertEqual(subst, {"a0": IntType, "a1": IntType})
+        self.assertEqual(subst, {"t0": IntType, "t1": IntType})
 
     def test_apply_two_arg_returns_function(self) -> None:
         func = Function(Var("x"), Function(Var("y"), Var("x")))
         arg = Int(123)
         subst, _ = infer_w(Apply(func, arg), {})
-        self.assertEqual(subst, {"a0": IntType, "a2": func_type(TyVar("a1"), IntType)})
+        self.assertEqual(subst, {"t0": IntType, "t2": func_type(TyVar("t1"), IntType)})
 
     def test_binop_add_constrains_int(self) -> None:
         expr = Binop(BinopKind.ADD, Var("x"), Var("y"))
@@ -487,7 +487,7 @@ class InferWTests(FreshTests):
         )
         self.assertEqual(
             subst,
-            {"a": IntType, "a0": func_type(IntType, IntType), "b": IntType, "a1": IntType},
+            {"a": IntType, "t0": func_type(IntType, IntType), "b": IntType, "t1": IntType},
         )
 
     def test_binop_add_function_constrains_int(self) -> None:
@@ -495,7 +495,7 @@ class InferWTests(FreshTests):
         subst, _ = infer_w(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
         self.assertEqual(
             subst,
-            {"a0": IntType, "a2": func_type(IntType, IntType), "a1": IntType, "a3": IntType},
+            {"t0": IntType, "t2": func_type(IntType, IntType), "t1": IntType, "t3": IntType},
         )
 
 
@@ -623,29 +623,8 @@ def collect_vars_in_pattern(pattern: Object) -> Context:
     raise TypeError(f"Unexpected type {type(pattern)}")
 
 
-
-FRAME_IDX = 0
-
-
-def render_graphviz(label: str) -> None:
-    global FRAME_IDX
-    result = "digraph G {"
-    result += f'label={label};'
-    for var in ALL_TYVARS:
-        if var.forwarded is None:
-            result += f'"{var}";'
-        else:
-            result += f'"{var}" -> "{var.forwarded}";'
-    result += "}"
-    with open(f"output/frame_{FRAME_IDX}.dot", "w") as f:
-        f.write(result)
-    FRAME_IDX += 1
-
-
 def infer_j(expr: Object, ctx: Context) -> TyVar:
     result = fresh_tyvar()
-    import scrapscript
-    render_graphviz(f'"{scrapscript.pretty(expr)}: {str(result)}"')
     if isinstance(expr, Var):
         scheme = ctx.get(expr.name)
         if scheme is None:
@@ -734,15 +713,15 @@ class InferWSBSTests(FreshTests):
 
     def test_function_returns_arg(self) -> None:
         ty = self.infer(Function(Var("x"), Var("x")), {})
-        self.assertTyEqual(ty, func_type(TyVar("a0"), TyVar("a0")))
+        self.assertTyEqual(ty, func_type(TyVar("t0"), TyVar("t0")))
 
     def test_nested_function_outer(self) -> None:
         ty = self.infer(Function(Var("x"), Function(Var("y"), Var("x"))), {})
-        self.assertTyEqual(ty, func_type(TyVar("a0"), TyVar("a1"), TyVar("a0")))
+        self.assertTyEqual(ty, func_type(TyVar("t0"), TyVar("t1"), TyVar("t0")))
 
     def test_nested_function_inner(self) -> None:
         ty = self.infer(Function(Var("x"), Function(Var("y"), Var("y"))), {})
-        self.assertTyEqual(ty, func_type(TyVar("a0"), TyVar("a1"), TyVar("a1")))
+        self.assertTyEqual(ty, func_type(TyVar("t0"), TyVar("t1"), TyVar("t1")))
 
     def test_apply_id_int(self) -> None:
         func = Function(Var("x"), Var("x"))
@@ -754,7 +733,7 @@ class InferWSBSTests(FreshTests):
         func = Function(Var("x"), Function(Var("y"), Var("x")))
         arg = Int(123)
         ty = self.infer(Apply(func, arg), {})
-        self.assertTyEqual(ty, func_type(TyVar("a1"), IntType))
+        self.assertTyEqual(ty, func_type(TyVar("t1"), IntType))
 
     def test_binop_add_constrains_int(self) -> None:
         expr = Binop(BinopKind.ADD, Var("x"), Var("y"))
@@ -811,15 +790,15 @@ class InferJSBSTests(FreshTests):
 
     def test_function_returns_arg(self) -> None:
         ty = infer_j(Function(Var("x"), Var("x")), {}).find()
-        self.assertTyEqual(ty, func_type(TyVar("a1"), TyVar("a1")))
+        self.assertTyEqual(ty, func_type(TyVar("t1"), TyVar("t1")))
 
     def test_nested_function_outer(self) -> None:
         ty = infer_j(Function(Var("x"), Function(Var("y"), Var("x"))), {}).find()
-        self.assertTyEqual(ty, func_type(TyVar("a1"), TyVar("a3"), TyVar("a1")))
+        self.assertTyEqual(ty, func_type(TyVar("t1"), TyVar("t3"), TyVar("t1")))
 
     def test_nested_function_inner(self) -> None:
         ty = infer_j(Function(Var("x"), Function(Var("y"), Var("y"))), {}).find()
-        self.assertTyEqual(ty, func_type(TyVar("a1"), TyVar("a3"), TyVar("a3")))
+        self.assertTyEqual(ty, func_type(TyVar("t1"), TyVar("t3"), TyVar("t3")))
 
     def test_apply_id_int(self) -> None:
         func = Function(Var("x"), Var("x"))
@@ -831,12 +810,12 @@ class InferJSBSTests(FreshTests):
         func = Function(Var("x"), Function(Var("y"), Var("x")))
         arg = Int(123)
         ty = infer_j(Apply(func, arg), {}).find()
-        self.assertTyEqual(ty, func_type(TyVar("a4"), IntType))
+        self.assertTyEqual(ty, func_type(TyVar("t4"), IntType))
 
     def test_empty_list(self) -> None:
         expr = List([])
         ty = infer_j(expr, {})
-        self.assertTyEqual(ty, TyCon("list", [TyVar("a1")]))
+        self.assertTyEqual(ty, TyCon("list", [TyVar("t1")]))
 
     def test_list_int(self) -> None:
         expr = List([Int(123)])
@@ -868,7 +847,7 @@ class InferJSBSTests(FreshTests):
     def test_id(self) -> None:
         expr = Function(Var("x"), Var("x"))
         ty = infer_j(expr, {})
-        self.assertTyEqual(ty, func_type(TyVar("a1"), TyVar("a1")))
+        self.assertTyEqual(ty, func_type(TyVar("t1"), TyVar("t1")))
 
     def test_let(self) -> None:
         expr = Where(Var("f"), Assign(Var("f"), Function(Var("x"), Var("x"))))
@@ -971,8 +950,8 @@ class InferJSBSTests(FreshTests):
     def test_match_list_to_list(self) -> None:
         expr = parse(tokenize("| [] -> [] | x -> x"))
         ty = infer_j(expr, {})
-        self.assertTyEqual(ty, func_type(list_type(TyVar("a3")),
-                                         list_type(TyVar("a3"))))
+        self.assertTyEqual(ty, func_type(list_type(TyVar("t3")),
+                                         list_type(TyVar("t3"))))
 
     def test_match_list_int_to_list(self) -> None:
         expr = parse(tokenize("| [] -> [3] | x -> x"))
@@ -990,10 +969,12 @@ class InferJSBSTests(FreshTests):
         ty = infer_j(expr, {})
         self.assertTyEqual(ty, TyRecord({"a": IntType, "b": FloatType}))
 
-    # def test_inc(self) -> None:
-    #     expr = parse(tokenize("inc . inc = | 0 -> 1 | 1 -> 2 | a -> a + 1"))
-    #     ty = infer_j(expr, {})
-    #     self.assertTyEqual(ty, func_type(IntType, IntType))
+    def test_inc(self) -> None:
+        expr = parse(tokenize("inc . inc = | 0 -> 1 | 1 -> 2 | a -> a + 1"))
+        ty = infer_j(expr, {
+            "+": Forall([], func_type(IntType, IntType, IntType)),
+        })
+        self.assertTyEqual(ty, func_type(IntType, IntType))
 
 def infer_bi(expr: Object, ctx: Context) -> MonoType:
     raise TypeError(f"Unexpected type {type(expr)}")
@@ -1002,42 +983,5 @@ def check_bi(expr: Object, expected: MonoType, ctx: Context) -> Context:
     raise TypeError(f"Unexpected type {type(expr)}")
 
 
-# if __name__ == "__main__":
-#     unittest.main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-expr = parse(tokenize("""
-sum [1, 2]
-. sum =
-| [] -> 0
-| [x, ...xs] -> x + sum xs
-"""))
-ty = infer_j(expr, {
-    "+": Forall([], func_type(IntType, IntType, IntType)),
-})
-render_graphviz(f'"end: {ty}"')
+if __name__ == "__main__":
+    unittest.main()

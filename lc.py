@@ -17,7 +17,6 @@ from scrapscript import (
     MatchCase,
     List,
     Spread,
-    Record,
     parse,
     tokenize,
 )
@@ -68,15 +67,6 @@ class TyCon(MonoType):
 
 
 @dataclasses.dataclass
-class TyRecord(MonoType):
-    fields: dict[str, MonoType]
-    rest: TyVar = dataclasses.field(default_factory=lambda: fresh_tyvar())
-
-    def __str__(self) -> str:
-        return f"{{{', '.join(f'{name}: {ty}' for name, ty in self.fields.items())}}}+{self.rest}"
-
-
-@dataclasses.dataclass
 class Forall:
     tyvars: list[TyVar]
     ty: MonoType
@@ -108,9 +98,6 @@ class StrTest(unittest.TestCase):
 
     def test_forall(self) -> None:
         self.assertEqual(str(Forall([TyVar("a"), TyVar("b")], TyVar("a"))), "(forall 'a, 'b. 'a)")
-
-    def test_record(self) -> None:
-        self.assertEqual(str(TyRecord({"a": IntType, "b": FloatType})), "{a: int, b: float}+'t1")
 
 
 def func_type(*args: MonoType) -> TyCon:
@@ -263,12 +250,6 @@ class FreshTests(unittest.TestCase):
                 self.fail(f"Type mismatch: {l} != {r}")
             for l_arg, r_arg in zip(l.args, r.args):
                 self.assertTyEqual(l_arg, r_arg)
-            return True
-        if isinstance(l, TyRecord) and isinstance(r, TyRecord):
-            if set(l.fields.keys()) != set(r.fields.keys()):
-                self.fail(f"Type mismatch: {l} != {r}")
-            for name in l.fields:
-                self.assertTyEqual(l.fields[name], r.fields[name])
             return True
         self.fail(f"Type mismatch: {l} != {r}")
 
@@ -507,22 +488,6 @@ def unify_j(ty1: MonoType, ty2: MonoType) -> None:
         for l, r in zip(ty1.args, ty2.args):
             unify_j(l, r)
         return
-    if isinstance(ty1, TyRecord) and isinstance(ty2, TyRecord):
-        fields = set(ty1.fields.keys()) | set(ty2.fields.keys())
-        lcolumns = {}
-        rcolumns = {}
-        for field in fields:
-            left_ty = ty1.fields.get(field)
-            right_ty = ty2.fields.get(field)
-            if left_ty is not None and right_ty is not None:
-                unify_j(left_ty, right_ty)
-            elif left_ty is not None:
-                lcolumns[field] = left_ty
-            elif right_ty is not None:
-                rcolumns[field] = right_ty
-        unify_j(ty1.rest, TyRecord(rcolumns))
-        unify_j(ty2.rest, TyRecord(lcolumns))
-        return
     raise TypeError(f"ICE: Unexpected type {type(ty1)}")
 
 
@@ -567,22 +532,6 @@ class UnifyJTests(FreshTests):
         self.assertIs(a.find(), c.find())
         self.assertIs(b.find(), d.find())
         self.assertIsNot(a.find(), b.find())
-
-    def test_record_unifies_common_fields(self) -> None:
-        a, b = map(TyVar, "ab")
-        l = TyRecord({"a": a})
-        r = TyRecord({"a": b})
-        unify_j(l, r)
-        self.assertIs(a.find(), b.find())
-
-    def test_record_adds_to_rest(self) -> None:
-        a, b, c = map(TyVar, "abc")
-        l = TyRecord({"a": a, "b": b})
-        r = TyRecord({"a": b, "c": c})
-        unify_j(l, r)
-        self.assertIs(a.find(), b.find())
-        self.assertTyEqual(l.rest, TyRecord({"c": c}))
-        self.assertTyEqual(r.rest, TyRecord({"b": b}))
 
 
 def recursive_find(ty: MonoType) -> MonoType:
@@ -674,10 +623,6 @@ def infer_j(expr: Object, ctx: Context) -> TyVar:
         pattern_ty = infer_j(expr.pattern, body_ctx)
         body_ty = infer_j(expr.body, body_ctx)
         unify_j(result, func_type(pattern_ty, body_ty))
-        return result
-    if isinstance(expr, Record):
-        fields = {name: infer_j(value, ctx) for name, value in expr.data.items()}
-        unify_j(result, TyRecord(fields))
         return result
     if isinstance(expr, Spread):
         return result
@@ -969,16 +914,6 @@ class InferJSBSTests(FreshTests):
         expr = parse(tokenize("| [] -> [3] | x -> x"))
         ty = infer_j(expr, {})
         self.assertTyEqual(ty, func_type(list_type(IntType), list_type(IntType)))
-
-    def test_empty_record(self) -> None:
-        expr = Record({})
-        ty = infer_j(expr, {})
-        self.assertTyEqual(ty, TyRecord({}))
-
-    def test_record_with_fields(self) -> None:
-        expr = Record({"a": Int(123), "b": Float(123.0)})
-        ty = infer_j(expr, {})
-        self.assertTyEqual(ty, TyRecord({"a": IntType, "b": FloatType}))
 
     def test_inc(self) -> None:
         expr = parse(tokenize("inc . inc = | 0 -> 1 | 1 -> 2 | a -> a + 1"))

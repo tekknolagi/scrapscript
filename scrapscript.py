@@ -4508,6 +4508,11 @@ class InferTypeTests(unittest.TestCase):
         )
         self.assertTyEqual(ty, func_type(list_type(IntType), IntType))
 
+    def test_recursive_var_is_unbound(self) -> None:
+        expr = parse(tokenize("a . a = a"))
+        with self.assertRaisesRegex(TypeError, "Unbound variable"):
+            infer_type(expr, {})
+
     def test_recursive(self) -> None:
         expr = parse(
             tokenize("""

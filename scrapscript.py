@@ -5168,6 +5168,7 @@ def eval_command(args: argparse.Namespace) -> None:
     result = eval_exp(boot_env(), ast)
     print(pretty(result))
 
+
 def check_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
@@ -5177,7 +5178,18 @@ def check_command(args: argparse.Namespace) -> None:
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
-    result = infer_type(ast, {})
+    result = infer_type(
+        ast,
+        {
+            "+": Forall([], func_type(IntType, IntType, IntType)),
+            "-": Forall([], func_type(IntType, IntType, IntType)),
+            "*": Forall([], func_type(IntType, IntType, IntType)),
+            "/": Forall([], func_type(IntType, IntType, IntType)),
+            "++": Forall([], func_type(StringType, StringType, StringType)),
+        },
+    )
+    result = recursive_find(result)
+    result = minimize(result)
     print(result)
 
 
@@ -5304,7 +5316,7 @@ def main() -> None:
     eval_.add_argument("--debug", action="store_true")
 
     check = subparsers.add_parser("check")
-    check.set_defaults(func=checkcommand)
+    check.set_defaults(func=check_command)
     check.add_argument("program_file", type=argparse.FileType("r"))
     check.add_argument("--debug", action="store_true")
 

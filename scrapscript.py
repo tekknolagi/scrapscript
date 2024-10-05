@@ -4109,6 +4109,7 @@ def collect_vars_in_pattern(pattern: Object) -> Context:
 
 
 IntType = TyCon("int", [])
+StringType = TyCon("string", [])
 FloatType = TyCon("float", [])
 
 
@@ -4172,6 +4173,8 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
         return IntType
     if isinstance(expr, Float):
         return FloatType
+    if isinstance(expr, String):
+        return StringType
     if isinstance(expr, Function):
         arg_tyvar = fresh_tyvar()
         assert isinstance(expr.arg, Var)
@@ -4274,6 +4277,14 @@ class InferTypeTests(unittest.TestCase):
     def test_int(self) -> None:
         ty = self.infer(Int(123), {})
         self.assertTyEqual(ty, IntType)
+
+    def test_float(self) -> None:
+        ty = self.infer(Float(1.0), {})
+        self.assertTyEqual(ty, FloatType)
+
+    def test_string(self) -> None:
+        ty = self.infer(String("abc"), {})
+        self.assertTyEqual(ty, StringType)
 
     def test_function_returns_arg(self) -> None:
         ty = self.infer(Function(Var("x"), Var("x")), {})

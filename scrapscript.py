@@ -4092,7 +4092,7 @@ def fresh_tyvar(prefix: str = "t") -> TyVar:
 
 
 def collect_vars_in_pattern(pattern: Object) -> Context:
-    if isinstance(pattern, (Int, Float)):
+    if isinstance(pattern, (Int, Float, String)):
         return {}
     if isinstance(pattern, Var):
         return {pattern.name: Forall([], fresh_tyvar())}

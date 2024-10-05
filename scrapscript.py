@@ -4057,10 +4057,20 @@ def unify_fail(ty1: MonoType, ty2: MonoType) -> None:
     raise TypeError(f"Unification failed for {ty1} and {ty2}")
 
 
+def occurs_in(tyvar: TyVar, ty: MonoType) -> bool:
+    if isinstance(ty, TyVar):
+        return tyvar == ty
+    if isinstance(ty, TyCon):
+        return any(occurs_in(tyvar, arg) for arg in ty.args)
+    raise TypeError(f"Unknown type: {ty}")
+
+
 def unify_type(ty1: MonoType, ty2: MonoType) -> None:
     ty1 = ty1.find()
     ty2 = ty2.find()
     if isinstance(ty1, TyVar):
+        if occurs_in(ty1, ty2):
+            raise TypeError(f"Occurs check failed for {ty1} and {ty2}")
         ty1.make_equal_to(ty2)
         return
     if isinstance(ty2, TyVar):  # Mirror
@@ -4237,6 +4247,53 @@ class InferTypeTests(unittest.TestCase):
     def setUp(self) -> None:
         global fresh_var_counter
         fresh_var_counter = 0
+
+    def test_unify_tyvar_tyvar(self) -> None:
+        a = TyVar("a")
+        b = TyVar("b")
+        unify_type(a, b)
+        self.assertIs(a.find(), b.find())
+
+    def test_unify_tyvar_tycon(self) -> None:
+        a = TyVar("a")
+        unify_type(a, IntType)
+        self.assertIs(a.find(), IntType)
+        b = TyVar("b")
+        unify_type(b, IntType)
+        self.assertIs(b.find(), IntType)
+
+    def test_unify_tycon_tycon_name_mismatch(self) -> None:
+        with self.assertRaisesRegex(TypeError, "Unification failed"):
+            unify_type(IntType, StringType)
+
+    def test_unify_tycon_tycon_arity_mismatch(self) -> None:
+        l = TyCon("x", [TyVar("a")])
+        r = TyCon("x", [])
+        with self.assertRaisesRegex(TypeError, "Unification failed"):
+            unify_type(l, r)
+
+    def test_unify_tycon_tycon_unifies_arg(self) -> None:
+        a = TyVar("a")
+        b = TyVar("b")
+        l = TyCon("x", [a])
+        r = TyCon("x", [b])
+        unify_type(l, r)
+        self.assertIs(a.find(), b.find())
+
+    def test_unify_tycon_tycon_unifies_args(self) -> None:
+        a, b, c, d = map(TyVar, "abcd")
+        l = func_type(a, b)
+        r = func_type(c, d)
+        unify_type(l, r)
+        self.assertIs(a.find(), c.find())
+        self.assertIs(b.find(), d.find())
+        self.assertIsNot(a.find(), b.find())
+
+    def test_unify_recursive_fails(self) -> None:
+        l = TyVar("a")
+        r = TyCon("x", [TyVar("a")])
+        with self.assertRaisesRegex(TypeError, "Occurs check failed"):
+            unify_type(l, r)
 
     def test_minimize_tyvar(self) -> None:
         ty = fresh_tyvar()

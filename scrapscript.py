@@ -4008,6 +4008,7 @@ class TyCon(MonoType):
     args: list[MonoType]
 
     def __str__(self) -> str:
+        # TODO(max): Precedence pretty-print type constructors
         if not self.args:
             return self.name
         if len(self.args) == 1:

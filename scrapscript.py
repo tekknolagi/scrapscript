@@ -4196,6 +4196,7 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
         op = Var(BinopKind.to_str(expr.op))
         return infer_type(Apply(Apply(op, left), right), ctx)
     if isinstance(expr, Where):
+        assert isinstance(expr.binding, Assign)
         name, value, body = expr.binding.name.name, expr.binding.value, expr.body
         if isinstance(value, (Function, MatchFunction)):
             # Letrec

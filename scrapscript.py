@@ -1,4 +1,5 @@
 #!/usr/bin/env python3.10
+from __future__ import annotations
 import argparse
 import base64
 import code
@@ -3968,6 +3969,512 @@ class PreludeTests(EndToEndTestsBase):
             ),
             Float(1.0),
         )
+
+
+@dataclasses.dataclass
+class MonoType:
+    forwarded: MonoType | None = dataclasses.field(init=False, default=None)
+
+    def find(self) -> MonoType:
+        result: MonoType = self
+        while isinstance(result, TyVar):
+            it = result.forwarded
+            if it is None:
+                return result
+            result = it
+        return result
+
+    def _set_forwarded(self, other: MonoType) -> None:
+        raise NotImplementedError
+
+
+@dataclasses.dataclass
+class TyVar(MonoType):
+    name: str
+
+    def __str__(self) -> str:
+        return f"'{self.name}"
+
+    def make_equal_to(self, other: MonoType) -> None:
+        self.find()._set_forwarded(other)
+
+    def _set_forwarded(self, other: MonoType) -> None:
+        self.forwarded = other
+
+
+@dataclasses.dataclass
+class TyCon(MonoType):
+    name: str
+    args: list[MonoType]
+
+    def __str__(self) -> str:
+        if not self.args:
+            return self.name
+        if len(self.args) == 1:
+            return f"({self.args[0]} {self.name})"
+        return f"({self.name.join(map(str, self.args))})"
+
+
+@dataclasses.dataclass
+class Forall:
+    tyvars: list[TyVar]
+    ty: MonoType
+
+    def __str__(self) -> str:
+        return f"(forall {', '.join(map(str, self.tyvars))}. {self.ty})"
+
+
+class TypeStrTests(unittest.TestCase):
+    def test_tyvar(self) -> None:
+        self.assertEqual(str(TyVar("a")), "'a")
+
+    def test_tycon(self) -> None:
+        self.assertEqual(str(TyCon("int", [])), "int")
+
+    def test_tycon_one_arg(self) -> None:
+        self.assertEqual(str(TyCon("list", [IntType])), "(int list)")
+
+    def test_tycon_args(self) -> None:
+        self.assertEqual(str(TyCon("->", [IntType, IntType])), "(int->int)")
+
+    def test_forall(self) -> None:
+        self.assertEqual(str(Forall([TyVar("a"), TyVar("b")], TyVar("a"))), "(forall 'a, 'b. 'a)")
+
+
+def func_type(*args: MonoType) -> TyCon:
+    assert len(args) >= 2
+    if len(args) == 2:
+        return TyCon("->", list(args))
+    return TyCon("->", [args[0], func_type(*args[1:])])
+
+
+def list_type(arg: MonoType) -> TyCon:
+    return TyCon("list", [arg])
+
+
+def unify_fail(ty1: MonoType, ty2: MonoType) -> None:
+    raise TypeError(f"Unification failed for {ty1} and {ty2}")
+
+
+def unify_type(ty1: MonoType, ty2: MonoType) -> None:
+    ty1 = ty1.find()
+    ty2 = ty2.find()
+    if isinstance(ty1, TyVar):
+        ty1.make_equal_to(ty2)
+        return
+    if isinstance(ty2, TyVar):  # Mirror
+        return unify_type(ty2, ty1)
+    if isinstance(ty1, TyCon) and isinstance(ty2, TyCon):
+        if ty1.name != ty2.name:
+            unify_fail(ty1, ty2)
+            return
+        if len(ty1.args) != len(ty2.args):
+            unify_fail(ty1, ty2)
+            return
+        for l, r in zip(ty1.args, ty2.args):
+            unify_type(l, r)
+        return
+    raise TypeError(f"Unexpected types {type(ty1)} and {type(ty2)}")
+
+
+Context = typing.Mapping[str, Forall]
+
+
+fresh_var_counter = 0
+
+
+def fresh_tyvar(prefix: str = "t") -> TyVar:
+    global fresh_var_counter
+    result = f"{prefix}{fresh_var_counter}"
+    fresh_var_counter += 1
+    return TyVar(result)
+
+
+def collect_vars_in_pattern(pattern: Object) -> Context:
+    if isinstance(pattern, (Int, Float)):
+        return {}
+    if isinstance(pattern, Var):
+        return {pattern.name: Forall([], fresh_tyvar())}
+    if isinstance(pattern, List):
+        result: dict[str, Forall] = {}
+        for item in pattern.items:
+            if isinstance(item, Spread):
+                if item.name is not None:
+                    result[item.name] = Forall([], list_type(fresh_tyvar()))
+                    break
+            result.update(collect_vars_in_pattern(item))
+        return result
+    raise TypeError(f"Unexpected type {type(pattern)}")
+
+
+IntType = TyCon("int", [])
+FloatType = TyCon("float", [])
+
+
+Subst = typing.Mapping[str, MonoType]
+
+
+def apply_ty(ty: MonoType, subst: Subst) -> MonoType:
+    if isinstance(ty, TyVar):
+        return subst.get(ty.name, ty)
+    if isinstance(ty, TyCon):
+        return TyCon(ty.name, [apply_ty(arg, subst) for arg in ty.args])
+    raise TypeError(f"Unknown type: {ty}")
+
+
+def instantiate(scheme: Forall) -> MonoType:
+    fresh = {tyvar.name: fresh_tyvar() for tyvar in scheme.tyvars}
+    return apply_ty(scheme.ty, fresh)
+
+
+def ftv_ty(ty: MonoType) -> set[str]:
+    if isinstance(ty, TyVar):
+        return {ty.name}
+    if isinstance(ty, TyCon):
+        return set().union(*map(ftv_ty, ty.args))
+    raise TypeError(f"Unknown type: {ty}")
+
+
+def ftv_scheme(ty: Forall) -> set[str]:
+    return ftv_ty(ty.ty) - set(tyvar.name for tyvar in ty.tyvars)
+
+
+def ftv_ctx(ctx: Context) -> set[str]:
+    return set().union(*(ftv_scheme(scheme) for scheme in ctx.values()))
+
+
+def generalize(ty: MonoType, ctx: Context) -> Forall:
+    # TODO(max): Freshen?
+    # TODO(max): Test with free type variable in the context
+    tyvars = ftv_ty(ty) - ftv_ctx(ctx)
+    return Forall([TyVar(name) for name in sorted(tyvars)], ty)
+
+
+def recursive_find(ty: MonoType) -> MonoType:
+    if isinstance(ty, TyVar):
+        found = ty.find()
+        if ty is found:
+            return found
+        return recursive_find(found)
+    if isinstance(ty, TyCon):
+        return TyCon(ty.name, [recursive_find(arg) for arg in ty.args])
+    raise TypeError(type(ty))
+
+
+def infer_type(expr: Object, ctx: Context) -> MonoType:
+    if isinstance(expr, Var):
+        scheme = ctx.get(expr.name)
+        if scheme is None:
+            raise TypeError(f"Unbound variable {expr.name}")
+        return instantiate(scheme)
+    if isinstance(expr, Int):
+        return IntType
+    if isinstance(expr, Float):
+        return FloatType
+    if isinstance(expr, Function):
+        arg_tyvar = fresh_tyvar()
+        assert isinstance(expr.arg, Var)
+        body_ctx = {**ctx, expr.arg.name: Forall([], arg_tyvar)}
+        body_ty = infer_type(expr.body, body_ctx)
+        return func_type(arg_tyvar, body_ty)
+    if isinstance(expr, Binop):
+        left, right = expr.left, expr.right
+        op = Var(BinopKind.to_str(expr.op))
+        return infer_type(Apply(Apply(op, left), right), ctx)
+    if isinstance(expr, Where):
+        name, value, body = expr.binding.name.name, expr.binding.value, expr.body
+        if isinstance(value, (Function, MatchFunction)):
+            # Letrec
+            func_ty: MonoType = fresh_tyvar()
+            value_ty = infer_type(value, {**ctx, name: Forall([], func_ty)})
+        else:
+            # Let
+            value_ty = infer_type(value, ctx)
+        value_scheme = generalize(recursive_find(value_ty), ctx)
+        body_ty = infer_type(body, {**ctx, name: value_scheme})
+        return body_ty
+    if isinstance(expr, List):
+        list_item_ty = fresh_tyvar()
+        for item in expr.items:
+            item_ty = infer_type(item, ctx)
+            unify_type(list_item_ty, item_ty)
+        return list_type(list_item_ty)
+    if isinstance(expr, MatchCase):
+        pattern_ctx = collect_vars_in_pattern(expr.pattern)
+        body_ctx = {**ctx, **pattern_ctx}
+        pattern_ty = infer_type(expr.pattern, body_ctx)
+        body_ty = infer_type(expr.body, body_ctx)
+        return func_type(pattern_ty, body_ty)
+    if isinstance(expr, Apply):
+        func_ty = infer_type(expr.func, ctx)
+        arg_ty = infer_type(expr.arg, ctx)
+        result = fresh_tyvar()
+        unify_type(func_ty, func_type(arg_ty, result))
+        return result
+    if isinstance(expr, MatchFunction):
+        result = fresh_tyvar()
+        for case in expr.cases:
+            case_ty = infer_type(case, ctx)
+            unify_type(result, case_ty)
+        return result
+    if isinstance(expr, Spread):
+        return fresh_tyvar()
+    raise TypeError(f"Unexpected type {type(expr)}")
+
+
+def minimize(ty: MonoType) -> MonoType:
+    letters = iter("abcdefghijklmnopqrstuvwxyz")
+    free = ftv_ty(ty)
+    subst = {ftv: TyVar(next(letters)) for ftv in sorted(free)}
+    return apply_ty(ty, subst)
+
+
+class InferTypeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        global fresh_var_counter
+        fresh_var_counter = 0
+
+    def test_minimize_tyvar(self) -> None:
+        ty = fresh_tyvar()
+        self.assertEqual(minimize(ty), TyVar("a"))
+
+    def test_minimize_tycon(self) -> None:
+        ty = func_type(TyVar("t0"), TyVar("t1"), TyVar("t0"))
+        self.assertEqual(minimize(ty), func_type(TyVar("a"), TyVar("b"), TyVar("a")))
+
+    def infer(self, expr: Object, ctx: Context) -> MonoType:
+        return minimize(recursive_find(infer_type(expr, ctx)))
+
+    def assertTyEqual(self, l: MonoType, r: MonoType) -> bool:
+        l = l.find()
+        r = r.find()
+        if isinstance(l, TyVar) and isinstance(r, TyVar):
+            if l != r:
+                self.fail(f"Type mismatch: {l} != {r}")
+            return True
+        if isinstance(l, TyCon) and isinstance(r, TyCon):
+            if l.name != r.name:
+                self.fail(f"Type mismatch: {l} != {r}")
+            if len(l.args) != len(r.args):
+                self.fail(f"Type mismatch: {l} != {r}")
+            for l_arg, r_arg in zip(l.args, r.args):
+                self.assertTyEqual(l_arg, r_arg)
+            return True
+        self.fail(f"Type mismatch: {l} != {r}")
+
+    def test_unbound_var(self) -> None:
+        with self.assertRaisesRegex(TypeError, "Unbound variable"):
+            self.infer(Var("a"), {})
+
+    def test_var_instantiates_scheme(self) -> None:
+        ty = self.infer(Var("a"), {"a": Forall([TyVar("b")], TyVar("b"))})
+        self.assertTyEqual(ty, TyVar("a"))
+
+    def test_int(self) -> None:
+        ty = self.infer(Int(123), {})
+        self.assertTyEqual(ty, IntType)
+
+    def test_function_returns_arg(self) -> None:
+        ty = self.infer(Function(Var("x"), Var("x")), {})
+        self.assertTyEqual(ty, func_type(TyVar("a"), TyVar("a")))
+
+    def test_nested_function_outer(self) -> None:
+        ty = self.infer(Function(Var("x"), Function(Var("y"), Var("x"))), {})
+        self.assertTyEqual(ty, func_type(TyVar("a"), TyVar("b"), TyVar("a")))
+
+    def test_nested_function_inner(self) -> None:
+        ty = self.infer(Function(Var("x"), Function(Var("y"), Var("y"))), {})
+        self.assertTyEqual(ty, func_type(TyVar("a"), TyVar("b"), TyVar("b")))
+
+    def test_apply_id_int(self) -> None:
+        func = Function(Var("x"), Var("x"))
+        arg = Int(123)
+        ty = self.infer(Apply(func, arg), {})
+        self.assertTyEqual(ty, IntType)
+
+    def test_apply_two_arg_returns_function(self) -> None:
+        func = Function(Var("x"), Function(Var("y"), Var("x")))
+        arg = Int(123)
+        ty = self.infer(Apply(func, arg), {})
+        self.assertTyEqual(ty, func_type(TyVar("a"), IntType))
+
+    def test_binop_add_constrains_int(self) -> None:
+        expr = Binop(BinopKind.ADD, Var("x"), Var("y"))
+        ty = self.infer(
+            expr,
+            {
+                "x": Forall([], TyVar("a")),
+                "y": Forall([], TyVar("b")),
+                "+": Forall([], func_type(IntType, IntType, IntType)),
+            },
+        )
+        self.assertTyEqual(ty, IntType)
+
+    def test_binop_add_function_constrains_int(self) -> None:
+        expr = Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))
+        ty = self.infer(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
+        self.assertTyEqual(ty, func_type(IntType, IntType, IntType))
+
+    def test_let(self) -> None:
+        expr = Where(Var("f"), Assign(Var("f"), Function(Var("x"), Var("x"))))
+        ty = self.infer(expr, {})
+        self.assertTyEqual(ty, func_type(TyVar("a"), TyVar("a")))
+
+    def test_apply_monotype_to_different_types_raises(self) -> None:
+        expr = Where(
+            Where(Var("x"), Assign(Var("x"), Apply(Var("f"), Int(123)))),
+            Assign(Var("y"), Apply(Var("f"), Float(123.0))),
+        )
+        ctx = {"f": Forall([], func_type(TyVar("a"), TyVar("a")))}
+        with self.assertRaisesRegex(TypeError, "Unification failed"):
+            self.infer(expr, ctx)
+
+    def test_apply_polytype_to_different_types(self) -> None:
+        expr = Where(
+            Where(Var("x"), Assign(Var("x"), Apply(Var("f"), Int(123)))),
+            Assign(Var("y"), Apply(Var("f"), Float(123.0))),
+        )
+        ty = self.infer(expr, {"f": Forall([TyVar("a")], func_type(TyVar("a"), TyVar("a")))})
+        self.assertTyEqual(ty, IntType)
+
+    def test_id(self) -> None:
+        expr = Function(Var("x"), Var("x"))
+        ty = self.infer(expr, {})
+        self.assertTyEqual(ty, func_type(TyVar("a"), TyVar("a")))
+
+    def test_empty_list(self) -> None:
+        expr = List([])
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, TyCon("list", [TyVar("t0")]))
+
+    def test_list_int(self) -> None:
+        expr = List([Int(123)])
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, TyCon("list", [IntType]))
+
+    def test_list_mismatch(self) -> None:
+        expr = List([Int(123), Float(123.0)])
+        with self.assertRaisesRegex(TypeError, "Unification failed"):
+            infer_type(expr, {})
+
+    def test_recursive_fact(self) -> None:
+        expr = parse(tokenize("fact . fact = | 0 -> 1 | n -> n * fact (n-1)"))
+        ty = infer_type(
+            expr,
+            {
+                "*": Forall([], func_type(IntType, IntType, IntType)),
+                "-": Forall([], func_type(IntType, IntType, IntType)),
+            },
+        )
+        self.assertTyEqual(ty, func_type(IntType, IntType))
+
+    def test_match_int_int(self) -> None:
+        expr = parse(tokenize("| 0 -> 1"))
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, func_type(IntType, IntType))
+
+    def test_match_int_int_two_cases(self) -> None:
+        expr = parse(tokenize("| 0 -> 1 | 1 -> 2"))
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, func_type(IntType, IntType))
+
+    def test_match_int_int_int_float(self) -> None:
+        expr = parse(tokenize("| 0 -> 1 | 1 -> 2.0"))
+        with self.assertRaisesRegex(TypeError, "Unification failed"):
+            infer_type(expr, {})
+
+    def test_match_int_int_float_int(self) -> None:
+        expr = parse(tokenize("| 0 -> 1 | 1.0 -> 2"))
+        with self.assertRaisesRegex(TypeError, "Unification failed"):
+            infer_type(expr, {})
+
+    def test_match_var(self) -> None:
+        expr = parse(tokenize("| x -> x + 1"))
+        ty = infer_type(
+            expr,
+            {
+                "+": Forall([], func_type(IntType, IntType, IntType)),
+            },
+        )
+        self.assertTyEqual(ty, func_type(IntType, IntType))
+
+    def test_match_int_var(self) -> None:
+        expr = parse(tokenize("| 0 -> 1 | x -> x"))
+        ty = infer_type(
+            expr,
+            {
+                "+": Forall([], func_type(IntType, IntType, IntType)),
+            },
+        )
+        self.assertTyEqual(ty, func_type(IntType, IntType))
+
+    def test_match_list_of_int(self) -> None:
+        expr = parse(tokenize("| [x] -> x + 1"))
+        ty = infer_type(
+            expr,
+            {
+                "+": Forall([], func_type(IntType, IntType, IntType)),
+            },
+        )
+        self.assertTyEqual(ty, func_type(list_type(IntType), IntType))
+
+    def test_match_list_of_int_to_list(self) -> None:
+        expr = parse(tokenize("| [x] -> [x + 1]"))
+        ty = infer_type(
+            expr,
+            {
+                "+": Forall([], func_type(IntType, IntType, IntType)),
+            },
+        )
+        self.assertTyEqual(ty, func_type(list_type(IntType), list_type(IntType)))
+
+    def test_match_list_of_int_to_int(self) -> None:
+        expr = parse(tokenize("| [] -> 0 | [x] -> 1 | [x, y] -> x+y"))
+        ty = infer_type(
+            expr,
+            {
+                "+": Forall([], func_type(IntType, IntType, IntType)),
+            },
+        )
+        self.assertTyEqual(ty, func_type(list_type(IntType), IntType))
+
+    def test_recursive(self) -> None:
+        expr = parse(
+            tokenize("""
+        length
+        . length =
+        | [] -> 0
+        -- Unfortunately broken because this was written without Spread support
+        | xs -> 1 + length xs
+        """)
+        )
+        ty = infer_type(
+            expr,
+            {
+                "+": Forall([], func_type(IntType, IntType, IntType)),
+            },
+        )
+        self.assertTyEqual(ty, func_type(list_type(TyVar("t7")), IntType))
+
+    def test_match_list_to_list(self) -> None:
+        expr = parse(tokenize("| [] -> [] | x -> x"))
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, func_type(list_type(TyVar("t1")), list_type(TyVar("t1"))))
+
+    def test_match_list_int_to_list(self) -> None:
+        expr = parse(tokenize("| [] -> [3] | x -> x"))
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, func_type(list_type(IntType), list_type(IntType)))
+
+    def test_inc(self) -> None:
+        expr = parse(tokenize("inc . inc = | 0 -> 1 | 1 -> 2 | a -> a + 1"))
+        ty = infer_type(
+            expr,
+            {
+                "+": Forall([], func_type(IntType, IntType, IntType)),
+            },
+        )
+        self.assertTyEqual(ty, func_type(IntType, IntType))
 
 
 class SerializerTests(unittest.TestCase):

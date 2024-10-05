@@ -646,124 +646,96 @@ class MinimizeTests(FreshTests):
         self.assertEqual(minimize(ty), func_type(TyVar("a"), TyVar("b"), TyVar("a")))
 
 
-class InferWSBSTests(FreshTests):
+class C:
+    class InferBaseTests(FreshTests):
+        def test_unbound_var(self) -> None:
+            with self.assertRaisesRegex(TypeError, "Unbound variable"):
+                self.infer(Var("a"), {})
+
+        def test_var_instantiates_scheme(self) -> None:
+            ty = self.infer(Var("a"), {"a": Forall([TyVar("b")], TyVar("b"))})
+            self.assertTyEqual(ty, TyVar("a"))
+
+        def test_int(self) -> None:
+            ty = self.infer(Int(123), {})
+            self.assertTyEqual(ty, IntType)
+
+        def test_function_returns_arg(self) -> None:
+            ty = self.infer(Function(Var("x"), Var("x")), {})
+            self.assertTyEqual(ty, func_type(TyVar("a"), TyVar("a")))
+
+        def test_nested_function_outer(self) -> None:
+            ty = self.infer(Function(Var("x"), Function(Var("y"), Var("x"))), {})
+            self.assertTyEqual(ty, func_type(TyVar("a"), TyVar("b"), TyVar("a")))
+
+        def test_nested_function_inner(self) -> None:
+            ty = self.infer(Function(Var("x"), Function(Var("y"), Var("y"))), {})
+            self.assertTyEqual(ty, func_type(TyVar("a"), TyVar("b"), TyVar("b")))
+
+        def test_apply_id_int(self) -> None:
+            func = Function(Var("x"), Var("x"))
+            arg = Int(123)
+            ty = self.infer(Apply(func, arg), {})
+            self.assertTyEqual(ty, IntType)
+
+        def test_apply_two_arg_returns_function(self) -> None:
+            func = Function(Var("x"), Function(Var("y"), Var("x")))
+            arg = Int(123)
+            ty = self.infer(Apply(func, arg), {})
+            self.assertTyEqual(ty, func_type(TyVar("a"), IntType))
+
+        def test_binop_add_constrains_int(self) -> None:
+            expr = Binop(BinopKind.ADD, Var("x"), Var("y"))
+            ty = self.infer(
+                expr,
+                {
+                    "x": Forall([], TyVar("a")),
+                    "y": Forall([], TyVar("b")),
+                    "+": Forall([], func_type(IntType, IntType, IntType)),
+                },
+            )
+            self.assertTyEqual(ty, IntType)
+
+        def test_binop_add_function_constrains_int(self) -> None:
+            expr = Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))
+            ty = self.infer(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
+            self.assertTyEqual(ty, func_type(IntType, IntType, IntType))
+
+        def test_let(self) -> None:
+            expr = Where(Var("f"), Assign(Var("f"), Function(Var("x"), Var("x"))))
+            ty = self.infer(expr, {})
+            self.assertTyEqual(ty, func_type(TyVar("a"), TyVar("a")))
+
+        def test_apply_monotype_to_different_types_raises(self) -> None:
+            expr = Where(
+                Where(Var("x"), Assign(Var("x"), Apply(Var("f"), Int(123)))),
+                Assign(Var("y"), Apply(Var("f"), Float(123.0))),
+            )
+            ctx = {"f": Forall([], func_type(TyVar("a"), TyVar("a")))}
+            with self.assertRaisesRegex(TypeError, "Unification failed"):
+                self.infer(expr, ctx)
+
+        def test_apply_polytype_to_different_types(self) -> None:
+            expr = Where(
+                Where(Var("x"), Assign(Var("x"), Apply(Var("f"), Int(123)))),
+                Assign(Var("y"), Apply(Var("f"), Float(123.0))),
+            )
+            ty = self.infer(expr, {"f": Forall([TyVar("a")], func_type(TyVar("a"), TyVar("a")))})
+            self.assertTyEqual(ty, IntType)
+
+
+class InferWSBSTests(C.InferBaseTests):
     def infer(self, expr: Object, ctx: Context) -> MonoType:
         _, ty = infer_w(expr, ctx)
-        return ty
-
-    def test_unbound_var(self) -> None:
-        with self.assertRaisesRegex(TypeError, "Unbound variable"):
-            self.infer(Var("a"), {})
-
-    def test_var_instantiates_scheme(self) -> None:
-        ty = self.infer(Var("a"), {"a": Forall([TyVar("b")], TyVar("b"))})
-        self.assertTyEqual(ty, TyVar("t0"))
-
-    def test_int(self) -> None:
-        ty = self.infer(Int(123), {})
-        self.assertTyEqual(ty, IntType)
-
-    def test_function_returns_arg(self) -> None:
-        ty = self.infer(Function(Var("x"), Var("x")), {})
-        self.assertTyEqual(ty, func_type(TyVar("t0"), TyVar("t0")))
-
-    def test_nested_function_outer(self) -> None:
-        ty = self.infer(Function(Var("x"), Function(Var("y"), Var("x"))), {})
-        self.assertTyEqual(ty, func_type(TyVar("t0"), TyVar("t1"), TyVar("t0")))
-
-    def test_nested_function_inner(self) -> None:
-        ty = self.infer(Function(Var("x"), Function(Var("y"), Var("y"))), {})
-        self.assertTyEqual(ty, func_type(TyVar("t0"), TyVar("t1"), TyVar("t1")))
-
-    def test_apply_id_int(self) -> None:
-        func = Function(Var("x"), Var("x"))
-        arg = Int(123)
-        ty = self.infer(Apply(func, arg), {})
-        self.assertTyEqual(ty, IntType)
-
-    def test_apply_two_arg_returns_function(self) -> None:
-        func = Function(Var("x"), Function(Var("y"), Var("x")))
-        arg = Int(123)
-        ty = self.infer(Apply(func, arg), {})
-        self.assertTyEqual(ty, func_type(TyVar("t1"), IntType))
-
-    def test_binop_add_constrains_int(self) -> None:
-        expr = Binop(BinopKind.ADD, Var("x"), Var("y"))
-        ty = self.infer(
-            expr,
-            {
-                "x": Forall([], TyVar("a")),
-                "y": Forall([], TyVar("b")),
-                "+": Forall([], func_type(IntType, IntType, IntType)),
-            },
-        )
-        self.assertTyEqual(ty, IntType)
-
-    def test_binop_add_function_constrains_int(self) -> None:
-        expr = Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))
-        ty = self.infer(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
-        self.assertTyEqual(ty, func_type(IntType, IntType, IntType))
-
-    def test_let(self) -> None:
-        expr = Where(Var("f"), Assign(Var("f"), Function(Var("x"), Var("x"))))
-        ty = self.infer(expr, {})
-        self.assertTyEqual(ty, func_type(TyVar("t1"), TyVar("t1")))
-
-    def test_apply_monotype_to_different_types_raises(self) -> None:
-        expr = Where(
-            Where(Var("x"), Assign(Var("x"), Apply(Var("f"), Int(123)))),
-            Assign(Var("y"), Apply(Var("f"), Float(123.0))),
-        )
-        ctx = {"f": Forall([], func_type(TyVar("a"), TyVar("a")))}
-        with self.assertRaisesRegex(TypeError, "Unification failed"):
-            self.infer(expr, ctx)
-
-    def test_apply_polytype_to_different_types(self) -> None:
-        expr = Where(
-            Where(Var("x"), Assign(Var("x"), Apply(Var("f"), Int(123)))),
-            Assign(Var("y"), Apply(Var("f"), Float(123.0))),
-        )
-        ty = self.infer(expr, {"f": Forall([TyVar("a")], func_type(TyVar("a"), TyVar("a")))})
-        self.assertTyEqual(ty, IntType)
+        return minimize(ty)
 
 
-class InferJSBSTests(FreshTests):
-    def test_unbound_var(self) -> None:
-        with self.assertRaisesRegex(TypeError, "Unbound variable"):
-            infer_j(Var("a"), {})
+class InferJSBSTests(C.InferBaseTests):
+    def infer(self, expr: Object, ctx: Context) -> MonoType:
+        return minimize(recursive_find(infer_j(expr, ctx)))
 
-    def test_var_instantiates_scheme(self) -> None:
-        ty = infer_j(Var("a"), {"a": Forall([TyVar("b")], TyVar("b"))}).find()
-        self.assertEqual(ty, TyVar("t1"))
 
-    def test_int(self) -> None:
-        ty = infer_j(Int(123), {}).find()
-        self.assertEqual(ty, IntType)
-
-    def test_function_returns_arg(self) -> None:
-        ty = infer_j(Function(Var("x"), Var("x")), {}).find()
-        self.assertTyEqual(ty, func_type(TyVar("t1"), TyVar("t1")))
-
-    def test_nested_function_outer(self) -> None:
-        ty = infer_j(Function(Var("x"), Function(Var("y"), Var("x"))), {}).find()
-        self.assertTyEqual(ty, func_type(TyVar("t1"), TyVar("t3"), TyVar("t1")))
-
-    def test_nested_function_inner(self) -> None:
-        ty = infer_j(Function(Var("x"), Function(Var("y"), Var("y"))), {}).find()
-        self.assertTyEqual(ty, func_type(TyVar("t1"), TyVar("t3"), TyVar("t3")))
-
-    def test_apply_id_int(self) -> None:
-        func = Function(Var("x"), Var("x"))
-        arg = Int(123)
-        ty = infer_j(Apply(func, arg), {}).find()
-        self.assertIs(ty, IntType)
-
-    def test_apply_two_arg_returns_function(self) -> None:
-        func = Function(Var("x"), Function(Var("y"), Var("x")))
-        arg = Int(123)
-        ty = infer_j(Apply(func, arg), {}).find()
-        self.assertTyEqual(ty, func_type(TyVar("t4"), IntType))
-
+class InferJTests(FreshTests):
     def test_empty_list(self) -> None:
         expr = List([])
         ty = infer_j(expr, {})
@@ -779,49 +751,10 @@ class InferJSBSTests(FreshTests):
         with self.assertRaisesRegex(TypeError, "Unification failed"):
             infer_j(expr, {})
 
-    def test_binop_add_constrains_int(self) -> None:
-        expr = Binop(BinopKind.ADD, Var("x"), Var("y"))
-        ty = infer_j(
-            expr,
-            {
-                "x": Forall([], TyVar("a")),
-                "y": Forall([], TyVar("b")),
-                "+": Forall([], func_type(IntType, IntType, IntType)),
-            },
-        )
-        self.assertEqual(ty.find(), IntType)
-
-    def test_binop_add_function_constrains_int(self) -> None:
-        expr = Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))
-        ty = infer_j(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
-        self.assertTyEqual(ty, func_type(IntType, IntType, IntType))
-
     def test_id(self) -> None:
         expr = Function(Var("x"), Var("x"))
         ty = infer_j(expr, {})
         self.assertTyEqual(ty, func_type(TyVar("t1"), TyVar("t1")))
-
-    def test_let(self) -> None:
-        expr = Where(Var("f"), Assign(Var("f"), Function(Var("x"), Var("x"))))
-        ty = infer_j(expr, {})
-        self.assertTyEqual(ty, func_type(TyVar("t6"), TyVar("t6")))
-
-    def test_apply_polytype_to_different_types(self) -> None:
-        expr = Where(
-            Where(Var("x"), Assign(Var("x"), Apply(Var("f"), Int(123)))),
-            Assign(Var("y"), Apply(Var("f"), Float(123.0))),
-        )
-        ty = infer_j(expr, {"f": Forall([TyVar("a")], func_type(TyVar("a"), TyVar("a")))})
-        self.assertTyEqual(ty, IntType)
-
-    def test_apply_monotype_to_different_types_raises(self) -> None:
-        expr = Where(
-            Where(Var("x"), Assign(Var("x"), Apply(Var("f"), Int(123)))),
-            Assign(Var("y"), Apply(Var("f"), Float(123.0))),
-        )
-        ctx = {"f": Forall([], func_type(TyVar("a"), TyVar("a")))}
-        with self.assertRaisesRegex(TypeError, "Unification failed"):
-            infer_j(expr, ctx)
 
     def test_recursive_fact(self) -> None:
         expr = parse(tokenize("fact . fact = | 0 -> 1 | n -> n * fact (n-1)"))

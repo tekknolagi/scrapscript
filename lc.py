@@ -723,6 +723,11 @@ class C:
             ty = self.infer(expr, {"f": Forall([TyVar("a")], func_type(TyVar("a"), TyVar("a")))})
             self.assertTyEqual(ty, IntType)
 
+        def test_id(self) -> None:
+            expr = Function(Var("x"), Var("x"))
+            ty = self.infer(expr, {})
+            self.assertTyEqual(ty, func_type(TyVar("a"), TyVar("a")))
+
 
 class InferWSBSTests(C.InferBaseTests):
     def infer(self, expr: Object, ctx: Context) -> MonoType:
@@ -750,11 +755,6 @@ class InferJTests(FreshTests):
         expr = List([Int(123), Float(123.0)])
         with self.assertRaisesRegex(TypeError, "Unification failed"):
             infer_j(expr, {})
-
-    def test_id(self) -> None:
-        expr = Function(Var("x"), Var("x"))
-        ty = infer_j(expr, {})
-        self.assertTyEqual(ty, func_type(TyVar("t1"), TyVar("t1")))
 
     def test_recursive_fact(self) -> None:
         expr = parse(tokenize("fact . fact = | 0 -> 1 | n -> n * fact (n-1)"))

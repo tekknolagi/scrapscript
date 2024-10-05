@@ -629,6 +629,23 @@ def infer_j(expr: Object, ctx: Context) -> TyVar:
     raise TypeError(f"Unexpected type {type(expr)}")
 
 
+def minimize(ty: MonoType) -> MonoType:
+    letters = iter("abcdefghijklmnopqrstuvwxyz")
+    free = ftv_ty(ty)
+    subst = {ftv: TyVar(next(letters)) for ftv in sorted(free)}
+    return apply_ty(ty, subst)
+
+
+class MinimizeTests(FreshTests):
+    def test_minimize_tyvar(self) -> None:
+        ty = fresh_tyvar()
+        self.assertEqual(minimize(ty), TyVar("a"))
+
+    def test_minimize_tycon(self) -> None:
+        ty = func_type(TyVar("t0"), TyVar("t1"), TyVar("t0"))
+        self.assertEqual(minimize(ty), func_type(TyVar("a"), TyVar("b"), TyVar("a")))
+
+
 class InferWSBSTests(FreshTests):
     def infer(self, expr: Object, ctx: Context) -> MonoType:
         _, ty = infer_w(expr, ctx)

@@ -5156,6 +5156,18 @@ def eval_command(args: argparse.Namespace) -> None:
     result = eval_exp(boot_env(), ast)
     print(pretty(result))
 
+def check_command(args: argparse.Namespace) -> None:
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+
+    program = args.program_file.read()
+    tokens = tokenize(program)
+    logger.debug("Tokens: %s", tokens)
+    ast = parse(tokens)
+    logger.debug("AST: %s", ast)
+    result = infer_type(ast, {})
+    print(result)
+
 
 def apply_command(args: argparse.Namespace) -> None:
     if args.debug:
@@ -5278,6 +5290,11 @@ def main() -> None:
     eval_.set_defaults(func=eval_command)
     eval_.add_argument("program_file", type=argparse.FileType("r"))
     eval_.add_argument("--debug", action="store_true")
+
+    check = subparsers.add_parser("check")
+    check.set_defaults(func=checkcommand)
+    check.add_argument("program_file", type=argparse.FileType("r"))
+    check.add_argument("--debug", action="store_true")
 
     apply = subparsers.add_parser("apply")
     apply.set_defaults(func=apply_command)

@@ -4147,15 +4147,13 @@ def ftv_ty(ty: MonoType) -> set[str]:
     raise TypeError(f"Unknown type: {ty}")
 
 
-def ftv_scheme(ty: Forall) -> set[str]:
-    return ftv_ty(ty.ty) - set(tyvar.name for tyvar in ty.tyvars)
-
-
-def ftv_ctx(ctx: Context) -> set[str]:
-    return set().union(*(ftv_scheme(scheme) for scheme in ctx.values()))
-
-
 def generalize(ty: MonoType, ctx: Context) -> Forall:
+    def ftv_scheme(ty: Forall) -> set[str]:
+        return ftv_ty(ty.ty) - set(tyvar.name for tyvar in ty.tyvars)
+
+    def ftv_ctx(ctx: Context) -> set[str]:
+        return set().union(*(ftv_scheme(scheme) for scheme in ctx.values()))
+
     # TODO(max): Freshen?
     # TODO(max): Test with free type variable in the context
     tyvars = ftv_ty(ty) - ftv_ctx(ctx)

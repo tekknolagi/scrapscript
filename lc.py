@@ -391,7 +391,7 @@ def infer_w(expr: Object, ctx: Context) -> tuple[Subst, MonoType]:
         s2, p = infer_w(expr.arg, apply_ctx(ctx, s1))
         r = fresh_tyvar()
         s3 = unify_w(apply_ty(ty, s2), TyCon("->", [p, r]))
-        return compose(compose(s3, s2), s1), apply_ty(r, s3)
+        return compose(s3, compose(s2, s1)), apply_ty(r, s3)
     if isinstance(expr, Binop):
         left, right = expr.left, expr.right
         op = Var(BinopKind.to_str(expr.op))

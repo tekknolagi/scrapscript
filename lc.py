@@ -24,11 +24,12 @@ from scrapscript import (
 
 @dataclasses.dataclass
 class MonoType:
-    forwarded: MonoType | None = dataclasses.field(init=False, default=None)
+    pass
 
 
 @dataclasses.dataclass
 class TyVar(MonoType):
+    forwarded: MonoType | None = dataclasses.field(init=False, default=None)
     name: str
 
     def find(self) -> MonoType:

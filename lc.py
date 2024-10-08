@@ -26,6 +26,11 @@ from scrapscript import (
 class MonoType:
     forwarded: MonoType | None = dataclasses.field(init=False, default=None)
 
+
+@dataclasses.dataclass
+class TyVar(MonoType):
+    name: str
+
     def find(self) -> MonoType:
         result: MonoType = self
         while isinstance(result, TyVar):
@@ -35,19 +40,13 @@ class MonoType:
             result = it
         return result
 
-    def _set_forwarded(self, other: MonoType) -> None:
-        raise NotImplementedError
-
-
-@dataclasses.dataclass
-class TyVar(MonoType):
-    name: str
-
     def __str__(self) -> str:
         return f"'{self.name}"
 
     def make_equal_to(self, other: MonoType) -> None:
-        self.find()._set_forwarded(other)
+        chain_end = self.find()
+        assert isinstance(chain_end, TyVar), f"already resolved to {chain_end}"
+        chain_end._set_forwarded(other)
 
     def _set_forwarded(self, other: MonoType) -> None:
         self.forwarded = other
@@ -237,8 +236,10 @@ class FreshTests(unittest.TestCase):
         self.assertEqual(fresh_tyvar("x"), TyVar("x1"))
 
     def assertTyEqual(self, l: MonoType, r: MonoType) -> bool:
-        l = l.find()
-        r = r.find()
+        if isinstance(l, TyVar):
+            l = l.find()
+        if isinstance(r, TyVar):
+            r = r.find()
         if isinstance(l, TyVar) and isinstance(r, TyVar):
             if l != r:
                 self.fail(f"Type mismatch: {l} != {r}")
@@ -472,8 +473,10 @@ class InferWTests(FreshTests):
 
 
 def unify_j(ty1: MonoType, ty2: MonoType) -> None:
-    ty1 = ty1.find()
-    ty2 = ty2.find()
+    if isinstance(ty1, TyVar):
+        ty1 = ty1.find()
+    if isinstance(ty2, TyVar):
+        ty2 = ty2.find()
     if isinstance(ty1, TyVar):
         ty1.make_equal_to(ty2)
         return

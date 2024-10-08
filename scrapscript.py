@@ -3973,7 +3973,13 @@ class PreludeTests(EndToEndTestsBase):
 
 @dataclasses.dataclass
 class MonoType:
+    pass
+
+
+@dataclasses.dataclass
+class TyVar(MonoType):
     forwarded: MonoType | None = dataclasses.field(init=False, default=None)
+    name: str
 
     def find(self) -> MonoType:
         result: MonoType = self
@@ -3984,22 +3990,13 @@ class MonoType:
             result = it
         return result
 
-    def _set_forwarded(self, other: MonoType) -> None:
-        raise NotImplementedError
-
-
-@dataclasses.dataclass
-class TyVar(MonoType):
-    name: str
-
     def __str__(self) -> str:
         return f"'{self.name}"
 
     def make_equal_to(self, other: MonoType) -> None:
-        self.find()._set_forwarded(other)
-
-    def _set_forwarded(self, other: MonoType) -> None:
-        self.forwarded = other
+        chain_end = self.find()
+        assert isinstance(chain_end, TyVar), f"already resolved to {chain_end}"
+        chain_end.forwarded = other
 
 
 @dataclasses.dataclass
@@ -4066,8 +4063,10 @@ def occurs_in(tyvar: TyVar, ty: MonoType) -> bool:
 
 
 def unify_type(ty1: MonoType, ty2: MonoType) -> None:
-    ty1 = ty1.find()
-    ty2 = ty2.find()
+    if isinstance(ty1, TyVar):
+        ty1 = ty1.find()
+    if isinstance(ty2, TyVar):
+        ty2 = ty2.find()
     if isinstance(ty1, TyVar):
         if occurs_in(ty1, ty2):
             raise TypeError(f"Occurs check failed for {ty1} and {ty2}")
@@ -4306,8 +4305,10 @@ class InferTypeTests(unittest.TestCase):
         return minimize(recursive_find(infer_type(expr, ctx)))
 
     def assertTyEqual(self, l: MonoType, r: MonoType) -> bool:
-        l = l.find()
-        r = r.find()
+        if isinstance(l, TyVar):
+            l = l.find()
+        if isinstance(r, TyVar):
+            r = r.find()
         if isinstance(l, TyVar) and isinstance(r, TyVar):
             if l != r:
                 self.fail(f"Type mismatch: {l} != {r}")

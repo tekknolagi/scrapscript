@@ -4174,28 +4174,40 @@ def recursive_find(ty: MonoType) -> MonoType:
     raise InferenceError(type(ty))
 
 
+def type_of(expr: Object) -> MonoType:
+    ty = getattr(expr, "inferred_type", None)
+    if ty is not None:
+        return recursive_find(ty)
+    return set_type(expr, fresh_tyvar())
+
+
+def set_type(expr: Object, ty: MonoType) -> MonoType:
+    object.__setattr__(expr, "inferred_type", ty)
+    return ty
+
+
 def infer_type(expr: Object, ctx: Context) -> MonoType:
     if isinstance(expr, Var):
         scheme = ctx.get(expr.name)
         if scheme is None:
             raise InferenceError(f"Unbound variable {expr.name}")
-        return instantiate(scheme)
+        return set_type(expr, instantiate(scheme))
     if isinstance(expr, Int):
-        return IntType
+        return set_type(expr, IntType)
     if isinstance(expr, Float):
-        return FloatType
+        return set_type(expr, FloatType)
     if isinstance(expr, String):
-        return StringType
+        return set_type(expr, StringType)
     if isinstance(expr, Function):
         arg_tyvar = fresh_tyvar()
         assert isinstance(expr.arg, Var)
         body_ctx = {**ctx, expr.arg.name: Forall([], arg_tyvar)}
         body_ty = infer_type(expr.body, body_ctx)
-        return func_type(arg_tyvar, body_ty)
+        return set_type(expr, func_type(arg_tyvar, body_ty))
     if isinstance(expr, Binop):
         left, right = expr.left, expr.right
         op = Var(BinopKind.to_str(expr.op))
-        return infer_type(Apply(Apply(op, left), right), ctx)
+        return set_type(expr, infer_type(Apply(Apply(op, left), right), ctx))
     if isinstance(expr, Where):
         assert isinstance(expr.binding, Assign)
         name, value, body = expr.binding.name.name, expr.binding.value, expr.body
@@ -4208,33 +4220,33 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
             value_ty = infer_type(value, ctx)
         value_scheme = generalize(recursive_find(value_ty), ctx)
         body_ty = infer_type(body, {**ctx, name: value_scheme})
-        return body_ty
+        return set_type(expr, body_ty)
     if isinstance(expr, List):
         list_item_ty = fresh_tyvar()
         for item in expr.items:
             item_ty = infer_type(item, ctx)
             unify_type(list_item_ty, item_ty)
-        return list_type(list_item_ty)
+        return set_type(expr, list_type(list_item_ty))
     if isinstance(expr, MatchCase):
         pattern_ctx = collect_vars_in_pattern(expr.pattern)
         body_ctx = {**ctx, **pattern_ctx}
         pattern_ty = infer_type(expr.pattern, body_ctx)
         body_ty = infer_type(expr.body, body_ctx)
-        return func_type(pattern_ty, body_ty)
+        return set_type(expr, func_type(pattern_ty, body_ty))
     if isinstance(expr, Apply):
         func_ty = infer_type(expr.func, ctx)
         arg_ty = infer_type(expr.arg, ctx)
         result = fresh_tyvar()
         unify_type(func_ty, func_type(arg_ty, result))
-        return result
+        return set_type(expr, result)
     if isinstance(expr, MatchFunction):
         result = fresh_tyvar()
         for case in expr.cases:
             case_ty = infer_type(case, ctx)
             unify_type(result, case_ty)
-        return result
+        return set_type(expr, result)
     if isinstance(expr, Spread):
-        return fresh_tyvar()
+        return set_type(expr, fresh_tyvar())
     raise InferenceError(f"Unexpected type {type(expr)}")
 
 
@@ -4382,9 +4394,13 @@ class InferTypeTests(unittest.TestCase):
         self.assertTyEqual(ty, IntType)
 
     def test_binop_add_function_constrains_int(self) -> None:
-        expr = Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, Var("x"), Var("y"))))
+        x = Var("x")
+        y = Var("y")
+        expr = Function(Var("x"), Function(Var("y"), Binop(BinopKind.ADD, x, y)))
         ty = self.infer(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
         self.assertTyEqual(ty, func_type(IntType, IntType, IntType))
+        self.assertTyEqual(type_of(x), IntType)
+        self.assertTyEqual(type_of(y), IntType)
 
     def test_let(self) -> None:
         expr = Where(Var("f"), Assign(Var("f"), Function(Var("x"), Var("x"))))
@@ -5242,16 +5258,7 @@ def check_command(args: argparse.Namespace) -> None:
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
-    result = infer_type(
-        ast,
-        {
-            "+": Forall([], func_type(IntType, IntType, IntType)),
-            "-": Forall([], func_type(IntType, IntType, IntType)),
-            "*": Forall([], func_type(IntType, IntType, IntType)),
-            "/": Forall([], func_type(IntType, IntType, IntType)),
-            "++": Forall([], func_type(StringType, StringType, StringType)),
-        },
-    )
+    result = infer_type(ast, OP_ENV)
     result = recursive_find(result)
     result = minimize(result)
     print(result)
@@ -5318,13 +5325,25 @@ def discover_cflags(cc: typing.List[str], debug: bool = True) -> typing.List[str
     return env_get_split("CFLAGS", default_cflags)
 
 
+OP_ENV = {
+    "+": Forall([], func_type(IntType, IntType, IntType)),
+    "-": Forall([], func_type(IntType, IntType, IntType)),
+    "*": Forall([], func_type(IntType, IntType, IntType)),
+    "/": Forall([], func_type(IntType, IntType, IntType)),
+    "++": Forall([], func_type(StringType, StringType, StringType)),
+}
+
+
 def compile_command(args: argparse.Namespace) -> None:
     from compiler import compile_to_string
 
     with open(args.file, "r") as f:
         source = f.read()
 
-    c_program = compile_to_string(source, args.debug)
+    program = parse(tokenize(source))
+    if args.check:
+        infer_type(program, OP_ENV)
+    c_program = compile_to_string(program, args.debug)
 
     with open(args.platform, "r") as f:
         platform = f.read()
@@ -5398,6 +5417,7 @@ def main() -> None:
     comp.add_argument("--memory", type=int)
     comp.add_argument("--run", action="store_true")
     comp.add_argument("--debug", action="store_true", default=False)
+    comp.add_argument("--check", action="store_true", default=False)
     # The platform is in the same directory as this file
     comp.add_argument("--platform", default=os.path.join(os.path.dirname(__file__), "cli.c"))
 
@@ -5413,4 +5433,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # This is so that we can use scrapscript.py as a main but also import
+    # things from `scrapscript` and not have that be a separate module.
+    sys.modules["scrapscript"] = sys.modules[__name__]
     main()

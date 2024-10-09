@@ -3971,6 +3971,10 @@ class PreludeTests(EndToEndTestsBase):
         )
 
 
+class InferenceError(Exception):
+    pass
+
+
 @dataclasses.dataclass
 class MonoType:
     def find(self) -> MonoType:
@@ -3996,7 +4000,8 @@ class TyVar(MonoType):
 
     def make_equal_to(self, other: MonoType) -> None:
         chain_end = self.find()
-        assert isinstance(chain_end, TyVar), f"already resolved to {chain_end}"
+        if not isinstance(chain_end, TyVar):
+            raise InferenceError(f"{self} is already resolved to {chain_end}")
         chain_end.forwarded = other
 
 
@@ -4052,7 +4057,7 @@ def list_type(arg: MonoType) -> TyCon:
 
 
 def unify_fail(ty1: MonoType, ty2: MonoType) -> None:
-    raise TypeError(f"Unification failed for {ty1} and {ty2}")
+    raise InferenceError(f"Unification failed for {ty1} and {ty2}")
 
 
 def occurs_in(tyvar: TyVar, ty: MonoType) -> bool:
@@ -4060,7 +4065,7 @@ def occurs_in(tyvar: TyVar, ty: MonoType) -> bool:
         return tyvar == ty
     if isinstance(ty, TyCon):
         return any(occurs_in(tyvar, arg) for arg in ty.args)
-    raise TypeError(f"Unknown type: {ty}")
+    raise InferenceError(f"Unknown type: {ty}")
 
 
 def unify_type(ty1: MonoType, ty2: MonoType) -> None:
@@ -4068,7 +4073,7 @@ def unify_type(ty1: MonoType, ty2: MonoType) -> None:
     ty2 = ty2.find()
     if isinstance(ty1, TyVar):
         if occurs_in(ty1, ty2):
-            raise TypeError(f"Occurs check failed for {ty1} and {ty2}")
+            raise InferenceError(f"Occurs check failed for {ty1} and {ty2}")
         ty1.make_equal_to(ty2)
         return
     if isinstance(ty2, TyVar):  # Mirror
@@ -4083,7 +4088,7 @@ def unify_type(ty1: MonoType, ty2: MonoType) -> None:
         for l, r in zip(ty1.args, ty2.args):
             unify_type(l, r)
         return
-    raise TypeError(f"Unexpected types {type(ty1)} and {type(ty2)}")
+    raise InferenceError(f"Unexpected types {type(ty1)} and {type(ty2)}")
 
 
 Context = typing.Mapping[str, Forall]
@@ -4113,7 +4118,7 @@ def collect_vars_in_pattern(pattern: Object) -> Context:
                     break
             result.update(collect_vars_in_pattern(item))
         return result
-    raise TypeError(f"Unexpected type {type(pattern)}")
+    raise InferenceError(f"Unexpected type {type(pattern)}")
 
 
 IntType = TyCon("int", [])
@@ -4129,7 +4134,7 @@ def apply_ty(ty: MonoType, subst: Subst) -> MonoType:
         return subst.get(ty.name, ty)
     if isinstance(ty, TyCon):
         return TyCon(ty.name, [apply_ty(arg, subst) for arg in ty.args])
-    raise TypeError(f"Unknown type: {ty}")
+    raise InferenceError(f"Unknown type: {ty}")
 
 
 def instantiate(scheme: Forall) -> MonoType:
@@ -4142,7 +4147,7 @@ def ftv_ty(ty: MonoType) -> set[str]:
         return {ty.name}
     if isinstance(ty, TyCon):
         return set().union(*map(ftv_ty, ty.args))
-    raise TypeError(f"Unknown type: {ty}")
+    raise InferenceError(f"Unknown type: {ty}")
 
 
 def generalize(ty: MonoType, ctx: Context) -> Forall:
@@ -4166,14 +4171,14 @@ def recursive_find(ty: MonoType) -> MonoType:
         return recursive_find(found)
     if isinstance(ty, TyCon):
         return TyCon(ty.name, [recursive_find(arg) for arg in ty.args])
-    raise TypeError(type(ty))
+    raise InferenceError(type(ty))
 
 
 def infer_type(expr: Object, ctx: Context) -> MonoType:
     if isinstance(expr, Var):
         scheme = ctx.get(expr.name)
         if scheme is None:
-            raise TypeError(f"Unbound variable {expr.name}")
+            raise InferenceError(f"Unbound variable {expr.name}")
         return instantiate(scheme)
     if isinstance(expr, Int):
         return IntType
@@ -4230,7 +4235,7 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
         return result
     if isinstance(expr, Spread):
         return fresh_tyvar()
-    raise TypeError(f"Unexpected type {type(expr)}")
+    raise InferenceError(f"Unexpected type {type(expr)}")
 
 
 def minimize(ty: MonoType) -> MonoType:
@@ -4260,13 +4265,13 @@ class InferTypeTests(unittest.TestCase):
         self.assertIs(b.find(), IntType)
 
     def test_unify_tycon_tycon_name_mismatch(self) -> None:
-        with self.assertRaisesRegex(TypeError, "Unification failed"):
+        with self.assertRaisesRegex(InferenceError, "Unification failed"):
             unify_type(IntType, StringType)
 
     def test_unify_tycon_tycon_arity_mismatch(self) -> None:
         l = TyCon("x", [TyVar("a")])
         r = TyCon("x", [])
-        with self.assertRaisesRegex(TypeError, "Unification failed"):
+        with self.assertRaisesRegex(InferenceError, "Unification failed"):
             unify_type(l, r)
 
     def test_unify_tycon_tycon_unifies_arg(self) -> None:
@@ -4289,7 +4294,7 @@ class InferTypeTests(unittest.TestCase):
     def test_unify_recursive_fails(self) -> None:
         l = TyVar("a")
         r = TyCon("x", [TyVar("a")])
-        with self.assertRaisesRegex(TypeError, "Occurs check failed"):
+        with self.assertRaisesRegex(InferenceError, "Occurs check failed"):
             unify_type(l, r)
 
     def test_minimize_tyvar(self) -> None:
@@ -4321,7 +4326,7 @@ class InferTypeTests(unittest.TestCase):
         self.fail(f"Type mismatch: {l} != {r}")
 
     def test_unbound_var(self) -> None:
-        with self.assertRaisesRegex(TypeError, "Unbound variable"):
+        with self.assertRaisesRegex(InferenceError, "Unbound variable"):
             self.infer(Var("a"), {})
 
     def test_var_instantiates_scheme(self) -> None:
@@ -4392,7 +4397,7 @@ class InferTypeTests(unittest.TestCase):
             Assign(Var("y"), Apply(Var("f"), Float(123.0))),
         )
         ctx = {"f": Forall([], func_type(TyVar("a"), TyVar("a")))}
-        with self.assertRaisesRegex(TypeError, "Unification failed"):
+        with self.assertRaisesRegex(InferenceError, "Unification failed"):
             self.infer(expr, ctx)
 
     def test_apply_polytype_to_different_types(self) -> None:
@@ -4420,7 +4425,7 @@ class InferTypeTests(unittest.TestCase):
 
     def test_list_mismatch(self) -> None:
         expr = List([Int(123), Float(123.0)])
-        with self.assertRaisesRegex(TypeError, "Unification failed"):
+        with self.assertRaisesRegex(InferenceError, "Unification failed"):
             infer_type(expr, {})
 
     def test_recursive_fact(self) -> None:
@@ -4446,12 +4451,12 @@ class InferTypeTests(unittest.TestCase):
 
     def test_match_int_int_int_float(self) -> None:
         expr = parse(tokenize("| 0 -> 1 | 1 -> 2.0"))
-        with self.assertRaisesRegex(TypeError, "Unification failed"):
+        with self.assertRaisesRegex(InferenceError, "Unification failed"):
             infer_type(expr, {})
 
     def test_match_int_int_float_int(self) -> None:
         expr = parse(tokenize("| 0 -> 1 | 1.0 -> 2"))
-        with self.assertRaisesRegex(TypeError, "Unification failed"):
+        with self.assertRaisesRegex(InferenceError, "Unification failed"):
             infer_type(expr, {})
 
     def test_match_var(self) -> None:
@@ -4506,7 +4511,7 @@ class InferTypeTests(unittest.TestCase):
 
     def test_recursive_var_is_unbound(self) -> None:
         expr = parse(tokenize("a . a = a"))
-        with self.assertRaisesRegex(TypeError, "Unbound variable"):
+        with self.assertRaisesRegex(InferenceError, "Unbound variable"):
             infer_type(expr, {})
 
     def test_recursive(self) -> None:

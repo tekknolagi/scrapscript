@@ -68,7 +68,9 @@ function updateHistory(inp, out) {
 async function sendRequest(exp) {
     const compiler = document.compiler;
     try {
-      return {result: compiler.compile_to_string(exp, false), ok: true};
+      const tokens = compiler.tokenize(exp);
+      const ast = compiler.parse(tokens);
+      return {result: compiler.compile_to_string(ast, false), ok: true};
     } catch (e) {
       return {text: () => e.toString(), ok: false};
     }

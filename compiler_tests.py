@@ -2,7 +2,7 @@ import os
 import unittest
 import subprocess
 
-from scrapscript import env_get_split, discover_cflags
+from scrapscript import env_get_split, discover_cflags, parse, tokenize
 from compiler import compile_to_string
 
 
@@ -15,7 +15,8 @@ def compile_to_binary(source: str, memory: int, debug: bool) -> str:
     cc = env_get_split("CC", shlex.split(sysconfig.get_config_var("CC")))
     cflags = discover_cflags(cc, debug)
     cflags += [f"-DMEMORY_SIZE={memory}"]
-    c_code = compile_to_string(source, debug)
+    program = parse(tokenize(source))
+    c_code = compile_to_string(program, debug)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as c_file:
         c_file.write(c_code)
         # The platform is in the same directory as this file

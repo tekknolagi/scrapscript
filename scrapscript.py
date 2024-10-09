@@ -5335,6 +5335,8 @@ OP_ENV = {
 
 
 def compile_command(args: argparse.Namespace) -> None:
+    if args.run:
+        args.compile = True
     from compiler import compile_to_string
 
     with open(args.file, "r") as f:

@@ -188,6 +188,8 @@ class Compiler:
         return self.make_closure(env, fn)
 
     def try_match(self, env: Env, arg: str, pattern: Object, fallthrough: str) -> Env:
+        # TODO(max): Give `arg` an AST node so we can track its inferred type
+        # and make use of that in pattern matching
         if isinstance(pattern, Int):
             self._emit(f"if (!is_num_equal_word({arg}, {pattern.value})) {{ goto {fallthrough}; }}")
             return {}

@@ -4477,52 +4477,27 @@ class InferTypeTests(unittest.TestCase):
 
     def test_match_var(self) -> None:
         expr = parse(tokenize("| x -> x + 1"))
-        ty = infer_type(
-            expr,
-            {
-                "+": Forall([], func_type(IntType, IntType, IntType)),
-            },
-        )
+        ty = infer_type(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
         self.assertTyEqual(ty, func_type(IntType, IntType))
 
     def test_match_int_var(self) -> None:
         expr = parse(tokenize("| 0 -> 1 | x -> x"))
-        ty = infer_type(
-            expr,
-            {
-                "+": Forall([], func_type(IntType, IntType, IntType)),
-            },
-        )
+        ty = infer_type(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
         self.assertTyEqual(ty, func_type(IntType, IntType))
 
     def test_match_list_of_int(self) -> None:
         expr = parse(tokenize("| [x] -> x + 1"))
-        ty = infer_type(
-            expr,
-            {
-                "+": Forall([], func_type(IntType, IntType, IntType)),
-            },
-        )
+        ty = infer_type(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
         self.assertTyEqual(ty, func_type(list_type(IntType), IntType))
 
     def test_match_list_of_int_to_list(self) -> None:
         expr = parse(tokenize("| [x] -> [x + 1]"))
-        ty = infer_type(
-            expr,
-            {
-                "+": Forall([], func_type(IntType, IntType, IntType)),
-            },
-        )
+        ty = infer_type(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
         self.assertTyEqual(ty, func_type(list_type(IntType), list_type(IntType)))
 
     def test_match_list_of_int_to_int(self) -> None:
         expr = parse(tokenize("| [] -> 0 | [x] -> 1 | [x, y] -> x+y"))
-        ty = infer_type(
-            expr,
-            {
-                "+": Forall([], func_type(IntType, IntType, IntType)),
-            },
-        )
+        ty = infer_type(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
         self.assertTyEqual(ty, func_type(list_type(IntType), IntType))
 
     def test_recursive_var_is_unbound(self) -> None:
@@ -4564,12 +4539,7 @@ class InferTypeTests(unittest.TestCase):
 
     def test_inc(self) -> None:
         expr = parse(tokenize("inc . inc = | 0 -> 1 | 1 -> 2 | a -> a + 1"))
-        ty = infer_type(
-            expr,
-            {
-                "+": Forall([], func_type(IntType, IntType, IntType)),
-            },
-        )
+        ty = infer_type(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
         self.assertTyEqual(ty, func_type(IntType, IntType))
 
 

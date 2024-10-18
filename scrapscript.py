@@ -4115,7 +4115,7 @@ def collect_vars_in_pattern(pattern: Object) -> Context:
             if isinstance(item, Spread):
                 if item.name is not None:
                     result[item.name] = Forall([], list_type(fresh_tyvar()))
-                    break
+                break
             result.update(collect_vars_in_pattern(item))
         return result
     raise InferenceError(f"Unexpected type {type(pattern)}")
@@ -4224,6 +4224,8 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
     if isinstance(expr, List):
         list_item_ty = fresh_tyvar()
         for item in expr.items:
+            if isinstance(item, Spread):
+                break
             item_ty = infer_type(item, ctx)
             unify_type(list_item_ty, item_ty)
         return set_type(expr, list_type(list_item_ty))
@@ -4245,8 +4247,6 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
             case_ty = infer_type(case, ctx)
             unify_type(result, case_ty)
         return set_type(expr, result)
-    if isinstance(expr, Spread):
-        return set_type(expr, fresh_tyvar())
     raise InferenceError(f"Unexpected type {type(expr)}")
 
 
@@ -4552,6 +4552,16 @@ class InferTypeTests(unittest.TestCase):
         expr = parse(tokenize("| [] -> [] | x -> x"))
         ty = infer_type(expr, {})
         self.assertTyEqual(ty, func_type(list_type(TyVar("t1")), list_type(TyVar("t1"))))
+
+    def test_match_list_spread(self) -> None:
+        expr = parse(tokenize("head . head = | [x, ...] -> x"))
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, func_type(list_type(TyVar("t4")), TyVar("t4")))
+
+    def test_match_list_spread_named(self) -> None:
+        expr = parse(tokenize("sum . sum = | [] -> 0 | [x, ...xs] -> x + sum xs"))
+        ty = infer_type(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
+        self.assertTyEqual(ty, func_type(list_type(IntType), IntType))
 
     def test_match_list_int_to_list(self) -> None:
         expr = parse(tokenize("| [] -> [3] | x -> x"))

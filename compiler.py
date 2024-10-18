@@ -30,6 +30,8 @@ from scrapscript import (
     type_of,
     IntType,
     StringType,
+    parse,  # needed for /compilerepl
+    tokenize,  # needed for /compilerepl
 )
 
 Env = Dict[str, str]

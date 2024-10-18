@@ -4253,6 +4253,10 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
         return set_type(expr, BytesType)
     if isinstance(expr, Hole):
         return set_type(expr, HoleType)
+    if isinstance(expr, Assign):
+        value_ty = infer_type(expr.value, ctx)
+        ctx[expr.name] = generalize(value_ty, ctx)
+        return set_type(expr, value_ty)
     raise InferenceError(f"Unexpected type {type(expr)}")
 
 
@@ -5154,6 +5158,12 @@ def boot_env() -> Env:
     return env_object.env
 
 
+def boot_tyenv() -> Context:
+    ctx = OP_ENV.copy()
+    infer_type(parse(tokenize(PRELUDE)), ctx)
+    return ctx
+
+
 class Completer:
     def __init__(self, env: Env) -> None:
         self.env: Env = env
@@ -5176,7 +5186,7 @@ class Completer:
 REPL_HISTFILE = os.path.expanduser(".scrap-history")
 
 
-class ScrapRepl(code.InteractiveConsole):
+class EvalRepl(code.InteractiveConsole):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.env: Env = boot_env()
@@ -5216,6 +5226,52 @@ class ScrapRepl(code.InteractiveConsole):
             else:
                 self.env["_"] = result
                 print(pretty(result))
+        except UnexpectedEOFError:
+            # Need to read more text
+            return True
+        except ParseError as e:
+            print(f"Parse error: {e}", file=sys.stderr)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+        return False
+
+
+class InferRepl(code.InteractiveConsole):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.ctx: Context = OP_ENV  # boot_tyenv()
+
+    def enable_readline(self) -> None:
+        assert readline, "Can't enable readline without readline module"
+        if os.path.exists(REPL_HISTFILE):
+            readline.read_history_file(REPL_HISTFILE)
+        # what determines the end of a word; need to set so $ can be part of a
+        # variable name
+        readline.set_completer_delims(" \t\n;")
+        # TODO(max): Add completion per scope, not just for global environment.
+        # readline.set_completer(Completer(self.ctx).complete)
+        readline.parse_and_bind("set show-all-if-ambiguous on")
+        readline.parse_and_bind("tab: menu-complete")
+
+    def finish_readline(self) -> None:
+        assert readline, "Can't finish readline without readline module"
+        histfile_size = 1000
+        readline.set_history_length(histfile_size)
+        readline.write_history_file(REPL_HISTFILE)
+
+    def runsource(self, source: str, filename: str = "<input>", symbol: str = "single") -> bool:
+        try:
+            tokens = tokenize(source)
+            logger.debug("Tokens: %s", tokens)
+            ast = parse(tokens)
+            if isinstance(ast, MatchFunction) and not source.endswith("\n"):
+                # User might be in the middle of typing a multi-line match...
+                # wait for them to hit Enter once after the last case
+                return True
+            logger.debug("AST: %s", ast)
+            result = infer_type(ast, self.ctx)
+            assert isinstance(self.ctx, dict)  # for .update()/__setitem__
+            print(minimize(recursive_find(result)))
         except UnexpectedEOFError:
             # Need to read more text
             return True
@@ -5270,12 +5326,24 @@ def repl_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
-    repl = ScrapRepl()
+    repl = EvalRepl()
     if readline:
         repl.enable_readline()
     repl.interact(banner="")
     if readline:
         repl.finish_readline()
+
+
+def infer_repl_command(args: argparse.Namespace) -> None:
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+
+    infer_repl = InferRepl()
+    if readline:
+        infer_repl.enable_readline()
+    infer_repl.interact(banner="")
+    if readline:
+        infer_repl.finish_readline()
 
 
 def test_command(args: argparse.Namespace) -> None:
@@ -5379,6 +5447,10 @@ def main() -> None:
     repl = subparsers.add_parser("repl")
     repl.set_defaults(func=repl_command)
     repl.add_argument("--debug", action="store_true")
+
+    infer_repl = subparsers.add_parser("infer_repl")
+    infer_repl.set_defaults(func=infer_repl_command)
+    infer_repl.add_argument("--debug", action="store_true")
 
     test = subparsers.add_parser("test")
     test.set_defaults(func=test_command)

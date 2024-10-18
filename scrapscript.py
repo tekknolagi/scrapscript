@@ -4536,8 +4536,7 @@ class InferTypeTests(unittest.TestCase):
         length
         . length =
         | [] -> 0
-        -- Unfortunately broken because this was written without Spread support
-        | xs -> 1 + length xs
+        | [x, ...xs] -> 1 + length xs
         """)
         )
         ty = infer_type(
@@ -4546,7 +4545,7 @@ class InferTypeTests(unittest.TestCase):
                 "+": Forall([], func_type(IntType, IntType, IntType)),
             },
         )
-        self.assertTyEqual(ty, func_type(list_type(TyVar("t7")), IntType))
+        self.assertTyEqual(ty, func_type(list_type(TyVar("t9")), IntType))
 
     def test_match_list_to_list(self) -> None:
         expr = parse(tokenize("| [] -> [] | x -> x"))

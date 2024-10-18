@@ -4125,6 +4125,7 @@ IntType = TyCon("int", [])
 StringType = TyCon("string", [])
 FloatType = TyCon("float", [])
 BytesType = TyCon("bytes", [])
+HoleType = TyCon("hole", [])
 
 
 Subst = typing.Mapping[str, MonoType]
@@ -4250,6 +4251,8 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
         return set_type(expr, result)
     if isinstance(expr, Bytes):
         return set_type(expr, BytesType)
+    if isinstance(expr, Hole):
+        return set_type(expr, HoleType)
     raise InferenceError(f"Unexpected type {type(expr)}")
 
 
@@ -4549,6 +4552,11 @@ class InferTypeTests(unittest.TestCase):
         expr = Bytes(b"abc")
         ty = infer_type(expr, {})
         self.assertTyEqual(ty, BytesType)
+
+    def test_hole(self) -> None:
+        expr = Hole()
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, HoleType)
 
 
 class SerializerTests(unittest.TestCase):

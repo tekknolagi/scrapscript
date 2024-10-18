@@ -4124,6 +4124,7 @@ def collect_vars_in_pattern(pattern: Object) -> Context:
 IntType = TyCon("int", [])
 StringType = TyCon("string", [])
 FloatType = TyCon("float", [])
+BytesType = TyCon("bytes", [])
 
 
 Subst = typing.Mapping[str, MonoType]
@@ -4247,6 +4248,8 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
             case_ty = infer_type(case, ctx)
             unify_type(result, case_ty)
         return set_type(expr, result)
+    if isinstance(expr, Bytes):
+        return set_type(expr, BytesType)
     raise InferenceError(f"Unexpected type {type(expr)}")
 
 
@@ -4541,6 +4544,11 @@ class InferTypeTests(unittest.TestCase):
         expr = parse(tokenize("inc . inc = | 0 -> 1 | 1 -> 2 | a -> a + 1"))
         ty = infer_type(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
         self.assertTyEqual(ty, func_type(IntType, IntType))
+
+    def test_bytes(self) -> None:
+        expr = Bytes(b"abc")
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, BytesType)
 
 
 class SerializerTests(unittest.TestCase):

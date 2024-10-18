@@ -4558,6 +4558,16 @@ class InferTypeTests(unittest.TestCase):
         ty = infer_type(expr, {})
         self.assertTyEqual(ty, HoleType)
 
+    def test_string_concat(self) -> None:
+        expr = parse(tokenize('"a" ++ "b"'))
+        ty = infer_type(expr, OP_ENV)
+        self.assertTyEqual(ty, StringType)
+
+    def test_cons(self) -> None:
+        expr = parse(tokenize("1 >+ [2]"))
+        ty = infer_type(expr, OP_ENV)
+        self.assertTyEqual(ty, list_type(IntType))
+
 
 class SerializerTests(unittest.TestCase):
     def _serialize(self, obj: Object) -> bytes:
@@ -5321,6 +5331,7 @@ OP_ENV = {
     "*": Forall([], func_type(IntType, IntType, IntType)),
     "/": Forall([], func_type(IntType, IntType, IntType)),
     "++": Forall([], func_type(StringType, StringType, StringType)),
+    ">+": Forall([TyVar("a")], func_type(TyVar("a"), list_type(TyVar("a")), list_type(TyVar("a")))),
 }
 
 

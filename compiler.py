@@ -27,8 +27,11 @@ from scrapscript import (
     Variant,
     Where,
     free_in,
-    parse,
-    tokenize,
+    type_of,
+    IntType,
+    StringType,
+    parse,  # needed for /compilerepl
+    tokenize,  # needed for /compilerepl
 )
 
 Env = Dict[str, str]
@@ -128,6 +131,14 @@ class Compiler:
         self._emit("abort();")
         self._emit("}")
 
+    def _guard_int(self, exp: Object, c_name: str) -> str:
+        if type_of(exp) != IntType:
+            self._guard(f"is_num({c_name})")
+
+    def _guard_str(self, exp: Object, c_name: str) -> str:
+        if type_of(exp) != StringType:
+            self._guard(f"is_string({c_name})")
+
     def _mktemp(self, exp: str) -> str:
         temp = self.gensym()
         return self._handle(temp, exp)
@@ -179,6 +190,8 @@ class Compiler:
         return self.make_closure(env, fn)
 
     def try_match(self, env: Env, arg: str, pattern: Object, fallthrough: str) -> Env:
+        # TODO(max): Give `arg` an AST node so we can track its inferred type
+        # and make use of that in pattern matching
         if isinstance(pattern, Int):
             self._emit(f"if (!is_num_equal_word({arg}, {pattern.value})) {{ goto {fallthrough}; }}")
             return {}
@@ -365,26 +378,26 @@ class Compiler:
             right = self.compile(env, exp.right)
             if exp.op == BinopKind.ADD:
                 self._debug("collect(heap);")
-                self._guard(f"is_num({left})")
-                self._guard(f"is_num({right})")
+                self._guard_int(exp.left, left)
+                self._guard_int(exp.right, right)
                 return self._mktemp(f"num_add({left}, {right})")
             if exp.op == BinopKind.MUL:
                 self._debug("collect(heap);")
-                self._guard(f"is_num({left})")
-                self._guard(f"is_num({right})")
+                self._guard_int(exp.left, left)
+                self._guard_int(exp.right, right)
                 return self._mktemp(f"num_mul({left}, {right})")
             if exp.op == BinopKind.SUB:
                 self._debug("collect(heap);")
-                self._guard(f"is_num({left})")
-                self._guard(f"is_num({right})")
+                self._guard_int(exp.left, left)
+                self._guard_int(exp.right, right)
                 return self._mktemp(f"num_sub({left}, {right})")
             if exp.op == BinopKind.LIST_CONS:
                 self._debug("collect(heap);")
                 return self._mktemp(f"list_cons({left}, {right})")
             if exp.op == BinopKind.STRING_CONCAT:
                 self._debug("collect(heap);")
-                self._guard(f"is_string({left})")
-                self._guard(f"is_string({right})")
+                self._guard_str(exp.left, left)
+                self._guard_str(exp.right, right)
                 return self._mktemp(f"string_concat({left}, {right})")
             raise NotImplementedError(f"binop {exp.op}")
         if isinstance(exp, Where):
@@ -433,9 +446,7 @@ class Compiler:
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 
 
-def compile_to_string(source: str, debug: bool) -> str:
-    program = parse(tokenize(source))
-
+def compile_to_string(program: Object, debug: bool) -> str:
     main_fn = CompiledFunction("scrap_main", params=[])
     compiler = Compiler(main_fn)
     compiler.debug = debug

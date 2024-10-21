@@ -4232,6 +4232,7 @@ Subst = typing.Mapping[str, MonoType]
 
 
 def apply_ty(ty: MonoType, subst: Subst) -> MonoType:
+    ty = ty.find()
     if isinstance(ty, TyVar):
         return subst.get(ty.name, ty)
     if isinstance(ty, TyCon):
@@ -4251,6 +4252,7 @@ def instantiate(scheme: Forall) -> MonoType:
 
 
 def ftv_ty(ty: MonoType) -> set[str]:
+    ty = ty.find()
     if isinstance(ty, TyVar):
         return {ty.name}
     if isinstance(ty, TyCon):
@@ -4275,27 +4277,11 @@ def generalize(ty: MonoType, ctx: Context) -> Forall:
     return Forall([TyVar(name) for name in sorted(tyvars)], ty)
 
 
-def recursive_find(ty: MonoType) -> MonoType:
-    if isinstance(ty, TyVar):
-        found = ty.find()
-        if ty is found:
-            return found
-        return recursive_find(found)
-    if isinstance(ty, TyCon):
-        return TyCon(ty.name, [recursive_find(arg) for arg in ty.args])
-    if isinstance(ty, TyEmptyRow):
-        return ty
-    if isinstance(ty, TyRow):
-        rest = recursive_find(ty.rest)
-        assert isinstance(rest, (TyVar, TyRow, TyEmptyRow))
-        return TyRow({name: recursive_find(ty) for name, ty in ty.fields.items()}, rest)
-    raise InferenceError(type(ty))
-
-
 def type_of(expr: Object) -> MonoType:
     ty = getattr(expr, "inferred_type", None)
     if ty is not None:
-        return recursive_find(ty)
+        assert isinstance(ty, MonoType)
+        return ty.find()
     return set_type(expr, fresh_tyvar())
 
 
@@ -4380,7 +4366,7 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
         else:
             # Let
             value_ty = infer_type(value, ctx)
-        value_scheme = generalize(recursive_find(value_ty), ctx)
+        value_scheme = generalize(value_ty, ctx)
         body_ty = infer_type(body, {**ctx, name: value_scheme})
         return set_type(expr, body_ty)
     if isinstance(expr, List):
@@ -4550,7 +4536,7 @@ class InferTypeTests(unittest.TestCase):
         self.assertEqual(minimize(ty), func_type(TyVar("a"), TyVar("b"), TyVar("a")))
 
     def infer(self, expr: Object, ctx: Context) -> MonoType:
-        return minimize(recursive_find(infer_type(expr, ctx)))
+        return minimize(infer_type(expr, ctx))
 
     def assertTyEqual(self, l: MonoType, r: MonoType) -> bool:
         l = l.find()
@@ -5603,7 +5589,6 @@ def check_command(args: argparse.Namespace) -> None:
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
     result = infer_type(ast, OP_ENV)
-    result = recursive_find(result)
     result = minimize(result)
     print(result)
 

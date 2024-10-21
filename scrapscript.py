@@ -4020,6 +4020,43 @@ class TyCon(MonoType):
 
 
 @dataclasses.dataclass
+class TyEmptyRow(MonoType):
+    def __str__(self) -> str:
+        return "{}"
+
+empty_row = TyEmptyRow()
+
+@dataclasses.dataclass
+class TyRec(MonoType):
+    fields: dict[str, MonoType]
+    rest: TyVar | TyEmptyRow = empty_row
+
+    def __str__(self) -> str:
+        flat, rest = row_flatten(self)
+        # sort to make tests deterministic
+        result = [f"{key}={val}" for key, val in sorted(flat.items())]
+        if isinstance(rest, TyVar):
+            result.append(f"...{rest}")
+        else:
+            assert isinstance(rest, TyEmptyRow)
+        return "{" + ", ".join(result) + "}"
+
+
+def row_flatten(rec: MonoType) -> tuple[dict[str, MonoType], TyVar | TyEmptyRow]:
+    if isinstance(rec, TyVar):
+        rec = rec.find()
+        if isinstance(rec, TyVar):
+            return {}, rec
+    if isinstance(rec, TyRec):
+        flat, rest = row_flatten(rec.rest)
+        flat.update(rec.fields)
+        return flat, rest
+    if isinstance(rec, TyEmptyRow):
+        return {}, rec
+    raise InferenceError(f"Expected record type, got {type(rec)}")
+
+
+@dataclasses.dataclass
 class Forall:
     tyvars: list[TyVar]
     ty: MonoType
@@ -4040,6 +4077,23 @@ class TypeStrTests(unittest.TestCase):
 
     def test_tycon_args(self) -> None:
         self.assertEqual(str(TyCon("->", [IntType, IntType])), "(int->int)")
+
+    def test_tyrec_empty_closed(self) -> None:
+        self.assertEqual(str(TyRec({})), "{}")
+
+    def test_tyrec_empty_open(self) -> None:
+        self.assertEqual(str(TyRec({}, TyVar("a"))), "{...'a}")
+
+    def test_tyrec_closed(self) -> None:
+        self.assertEqual(str(TyRec({"x": IntType, "y": StringType})), "{x=int, y=string}")
+
+    def test_tyrec_open(self) -> None:
+        self.assertEqual(str(TyRec({"x": IntType, "y": StringType}, TyVar("a"))), "{x=int, y=string, ...'a}")
+
+    def test_tyrec_chain(self) -> None:
+        inner = TyRec({"x": IntType})
+        outer = TyRec({"y": StringType}, inner)
+        self.assertEqual(str(outer), "{x=int, y=string}")
 
     def test_forall(self) -> None:
         self.assertEqual(str(Forall([TyVar("a"), TyVar("b")], TyVar("a"))), "(forall 'a, 'b. 'a)")
@@ -4065,6 +4119,10 @@ def occurs_in(tyvar: TyVar, ty: MonoType) -> bool:
         return tyvar == ty
     if isinstance(ty, TyCon):
         return any(occurs_in(tyvar, arg) for arg in ty.args)
+    if isinstance(ty, TyEmptyRow):
+        return False
+    if isinstance(ty, TyRec):
+        return any(occurs_in(tyvar, val) for val in ty.fields.values())
     raise InferenceError(f"Unknown type: {ty}")
 
 
@@ -4087,6 +4145,37 @@ def unify_type(ty1: MonoType, ty2: MonoType) -> None:
             return
         for l, r in zip(ty1.args, ty2.args):
             unify_type(l, r)
+        return
+    if isinstance(ty1, TyEmptyRow) and isinstance(ty2, TyEmptyRow):
+        return
+    if isinstance(ty1, TyRec) and isinstance(ty2, TyRec):
+        ty1_fields, ty1_rest = row_flatten(ty1)
+        ty2_fields, ty2_rest = row_flatten(ty2)
+        ty1_missing = {}
+        ty2_missing = {}
+        all_field_names = set(ty1_fields.keys()) | set(ty2_fields.keys())
+        for key in all_field_names:
+            ty1_val = ty1_fields.get(key)
+            ty2_val = ty2_fields.get(key)
+            if ty1_val is not None and ty2_val is not None:
+                unify_type(ty1_val, ty2_val)
+            elif ty1_val is None:
+                ty1_missing[key] = ty2_val
+            elif ty2_val is None:
+                ty2_missing[key] = ty1_val
+        # TODO(max): Test all cases
+        if not ty1_missing and not ty2_missing:
+            unify_type(ty1_rest, ty2_rest)
+            return
+        if not ty1_missing:
+            unify_type(ty2_rest, TyRec(ty2_missing, ty1_rest))
+            return
+        if not ty2_missing:
+            unify_type(ty1_rest, TyRec(ty1_missing, ty2_rest))
+            return
+        rest = fresh_tyvar()
+        unify_type(ty1_rest, TyRec(ty1_missing, rest))
+        unify_type(ty2_rest, TyRec(ty2_missing, rest))
         return
     raise InferenceError(f"Unexpected types {type(ty1)} and {type(ty2)}")
 
@@ -4118,6 +4207,15 @@ def collect_vars_in_pattern(pattern: Object) -> Context:
                 break
             result.update(collect_vars_in_pattern(item))
         return result
+    if isinstance(pattern, Record):
+        result: dict[str, Forall] = {}
+        for item in pattern.data.values():
+            if isinstance(item, Spread):
+                if item.name is not None:
+                    result[item.name] = Forall([], fresh_tyvar())
+                break
+            result.update(collect_vars_in_pattern(item))
+        return result
     raise InferenceError(f"Unexpected type {type(pattern)}")
 
 
@@ -4136,6 +4234,12 @@ def apply_ty(ty: MonoType, subst: Subst) -> MonoType:
         return subst.get(ty.name, ty)
     if isinstance(ty, TyCon):
         return TyCon(ty.name, [apply_ty(arg, subst) for arg in ty.args])
+    if isinstance(ty, TyEmptyRow):
+        return ty
+    if isinstance(ty, TyRec):
+        return TyRec({key: apply_ty(val, subst) for key, val in
+                      ty.fields.items()},
+                     apply_ty(ty.rest, subst))
     raise InferenceError(f"Unknown type: {ty}")
 
 
@@ -4149,6 +4253,8 @@ def ftv_ty(ty: MonoType) -> set[str]:
         return {ty.name}
     if isinstance(ty, TyCon):
         return set().union(*map(ftv_ty, ty.args))
+    if isinstance(ty, TyRec):
+        return set().union(*map(ftv_ty, ty.fields.values()))
     raise InferenceError(f"Unknown type: {ty}")
 
 
@@ -4173,6 +4279,10 @@ def recursive_find(ty: MonoType) -> MonoType:
         return recursive_find(found)
     if isinstance(ty, TyCon):
         return TyCon(ty.name, [recursive_find(arg) for arg in ty.args])
+    if isinstance(ty, TyRec):
+        return TyRec({name: recursive_find(ty) for name, ty in
+                      ty.fields.items()},
+                     recursive_find(ty.rest))
     raise InferenceError(type(ty))
 
 
@@ -4253,6 +4363,15 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
         return set_type(expr, BytesType)
     if isinstance(expr, Hole):
         return set_type(expr, HoleType)
+    if isinstance(expr, Record):
+        # Closed
+        return set_type(expr, TyRec({key: infer_type(value, ctx) for key, value in expr.data.items()}))
+    if isinstance(expr, Access):
+        obj_ty = infer_type(expr, ctx)
+        value_ty = fresh_tyvar()
+        assert isinstance(expr.at, Var)
+        unify_type(obj_ty, has_field(expr.at.name, value_ty))
+        return value_ty
     raise InferenceError(f"Unexpected type {type(expr)}")
 
 
@@ -4340,6 +4459,14 @@ class InferTypeTests(unittest.TestCase):
                 self.fail(f"Type mismatch: {l} != {r}")
             for l_arg, r_arg in zip(l.args, r.args):
                 self.assertTyEqual(l_arg, r_arg)
+            return True
+        if isinstance(l, TyRec) and isinstance(r, TyRec):
+            l_keys = set(l.fields.keys())
+            r_keys = set(r.fields.keys())
+            if l_keys != r_keys:
+                self.fail(f"Type mismatch: {l} != {r}")
+            for key in l_keys:
+                self.assertTyEqual(l.fields[key], r.fields[key])
             return True
         self.fail(f"Type mismatch: {l} != {r}")
 
@@ -4572,6 +4699,39 @@ class InferTypeTests(unittest.TestCase):
         expr = parse(tokenize("[1] +< 2"))
         ty = infer_type(expr, OP_ENV)
         self.assertTyEqual(ty, list_type(IntType))
+
+    def test_record(self) -> None:
+        expr = Record({"a": Int(1), "b": String("hello")})
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, TyRec({"a": IntType, "b": StringType}))
+
+    def test_match_record(self) -> None:
+        expr = MatchFunction(
+            [
+                MatchCase(
+                    Record({"x": Var("x")}),
+                    Var("x"),
+                )
+            ]
+        )
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, func_type(TyRec({"x": TyVar("t1")}), TyVar("t1")))
+
+    def test_apply_row_polymorphic(self) -> None:
+        row0 = Record({"x": Int(1)})
+        row1 = Record({"x": Int(1), "y": Int(2)})
+        row2 = Record({"x": Int(1), "y": Int(2), "z": Int(3)})
+        scheme = Forall([TyVar("a")], 
+
+                        func_type(TyRec({"x": IntType}, TyVar("a")), IntType)
+
+                        )
+        ty0 = infer_type(Apply(Var("f"), row0), {"f": scheme})
+        self.assertTyEqual(ty0, IntType)
+        ty1 = infer_type(Apply(Var("f"), row1), {"f": scheme})
+        self.assertTyEqual(ty1, IntType)
+        ty2 = infer_type(Apply(Var("f"), row2), {"f": scheme})
+        self.assertTyEqual(ty2, IntType)
 
 
 class SerializerTests(unittest.TestCase):

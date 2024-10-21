@@ -131,11 +131,11 @@ class Compiler:
         self._emit("abort();")
         self._emit("}")
 
-    def _guard_int(self, exp: Object, c_name: str) -> str:
+    def _guard_int(self, exp: Object, c_name: str) -> None:
         if type_of(exp) != IntType:
             self._guard(f"is_num({c_name})")
 
-    def _guard_str(self, exp: Object, c_name: str) -> str:
+    def _guard_str(self, exp: Object, c_name: str) -> None:
         if type_of(exp) != StringType:
             self._guard(f"is_string({c_name})")
 

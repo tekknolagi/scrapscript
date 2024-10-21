@@ -4365,10 +4365,11 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
         # Closed
         return set_type(expr, TyRow({key: infer_type(value, ctx) for key, value in expr.data.items()}))
     if isinstance(expr, Access):
-        obj_ty = infer_type(expr, ctx)
+        obj_ty = infer_type(expr.obj, ctx)
         value_ty = fresh_tyvar()
         assert isinstance(expr.at, Var)
-        unify_type(obj_ty, has_field(expr.at.name, value_ty))
+        # "has field" constraint in the form of an open row
+        unify_type(obj_ty, TyRow({expr.at.name: value_ty}, fresh_tyvar()))
         return value_ty
     raise InferenceError(f"Unexpected type {type(expr)}")
 
@@ -4458,6 +4459,8 @@ class InferTypeTests(unittest.TestCase):
             for l_arg, r_arg in zip(l.args, r.args):
                 self.assertTyEqual(l_arg, r_arg)
             return True
+        if isinstance(l, TyEmptyRow) and isinstance(r, TyEmptyRow):
+            return True
         if isinstance(l, TyRow) and isinstance(r, TyRow):
             l_keys = set(l.fields.keys())
             r_keys = set(r.fields.keys())
@@ -4465,6 +4468,7 @@ class InferTypeTests(unittest.TestCase):
                 self.fail(f"Type mismatch: {l} != {r}")
             for key in l_keys:
                 self.assertTyEqual(l.fields[key], r.fields[key])
+            self.assertTyEqual(l.rest, r.rest)
             return True
         self.fail(f"Type mismatch: {l} != {r}")
 
@@ -4714,6 +4718,11 @@ class InferTypeTests(unittest.TestCase):
         )
         ty = infer_type(expr, {})
         self.assertTyEqual(ty, func_type(TyRow({"x": TyVar("t1")}), TyVar("t1")))
+
+    def test_access_poly(self) -> None:
+        expr = Function(Var("r"), Access(Var("r"), Var("x")))
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, func_type(TyRow({"x": TyVar("t1")}, TyVar("t2")), TyVar("t1")))
 
     def test_apply_row_polymorphic(self) -> None:
         row0 = Record({"x": Int(1)})

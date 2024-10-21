@@ -4024,7 +4024,9 @@ class TyEmptyRow(MonoType):
     def __str__(self) -> str:
         return "{}"
 
+
 empty_row = TyEmptyRow()
+
 
 @dataclasses.dataclass
 class TyRec(MonoType):
@@ -4237,9 +4239,7 @@ def apply_ty(ty: MonoType, subst: Subst) -> MonoType:
     if isinstance(ty, TyEmptyRow):
         return ty
     if isinstance(ty, TyRec):
-        return TyRec({key: apply_ty(val, subst) for key, val in
-                      ty.fields.items()},
-                     apply_ty(ty.rest, subst))
+        return TyRec({key: apply_ty(val, subst) for key, val in ty.fields.items()}, apply_ty(ty.rest, subst))
     raise InferenceError(f"Unknown type: {ty}")
 
 
@@ -4280,9 +4280,7 @@ def recursive_find(ty: MonoType) -> MonoType:
     if isinstance(ty, TyCon):
         return TyCon(ty.name, [recursive_find(arg) for arg in ty.args])
     if isinstance(ty, TyRec):
-        return TyRec({name: recursive_find(ty) for name, ty in
-                      ty.fields.items()},
-                     recursive_find(ty.rest))
+        return TyRec({name: recursive_find(ty) for name, ty in ty.fields.items()}, recursive_find(ty.rest))
     raise InferenceError(type(ty))
 
 
@@ -4721,11 +4719,7 @@ class InferTypeTests(unittest.TestCase):
         row0 = Record({"x": Int(1)})
         row1 = Record({"x": Int(1), "y": Int(2)})
         row2 = Record({"x": Int(1), "y": Int(2), "z": Int(3)})
-        scheme = Forall([TyVar("a")], 
-
-                        func_type(TyRec({"x": IntType}, TyVar("a")), IntType)
-
-                        )
+        scheme = Forall([TyVar("a")], func_type(TyRec({"x": IntType}, TyVar("a")), IntType))
         ty0 = infer_type(Apply(Var("f"), row0), {"f": scheme})
         self.assertTyEqual(ty0, IntType)
         ty1 = infer_type(Apply(Var("f"), row1), {"f": scheme})

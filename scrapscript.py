@@ -4349,7 +4349,7 @@ def infer_pattern_type(pattern: Object, ctx: Context) -> MonoType:
                 break
             fields[key] = infer_pattern_type(value, ctx)
         return set_type(pattern, TyRow(fields, rest))
-    raise InferenceError(f"{type(expr)} isn't allowed in a pattern")
+    raise InferenceError(f"{type(pattern)} isn't allowed in a pattern")
 
 
 def infer_type(expr: Object, ctx: Context) -> MonoType:
@@ -4386,7 +4386,7 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
     if isinstance(expr, List):
         list_item_ty = fresh_tyvar()
         for item in expr.items:
-            assert not isinstance(item, Spread), f"Spread can only occur in list match (for now)"
+            assert not isinstance(item, Spread), "Spread can only occur in list match (for now)"
             item_ty = infer_type(item, ctx)
             unify_type(list_item_ty, item_ty)
         return set_type(expr, list_type(list_item_ty))
@@ -4411,7 +4411,7 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
         fields = {}
         rest: TyVar | TyRow | TyEmptyRow = empty_row
         for key, value in expr.data.items():
-            assert not isinstance(value, Spread), f"Spread can only occur in record match (for now)"
+            assert not isinstance(value, Spread), "Spread can only occur in record match (for now)"
             fields[key] = infer_type(value, ctx)
         return set_type(expr, TyRow(fields, rest))
     if isinstance(expr, Access):

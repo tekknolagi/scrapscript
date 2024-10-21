@@ -4819,7 +4819,7 @@ class InferTypeTests(unittest.TestCase):
         self.assertTyEqual(ty2, IntType)
 
     def test_example_rec_access(self) -> None:
-        expr = parse(tokenize("""rec@a . rec = { a = 1, b = "x" }"""))
+        expr = parse(tokenize('rec@a . rec = { a = 1, b = "x" }'))
         ty = infer_type(expr, {})
         self.assertTyEqual(ty, IntType)
 

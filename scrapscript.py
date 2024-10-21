@@ -4033,6 +4033,10 @@ class TyRow(MonoType):
     fields: dict[str, MonoType]
     rest: TyVar | TyEmptyRow = empty_row
 
+    def __post_init__(self) -> None:
+        if not self.fields and isinstance(self.rest, TyEmptyRow):
+            raise InferenceError("Empty row must have a rest type")
+
     def __str__(self) -> str:
         flat, rest = row_flatten(self)
         # sort to make tests deterministic
@@ -4080,19 +4084,19 @@ class TypeStrTests(unittest.TestCase):
     def test_tycon_args(self) -> None:
         self.assertEqual(str(TyCon("->", [IntType, IntType])), "(int->int)")
 
-    def test_tyrec_empty_closed(self) -> None:
-        self.assertEqual(str(TyRow({})), "{}")
+    def test_tyrow_empty_closed(self) -> None:
+        self.assertEqual(str(TyEmptyRow()), "{}")
 
-    def test_tyrec_empty_open(self) -> None:
+    def test_tyrow_empty_open(self) -> None:
         self.assertEqual(str(TyRow({}, TyVar("a"))), "{...'a}")
 
-    def test_tyrec_closed(self) -> None:
+    def test_tyrow_closed(self) -> None:
         self.assertEqual(str(TyRow({"x": IntType, "y": StringType})), "{x=int, y=string}")
 
-    def test_tyrec_open(self) -> None:
+    def test_tyrow_open(self) -> None:
         self.assertEqual(str(TyRow({"x": IntType, "y": StringType}, TyVar("a"))), "{x=int, y=string, ...'a}")
 
-    def test_tyrec_chain(self) -> None:
+    def test_tyrow_chain(self) -> None:
         inner = TyRow({"x": IntType})
         outer = TyRow({"y": StringType}, inner)
         self.assertEqual(str(outer), "{x=int, y=string}")
@@ -4444,6 +4448,9 @@ class InferTypeTests(unittest.TestCase):
         r = TyCon("x", [TyVar("a")])
         with self.assertRaisesRegex(InferenceError, "Occurs check failed"):
             unify_type(l, r)
+
+    def test_unify_empty_row(self) -> None:
+        unify_type(TyEmptyRow(), TyEmptyRow())
 
     def test_minimize_tyvar(self) -> None:
         ty = fresh_tyvar()

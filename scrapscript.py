@@ -4004,6 +4004,9 @@ class TyVar(MonoType):
             raise InferenceError(f"{self} is already resolved to {chain_end}")
         chain_end.forwarded = other
 
+    def is_unbound(self) -> bool:
+        return self.forwarded is None
+
 
 @dataclasses.dataclass
 class TyCon(MonoType):
@@ -4017,6 +4020,49 @@ class TyCon(MonoType):
         if len(self.args) == 1:
             return f"({self.args[0]} {self.name})"
         return f"({self.name.join(map(str, self.args))})"
+
+
+@dataclasses.dataclass
+class TyEmptyRow(MonoType):
+    def __str__(self) -> str:
+        return "{}"
+
+
+empty_row = TyEmptyRow()
+
+
+@dataclasses.dataclass
+class TyRow(MonoType):
+    fields: dict[str, MonoType]
+    rest: TyVar | TyRow | TyEmptyRow = dataclasses.field(default_factory=TyEmptyRow)
+
+    def __post_init__(self) -> None:
+        if not self.fields and isinstance(self.rest, TyEmptyRow):
+            raise InferenceError("Empty row must have a rest type")
+
+    def __str__(self) -> str:
+        flat, rest = row_flatten(self)
+        # sort to make tests deterministic
+        result = [f"{key}={val}" for key, val in sorted(flat.items())]
+        if isinstance(rest, TyVar):
+            result.append(f"...{rest}")
+        else:
+            assert isinstance(rest, TyEmptyRow)
+        return "{" + ", ".join(result) + "}"
+
+
+def row_flatten(rec: MonoType) -> tuple[dict[str, MonoType], TyVar | TyEmptyRow]:
+    if isinstance(rec, TyVar):
+        rec = rec.find()
+        if isinstance(rec, TyVar):
+            return {}, rec
+    if isinstance(rec, TyRow):
+        flat, rest = row_flatten(rec.rest)
+        flat.update(rec.fields)
+        return flat, rest
+    if isinstance(rec, TyEmptyRow):
+        return {}, rec
+    raise InferenceError(f"Expected record type, got {type(rec)}")
 
 
 @dataclasses.dataclass
@@ -4040,6 +4086,25 @@ class TypeStrTests(unittest.TestCase):
 
     def test_tycon_args(self) -> None:
         self.assertEqual(str(TyCon("->", [IntType, IntType])), "(int->int)")
+
+    def test_tyrow_empty_closed(self) -> None:
+        self.assertEqual(str(TyEmptyRow()), "{}")
+
+    def test_tyrow_empty_open(self) -> None:
+        self.assertEqual(str(TyRow({}, TyVar("a"))), "{...'a}")
+
+    def test_tyrow_closed(self) -> None:
+        self.assertEqual(str(TyRow({"x": IntType, "y": StringType})), "{x=int, y=string}")
+
+    def test_tyrow_open(self) -> None:
+        self.assertEqual(str(TyRow({"x": IntType, "y": StringType}, TyVar("a"))), "{x=int, y=string, ...'a}")
+
+    def test_tyrow_chain(self) -> None:
+        inner = TyRow({"x": IntType})
+        inner_var = TyVar("a")
+        inner_var.make_equal_to(inner)
+        outer = TyRow({"y": StringType}, inner_var)
+        self.assertEqual(str(outer), "{x=int, y=string}")
 
     def test_forall(self) -> None:
         self.assertEqual(str(Forall([TyVar("a"), TyVar("b")], TyVar("a"))), "(forall 'a, 'b. 'a)")
@@ -4065,6 +4130,10 @@ def occurs_in(tyvar: TyVar, ty: MonoType) -> bool:
         return tyvar == ty
     if isinstance(ty, TyCon):
         return any(occurs_in(tyvar, arg) for arg in ty.args)
+    if isinstance(ty, TyEmptyRow):
+        return False
+    if isinstance(ty, TyRow):
+        return any(occurs_in(tyvar, val) for val in ty.fields.values()) or occurs_in(tyvar, ty.rest)
     raise InferenceError(f"Unknown type: {ty}")
 
 
@@ -4088,7 +4157,55 @@ def unify_type(ty1: MonoType, ty2: MonoType) -> None:
         for l, r in zip(ty1.args, ty2.args):
             unify_type(l, r)
         return
-    raise InferenceError(f"Unexpected types {type(ty1)} and {type(ty2)}")
+    if isinstance(ty1, TyEmptyRow) and isinstance(ty2, TyEmptyRow):
+        return
+    if isinstance(ty1, TyRow) and isinstance(ty2, TyRow):
+        ty1_fields, ty1_rest = row_flatten(ty1)
+        ty2_fields, ty2_rest = row_flatten(ty2)
+        ty1_missing = {}
+        ty2_missing = {}
+        all_field_names = set(ty1_fields.keys()) | set(ty2_fields.keys())
+        for key in sorted(all_field_names):  # Sort for deterministic error messages
+            ty1_val = ty1_fields.get(key)
+            ty2_val = ty2_fields.get(key)
+            if ty1_val is not None and ty2_val is not None:
+                unify_type(ty1_val, ty2_val)
+            elif ty1_val is None:
+                assert ty2_val is not None
+                ty1_missing[key] = ty2_val
+            elif ty2_val is None:
+                assert ty1_val is not None
+                ty2_missing[key] = ty1_val
+        # In general, we want to:
+        # 1) Add missing fields from one row to the other row
+        # 2) "Keep the rows unified" by linking each row's rest to the other
+        #    row's rest
+        if not ty1_missing and not ty2_missing:
+            # The rests are either both empty (rows were closed) or both
+            # unbound type variables (rows were open); unify the rest variables
+            unify_type(ty1_rest, ty2_rest)
+            return
+        if not ty1_missing:
+            # The first row has fields that the second row doesn't have; add
+            # them to the second row
+            unify_type(ty2_rest, TyRow(ty2_missing, ty1_rest))
+            return
+        if not ty2_missing:
+            # The second row has fields that the first row doesn't have; add
+            # them to the first row
+            unify_type(ty1_rest, TyRow(ty1_missing, ty2_rest))
+            return
+        # They each have fields the other lacks; create new rows sharing a rest
+        # and add the missing fields to each row
+        rest = fresh_tyvar()
+        unify_type(ty1_rest, TyRow(ty1_missing, rest))
+        unify_type(ty2_rest, TyRow(ty2_missing, rest))
+        return
+    if isinstance(ty1, TyRow) and isinstance(ty2, TyEmptyRow):
+        raise InferenceError(f"Unifying row {ty1} with empty row")
+    if isinstance(ty1, TyEmptyRow) and isinstance(ty2, TyRow):
+        raise InferenceError(f"Unifying empty row with row {ty2}")
+    raise InferenceError(f"Cannot unify {ty1} and {ty2}")
 
 
 Context = typing.Mapping[str, Forall]
@@ -4102,23 +4219,6 @@ def fresh_tyvar(prefix: str = "t") -> TyVar:
     result = f"{prefix}{fresh_var_counter}"
     fresh_var_counter += 1
     return TyVar(result)
-
-
-def collect_vars_in_pattern(pattern: Object) -> Context:
-    if isinstance(pattern, (Int, Float, String)):
-        return {}
-    if isinstance(pattern, Var):
-        return {pattern.name: Forall([], fresh_tyvar())}
-    if isinstance(pattern, List):
-        result: dict[str, Forall] = {}
-        for item in pattern.items:
-            if isinstance(item, Spread):
-                if item.name is not None:
-                    result[item.name] = Forall([], list_type(fresh_tyvar()))
-                break
-            result.update(collect_vars_in_pattern(item))
-        return result
-    raise InferenceError(f"Unexpected type {type(pattern)}")
 
 
 IntType = TyCon("int", [])
@@ -4136,6 +4236,12 @@ def apply_ty(ty: MonoType, subst: Subst) -> MonoType:
         return subst.get(ty.name, ty)
     if isinstance(ty, TyCon):
         return TyCon(ty.name, [apply_ty(arg, subst) for arg in ty.args])
+    if isinstance(ty, TyEmptyRow):
+        return ty
+    if isinstance(ty, TyRow):
+        rest = apply_ty(ty.rest, subst)
+        assert isinstance(rest, (TyVar, TyRow, TyEmptyRow))
+        return TyRow({key: apply_ty(val, subst) for key, val in ty.fields.items()}, rest)
     raise InferenceError(f"Unknown type: {ty}")
 
 
@@ -4149,6 +4255,10 @@ def ftv_ty(ty: MonoType) -> set[str]:
         return {ty.name}
     if isinstance(ty, TyCon):
         return set().union(*map(ftv_ty, ty.args))
+    if isinstance(ty, TyEmptyRow):
+        return set()
+    if isinstance(ty, TyRow):
+        return set().union(*map(ftv_ty, ty.fields.values()), ftv_ty(ty.rest))
     raise InferenceError(f"Unknown type: {ty}")
 
 
@@ -4173,6 +4283,12 @@ def recursive_find(ty: MonoType) -> MonoType:
         return recursive_find(found)
     if isinstance(ty, TyCon):
         return TyCon(ty.name, [recursive_find(arg) for arg in ty.args])
+    if isinstance(ty, TyEmptyRow):
+        return ty
+    if isinstance(ty, TyRow):
+        rest = recursive_find(ty.rest)
+        assert isinstance(rest, (TyVar, TyRow, TyEmptyRow))
+        return TyRow({name: recursive_find(ty) for name, ty in ty.fields.items()}, rest)
     raise InferenceError(type(ty))
 
 
@@ -4188,18 +4304,62 @@ def set_type(expr: Object, ty: MonoType) -> MonoType:
     return ty
 
 
+def infer_common(expr: Object) -> MonoType:
+    if isinstance(expr, Int):
+        return set_type(expr, IntType)
+    if isinstance(expr, Float):
+        return set_type(expr, FloatType)
+    if isinstance(expr, Bytes):
+        return set_type(expr, BytesType)
+    if isinstance(expr, Hole):
+        return set_type(expr, HoleType)
+    if isinstance(expr, String):
+        return set_type(expr, StringType)
+    raise InferenceError(f"{type(expr)} can't be simply inferred")
+
+
+def infer_pattern_type(pattern: Object, ctx: Context) -> MonoType:
+    assert isinstance(ctx, dict)
+    if isinstance(pattern, (Int, Float, Bytes, Hole, String)):
+        return infer_common(pattern)
+    if isinstance(pattern, Var):
+        result = fresh_tyvar()
+        ctx[pattern.name] = Forall([], result)
+        return set_type(pattern, result)
+    if isinstance(pattern, List):
+        list_item_ty = fresh_tyvar()
+        result_ty = list_type(list_item_ty)
+        for item in pattern.items:
+            if isinstance(item, Spread):
+                if item.name is not None:
+                    ctx[item.name] = Forall([], result_ty)
+                break
+            item_ty = infer_pattern_type(item, ctx)
+            unify_type(list_item_ty, item_ty)
+        return set_type(pattern, result_ty)
+    if isinstance(pattern, Record):
+        fields = {}
+        rest: TyVar | TyRow | TyEmptyRow = empty_row  # Default closed row
+        for key, value in pattern.data.items():
+            if isinstance(value, Spread):
+                # Open row
+                rest = fresh_tyvar()
+                if value.name is not None:
+                    ctx[value.name] = Forall([], rest)
+                break
+            fields[key] = infer_pattern_type(value, ctx)
+        return set_type(pattern, TyRow(fields, rest))
+    raise InferenceError(f"{type(pattern)} isn't allowed in a pattern")
+
+
 def infer_type(expr: Object, ctx: Context) -> MonoType:
+    if isinstance(expr, (Int, Float, Bytes, Hole, String)):
+        return infer_common(expr)
     if isinstance(expr, Var):
         scheme = ctx.get(expr.name)
         if scheme is None:
             raise InferenceError(f"Unbound variable {expr.name}")
         return set_type(expr, instantiate(scheme))
-    if isinstance(expr, Int):
-        return set_type(expr, IntType)
-    if isinstance(expr, Float):
-        return set_type(expr, FloatType)
-    if isinstance(expr, String):
-        return set_type(expr, StringType)
     if isinstance(expr, Function):
         arg_tyvar = fresh_tyvar()
         assert isinstance(expr.arg, Var)
@@ -4226,16 +4386,14 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
     if isinstance(expr, List):
         list_item_ty = fresh_tyvar()
         for item in expr.items:
-            if isinstance(item, Spread):
-                break
+            assert not isinstance(item, Spread), "Spread can only occur in list match (for now)"
             item_ty = infer_type(item, ctx)
             unify_type(list_item_ty, item_ty)
         return set_type(expr, list_type(list_item_ty))
     if isinstance(expr, MatchCase):
-        pattern_ctx = collect_vars_in_pattern(expr.pattern)
-        body_ctx = {**ctx, **pattern_ctx}
-        pattern_ty = infer_type(expr.pattern, body_ctx)
-        body_ty = infer_type(expr.body, body_ctx)
+        pattern_ctx: Context = {}
+        pattern_ty = infer_pattern_type(expr.pattern, pattern_ctx)
+        body_ty = infer_type(expr.body, {**ctx, **pattern_ctx})
         return set_type(expr, func_type(pattern_ty, body_ty))
     if isinstance(expr, Apply):
         func_ty = infer_type(expr.func, ctx)
@@ -4249,10 +4407,20 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
             case_ty = infer_type(case, ctx)
             unify_type(result, case_ty)
         return set_type(expr, result)
-    if isinstance(expr, Bytes):
-        return set_type(expr, BytesType)
-    if isinstance(expr, Hole):
-        return set_type(expr, HoleType)
+    if isinstance(expr, Record):
+        fields = {}
+        rest: TyVar | TyRow | TyEmptyRow = empty_row
+        for key, value in expr.data.items():
+            assert not isinstance(value, Spread), "Spread can only occur in record match (for now)"
+            fields[key] = infer_type(value, ctx)
+        return set_type(expr, TyRow(fields, rest))
+    if isinstance(expr, Access):
+        obj_ty = infer_type(expr.obj, ctx)
+        value_ty = fresh_tyvar()
+        assert isinstance(expr.at, Var)
+        # "has field" constraint in the form of an open row
+        unify_type(obj_ty, TyRow({expr.at.name: value_ty}, fresh_tyvar()))
+        return value_ty
     raise InferenceError(f"Unexpected type {type(expr)}")
 
 
@@ -4315,6 +4483,64 @@ class InferTypeTests(unittest.TestCase):
         with self.assertRaisesRegex(InferenceError, "Occurs check failed"):
             unify_type(l, r)
 
+    def test_unify_empty_row(self) -> None:
+        unify_type(TyEmptyRow(), TyEmptyRow())
+
+    def test_unify_empty_row_open(self) -> None:
+        l = TyRow({}, TyVar("a"))
+        r = TyRow({}, TyVar("b"))
+        unify_type(l, r)
+        self.assertIs(l.rest.find(), r.rest.find())
+
+    def test_unify_row_unifies_fields(self) -> None:
+        a = TyVar("a")
+        b = TyVar("b")
+        l = TyRow({"x": a})
+        r = TyRow({"x": b})
+        unify_type(l, r)
+        self.assertIs(a.find(), b.find())
+
+    def test_unify_empty_right(self) -> None:
+        l = TyRow({"x": IntType})
+        r = TyEmptyRow()
+        with self.assertRaisesRegex(InferenceError, "Unifying row {x=int} with empty row"):
+            unify_type(l, r)
+
+    def test_unify_empty_left(self) -> None:
+        l = TyEmptyRow()
+        r = TyRow({"x": IntType})
+        with self.assertRaisesRegex(InferenceError, "Unifying empty row with row {x=int}"):
+            unify_type(l, r)
+
+    def test_unify_missing_closed(self) -> None:
+        l = TyRow({"x": IntType})
+        r = TyRow({"y": IntType})
+        with self.assertRaisesRegex(InferenceError, "Unifying empty row with row {y=int, ...'t0}"):
+            unify_type(l, r)
+
+    def test_unify_left_missing_open(self) -> None:
+        l = TyRow({}, TyVar("r0"))
+        r = TyRow({"y": IntType}, TyVar("r1"))
+        unify_type(l, r)
+        self.assertTyEqual(l.rest, TyRow({"y": IntType}, TyVar("r1")))
+        assert isinstance(r.rest, TyVar)
+        self.assertTrue(r.rest.is_unbound())
+
+    def test_unify_right_missing_open(self) -> None:
+        l = TyRow({"x": IntType}, TyVar("r0"))
+        r = TyRow({}, TyVar("r1"))
+        unify_type(l, r)
+        assert isinstance(l.rest, TyVar)
+        self.assertTrue(l.rest.is_unbound())
+        self.assertTyEqual(r.rest, TyRow({"x": IntType}, TyVar("r0")))
+
+    def test_unify_both_missing_open(self) -> None:
+        l = TyRow({"x": IntType}, TyVar("r0"))
+        r = TyRow({"y": IntType}, TyVar("r1"))
+        unify_type(l, r)
+        self.assertTyEqual(l.rest, TyRow({"y": IntType}, TyVar("t0")))
+        self.assertTyEqual(r.rest, TyRow({"x": IntType}, TyVar("t0")))
+
     def test_minimize_tyvar(self) -> None:
         ty = fresh_tyvar()
         self.assertEqual(minimize(ty), TyVar("a"))
@@ -4340,6 +4566,17 @@ class InferTypeTests(unittest.TestCase):
                 self.fail(f"Type mismatch: {l} != {r}")
             for l_arg, r_arg in zip(l.args, r.args):
                 self.assertTyEqual(l_arg, r_arg)
+            return True
+        if isinstance(l, TyEmptyRow) and isinstance(r, TyEmptyRow):
+            return True
+        if isinstance(l, TyRow) and isinstance(r, TyRow):
+            l_keys = set(l.fields.keys())
+            r_keys = set(r.fields.keys())
+            if l_keys != r_keys:
+                self.fail(f"Type mismatch: {l} != {r}")
+            for key in l_keys:
+                self.assertTyEqual(l.fields[key], r.fields[key])
+            self.assertTyEqual(l.rest, r.rest)
             return True
         self.fail(f"Type mismatch: {l} != {r}")
 
@@ -4521,7 +4758,7 @@ class InferTypeTests(unittest.TestCase):
         """)
         )
         ty = infer_type(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
-        self.assertTyEqual(ty, func_type(list_type(TyVar("t9")), IntType))
+        self.assertTyEqual(ty, func_type(list_type(TyVar("t8")), IntType))
 
     def test_match_list_to_list(self) -> None:
         expr = parse(tokenize("| [] -> [] | x -> x"))
@@ -4532,6 +4769,11 @@ class InferTypeTests(unittest.TestCase):
         expr = parse(tokenize("head . head = | [x, ...] -> x"))
         ty = infer_type(expr, {})
         self.assertTyEqual(ty, func_type(list_type(TyVar("t4")), TyVar("t4")))
+
+    def test_match_list_spread_rest(self) -> None:
+        expr = parse(tokenize("tail . tail = | [x, ...xs] -> xs"))
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, func_type(list_type(TyVar("t4")), list_type(TyVar("t4"))))
 
     def test_match_list_spread_named(self) -> None:
         expr = parse(tokenize("sum . sum = | [] -> 0 | [x, ...xs] -> x + sum xs"))
@@ -4572,6 +4814,103 @@ class InferTypeTests(unittest.TestCase):
         expr = parse(tokenize("[1] +< 2"))
         ty = infer_type(expr, OP_ENV)
         self.assertTyEqual(ty, list_type(IntType))
+
+    def test_record(self) -> None:
+        expr = Record({"a": Int(1), "b": String("hello")})
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, TyRow({"a": IntType, "b": StringType}))
+
+    def test_match_record(self) -> None:
+        expr = MatchFunction(
+            [
+                MatchCase(
+                    Record({"x": Var("x")}),
+                    Var("x"),
+                )
+            ]
+        )
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, func_type(TyRow({"x": TyVar("t1")}), TyVar("t1")))
+
+    def test_access_poly(self) -> None:
+        expr = Function(Var("r"), Access(Var("r"), Var("x")))
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, func_type(TyRow({"x": TyVar("t1")}, TyVar("t2")), TyVar("t1")))
+
+    def test_apply_row(self) -> None:
+        row0 = Record({"x": Int(1)})
+        row1 = Record({"x": Int(1), "y": Int(2)})
+        scheme = Forall([], func_type(TyRow({"x": IntType}, TyVar("a")), IntType))
+        ty0 = infer_type(Apply(Var("f"), row0), {"f": scheme})
+        self.assertTyEqual(ty0, IntType)
+        with self.assertRaisesRegex(InferenceError, "Unifying empty row with row {y=int}"):
+            infer_type(Apply(Var("f"), row1), {"f": scheme})
+
+    def test_apply_row_polymorphic(self) -> None:
+        row0 = Record({"x": Int(1)})
+        row1 = Record({"x": Int(1), "y": Int(2)})
+        row2 = Record({"x": Int(1), "y": Int(2), "z": Int(3)})
+        scheme = Forall([TyVar("a")], func_type(TyRow({"x": IntType}, TyVar("a")), IntType))
+        ty0 = infer_type(Apply(Var("f"), row0), {"f": scheme})
+        self.assertTyEqual(ty0, IntType)
+        ty1 = infer_type(Apply(Var("f"), row1), {"f": scheme})
+        self.assertTyEqual(ty1, IntType)
+        ty2 = infer_type(Apply(Var("f"), row2), {"f": scheme})
+        self.assertTyEqual(ty2, IntType)
+
+    def test_example_rec_access(self) -> None:
+        expr = parse(tokenize('rec@a . rec = { a = 1, b = "x" }'))
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, IntType)
+
+    def test_example_rec_access_poly(self) -> None:
+        expr = parse(
+            tokenize("""
+(get_x {x=1}) + (get_x {x=2,y=3})
+. get_x = | { x=x, ... } -> x
+""")
+        )
+        ty = infer_type(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
+        self.assertTyEqual(ty, IntType)
+
+    def test_example_rec_access_poly_named_bug(self) -> None:
+        expr = parse(
+            tokenize("""
+(filter_x {x=1, y=2}) + 3
+. filter_x = | { x=x, ...xs } -> xs
+""")
+        )
+        with self.assertRaisesRegex(InferenceError, "Cannot unify int and {y=int}"):
+            infer_type(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
+
+    def test_example_rec_access_rest(self) -> None:
+        expr = parse(
+            tokenize("""
+| { x=x, ...xs } -> xs
+""")
+        )
+        ty = infer_type(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
+        self.assertTyEqual(ty, func_type(TyRow({"x": TyVar("t1")}, TyVar("t2")), TyVar("t2")))
+
+    def test_example_match_rec_access_rest(self) -> None:
+        expr = parse(
+            tokenize("""
+filter_x {x=1, y=2}
+. filter_x = | { x=x, ...xs } -> xs
+""")
+        )
+        ty = infer_type(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
+        self.assertTyEqual(ty, TyRow({"y": IntType}))
+
+    def test_example_rec_access_poly_named(self) -> None:
+        expr = parse(
+            tokenize("""
+[(filter_x {x=1, y=2}), (filter_x {x=2, y=3, z=4})]
+. filter_x = | { x=x, ...xs } -> xs
+""")
+        )
+        with self.assertRaisesRegex(InferenceError, "Unifying empty row with row {z=int}"):
+            infer_type(expr, {})
 
 
 class SerializerTests(unittest.TestCase):

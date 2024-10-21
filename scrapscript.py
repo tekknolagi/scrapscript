@@ -4034,7 +4034,7 @@ empty_row = TyEmptyRow()
 @dataclasses.dataclass
 class TyRow(MonoType):
     fields: dict[str, MonoType]
-    rest: TyVar | TyRow | TyEmptyRow = empty_row
+    rest: TyVar | TyRow | TyEmptyRow = dataclasses.field(default_factory=TyEmptyRow)
 
     def __post_init__(self) -> None:
         if not self.fields and isinstance(self.rest, TyEmptyRow):

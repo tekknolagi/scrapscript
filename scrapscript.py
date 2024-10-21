@@ -4169,7 +4169,6 @@ def unify_type(ty1: MonoType, ty2: MonoType) -> None:
                 ty1_missing[key] = ty2_val
             elif ty2_val is None:
                 ty2_missing[key] = ty1_val
-        # TODO(max): Test all cases
         # In general, we want to:
         # 1) Add missing fields from one row to the other row
         # 2) "Keep the rows unified" by linking each row's rest to the other
@@ -4195,6 +4194,10 @@ def unify_type(ty1: MonoType, ty2: MonoType) -> None:
         unify_type(ty1_rest, TyRow(ty1_missing, rest))
         unify_type(ty2_rest, TyRow(ty2_missing, rest))
         return
+    if isinstance(ty1, TyRow) and isinstance(ty2, TyEmptyRow):
+        raise InferenceError(f"Unifying row {ty1} with empty row")
+    if isinstance(ty1, TyEmptyRow) and isinstance(ty2, TyRow):
+        raise InferenceError(f"Unifying empty row with row {ty2}")
     raise InferenceError(f"Unexpected types {type(ty1)} and {type(ty2)}")
 
 
@@ -4451,6 +4454,59 @@ class InferTypeTests(unittest.TestCase):
 
     def test_unify_empty_row(self) -> None:
         unify_type(TyEmptyRow(), TyEmptyRow())
+
+    def test_unify_empty_row_open(self) -> None:
+        l = TyRow({}, TyVar("a"))
+        r = TyRow({}, TyVar("b"))
+        unify_type(l, r)
+        self.assertIs(l.rest.find(), r.rest.find())
+
+    def test_unify_row_unifies_fields(self) -> None:
+        a = TyVar("a")
+        b = TyVar("b")
+        l = TyRow({"x": a})
+        r = TyRow({"x": b})
+        unify_type(l, r)
+        self.assertIs(a.find(), b.find())
+
+    def test_unify_empty_right(self) -> None:
+        l = TyRow({"x": IntType})
+        r = TyEmptyRow()
+        with self.assertRaisesRegex(InferenceError, "Unifying row {x=int} with empty row"):
+            unify_type(l, r)
+
+    def test_unify_empty_left(self) -> None:
+        l = TyEmptyRow()
+        r = TyRow({"x": IntType})
+        with self.assertRaisesRegex(InferenceError, "Unifying empty row with row {x=int}"):
+            unify_type(l, r)
+
+    def test_unify_missing_closed(self) -> None:
+        l = TyRow({"x": IntType})
+        r = TyRow({"y": IntType})
+        with self.assertRaisesRegex(InferenceError, "Unifying empty row with row {y=int, ...'t0}"):
+            unify_type(l, r)
+
+    def test_unify_left_missing_open(self) -> None:
+        l = TyRow({}, TyVar("r0"))
+        r = TyRow({"y": IntType}, TyVar("r1"))
+        unify_type(l, r)
+        self.assertTyEqual(l.rest, TyRow({"y": IntType}, TyVar("r1")))
+        self.assertIs(r.rest, r.rest.find())  # unbound
+
+    def test_unify_right_missing_open(self) -> None:
+        l = TyRow({"x": IntType}, TyVar("r0"))
+        r = TyRow({}, TyVar("r1"))
+        unify_type(l, r)
+        self.assertIs(l.rest, l.rest.find())  # unbound
+        self.assertTyEqual(r.rest, TyRow({"x": IntType}, TyVar("r0")))
+
+    def test_unify_both_missing_open(self) -> None:
+        l = TyRow({"x": IntType}, TyVar("r0"))
+        r = TyRow({"y": IntType}, TyVar("r1"))
+        unify_type(l, r)
+        self.assertTyEqual(l.rest, TyRow({"y": IntType}, TyVar("t0")))
+        self.assertTyEqual(r.rest, TyRow({"x": IntType}, TyVar("t0")))
 
     def test_minimize_tyvar(self) -> None:
         ty = fresh_tyvar()

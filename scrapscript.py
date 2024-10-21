@@ -4275,6 +4275,8 @@ def ftv_ty(ty: MonoType) -> set[str]:
         return {ty.name}
     if isinstance(ty, TyCon):
         return set().union(*map(ftv_ty, ty.args))
+    if isinstance(ty, TyEmptyRow):
+        return set()
     if isinstance(ty, TyRow):
         return set().union(*map(ftv_ty, ty.fields.values()), ftv_ty(ty.rest))
     raise InferenceError(f"Unknown type: {ty}")
@@ -4301,6 +4303,8 @@ def recursive_find(ty: MonoType) -> MonoType:
         return recursive_find(found)
     if isinstance(ty, TyCon):
         return TyCon(ty.name, [recursive_find(arg) for arg in ty.args])
+    if isinstance(ty, TyEmptyRow):
+        return ty
     if isinstance(ty, TyRow):
         return TyRow({name: recursive_find(ty) for name, ty in ty.fields.items()}, recursive_find(ty.rest))
     raise InferenceError(type(ty))
@@ -4813,6 +4817,16 @@ class InferTypeTests(unittest.TestCase):
         self.assertTyEqual(ty1, IntType)
         ty2 = infer_type(Apply(Var("f"), row2), {"f": scheme})
         self.assertTyEqual(ty2, IntType)
+
+    def test_example_rec_access(self) -> None:
+        expr = parse(
+            tokenize("""
+rec@a
+. rec = { a = 1, b = "x" }
+""")
+        )
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, IntType)
 
 
 class SerializerTests(unittest.TestCase):

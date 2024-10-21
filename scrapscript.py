@@ -4806,6 +4806,16 @@ class InferTypeTests(unittest.TestCase):
         ty = infer_type(expr, {})
         self.assertTyEqual(ty, func_type(TyRow({"x": TyVar("t1")}, TyVar("t2")), TyVar("t1")))
 
+    def test_apply_row(self) -> None:
+        row0 = Record({"x": Int(1)})
+        row1 = Record({"x": Int(1), "y": Int(2)})
+        a = TyVar("a")
+        scheme = Forall([], func_type(TyRow({"x": IntType}, a), IntType))
+        ty0 = infer_type(Apply(Var("f"), row0), {"f": scheme})
+        self.assertTyEqual(ty0, IntType)
+        with self.assertRaisesRegex(InferenceError, "Unifying empty row with row {y=int}"):
+            infer_type(Apply(Var("f"), row1), {"f": scheme})
+
     def test_apply_row_polymorphic(self) -> None:
         row0 = Record({"x": Int(1)})
         row1 = Record({"x": Int(1), "y": Int(2)})

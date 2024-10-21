@@ -4163,7 +4163,7 @@ def unify_type(ty1: MonoType, ty2: MonoType) -> None:
         ty1_missing = {}
         ty2_missing = {}
         all_field_names = set(ty1_fields.keys()) | set(ty2_fields.keys())
-        for key in all_field_names:
+        for key in sorted(all_field_names):  # Sort for deterministic error messages
             ty1_val = ty1_fields.get(key)
             ty2_val = ty2_fields.get(key)
             if ty1_val is not None and ty2_val is not None:

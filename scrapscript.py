@@ -4034,7 +4034,7 @@ empty_row = TyEmptyRow()
 @dataclasses.dataclass
 class TyRow(MonoType):
     fields: dict[str, MonoType]
-    rest: TyVar | TyEmptyRow = empty_row
+    rest: TyVar | TyRow | TyEmptyRow = empty_row
 
     def __post_init__(self) -> None:
         if not self.fields and isinstance(self.rest, TyEmptyRow):
@@ -4101,7 +4101,9 @@ class TypeStrTests(unittest.TestCase):
 
     def test_tyrow_chain(self) -> None:
         inner = TyRow({"x": IntType})
-        outer = TyRow({"y": StringType}, inner)
+        inner_var = TyVar("a")
+        inner_var.make_equal_to(inner)
+        outer = TyRow({"y": StringType}, inner_var)
         self.assertEqual(str(outer), "{x=int, y=string}")
 
     def test_forall(self) -> None:
@@ -4169,8 +4171,10 @@ def unify_type(ty1: MonoType, ty2: MonoType) -> None:
             if ty1_val is not None and ty2_val is not None:
                 unify_type(ty1_val, ty2_val)
             elif ty1_val is None:
+                assert ty2_val is not None
                 ty1_missing[key] = ty2_val
             elif ty2_val is None:
+                assert ty1_val is not None
                 ty2_missing[key] = ty1_val
         # In general, we want to:
         # 1) Add missing fields from one row to the other row
@@ -4232,8 +4236,8 @@ def collect_vars_in_pattern(pattern: Object, pattern_ty: TyVar) -> Context:
             result.update(collect_vars_in_pattern(item, fresh_tyvar()))
         return result
     if isinstance(pattern, Record):
-        result: dict[str, Forall] = {}
-        rest = empty_row
+        result = {}
+        rest: TyVar | TyEmptyRow = empty_row
         for item in pattern.data.values():
             if isinstance(item, Spread):
                 rest = fresh_tyvar()
@@ -4271,7 +4275,9 @@ def apply_ty(ty: MonoType, subst: Subst) -> MonoType:
     if isinstance(ty, TyEmptyRow):
         return ty
     if isinstance(ty, TyRow):
-        return TyRow({key: apply_ty(val, subst) for key, val in ty.fields.items()}, apply_ty(ty.rest, subst))
+        rest = apply_ty(ty.rest, subst)
+        assert isinstance(rest, (TyVar, TyRow, TyEmptyRow))
+        return TyRow({key: apply_ty(val, subst) for key, val in ty.fields.items()}, rest)
     raise InferenceError(f"Unknown type: {ty}")
 
 
@@ -4316,7 +4322,9 @@ def recursive_find(ty: MonoType) -> MonoType:
     if isinstance(ty, TyEmptyRow):
         return ty
     if isinstance(ty, TyRow):
-        return TyRow({name: recursive_find(ty) for name, ty in ty.fields.items()}, recursive_find(ty.rest))
+        rest = recursive_find(ty.rest)
+        assert isinstance(rest, (TyVar, TyRow, TyEmptyRow))
+        return TyRow({name: recursive_find(ty) for name, ty in ty.fields.items()}, rest)
     raise InferenceError(type(ty))
 
 
@@ -4404,7 +4412,7 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
         return set_type(expr, HoleType)
     if isinstance(expr, Record):
         fields = {}
-        rest = empty_row
+        rest: TyVar | TyRow | TyEmptyRow = empty_row
         for key, value in expr.data.items():
             if isinstance(value, Spread):
                 # Spread can only occur in the last position and only in match.
@@ -4522,12 +4530,14 @@ class InferTypeTests(unittest.TestCase):
         r = TyRow({"y": IntType}, TyVar("r1"))
         unify_type(l, r)
         self.assertTyEqual(l.rest, TyRow({"y": IntType}, TyVar("r1")))
+        assert isinstance(r.rest, TyVar)
         self.assertTrue(r.rest.is_unbound())
 
     def test_unify_right_missing_open(self) -> None:
         l = TyRow({"x": IntType}, TyVar("r0"))
         r = TyRow({}, TyVar("r1"))
         unify_type(l, r)
+        assert isinstance(l.rest, TyVar)
         self.assertTrue(l.rest.is_unbound())
         self.assertTyEqual(r.rest, TyRow({"x": IntType}, TyVar("r0")))
 

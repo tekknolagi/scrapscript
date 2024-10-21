@@ -4128,7 +4128,7 @@ def occurs_in(tyvar: TyVar, ty: MonoType) -> bool:
     if isinstance(ty, TyEmptyRow):
         return False
     if isinstance(ty, TyRow):
-        return any(occurs_in(tyvar, val) for val in ty.fields.values())
+        return any(occurs_in(tyvar, val) for val in ty.fields.values()) or occurs_in(tyvar, ty.rest)
     raise InferenceError(f"Unknown type: {ty}")
 
 
@@ -4273,7 +4273,7 @@ def ftv_ty(ty: MonoType) -> set[str]:
     if isinstance(ty, TyCon):
         return set().union(*map(ftv_ty, ty.args))
     if isinstance(ty, TyRow):
-        return set().union(*map(ftv_ty, ty.fields.values()))
+        return set().union(*map(ftv_ty, ty.fields.values()), ftv_ty(ty.rest))
     raise InferenceError(f"Unknown type: {ty}")
 
 

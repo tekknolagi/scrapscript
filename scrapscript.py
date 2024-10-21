@@ -4304,12 +4304,24 @@ def set_type(expr: Object, ty: MonoType) -> MonoType:
     return ty
 
 
+def infer_common(expr: Object) -> MonoType:
+    if isinstance(expr, Int):
+        return set_type(expr, IntType)
+    if isinstance(expr, Float):
+        return set_type(expr, FloatType)
+    if isinstance(expr, Bytes):
+        return set_type(expr, BytesType)
+    if isinstance(expr, Hole):
+        return set_type(expr, HoleType)
+    if isinstance(expr, String):
+        return set_type(expr, StringType)
+    raise NotImplementedError(f"{type(expr)} can't be simply inferred")
+
+
 def infer_pattern_type(pattern: Object, ctx: Context) -> MonoType:
     assert isinstance(ctx, dict)
-    if isinstance(pattern, Int):
-        return set_type(pattern, IntType)
-    if isinstance(pattern, Float):
-        return set_type(pattern, FloatType)
+    if isinstance(pattern, (Int, Float, Bytes, Hole, String)):
+        return infer_common(pattern)
     if isinstance(pattern, Var):
         result = fresh_tyvar()
         ctx[pattern.name] = Forall([], result)
@@ -4341,17 +4353,13 @@ def infer_pattern_type(pattern: Object, ctx: Context) -> MonoType:
 
 
 def infer_type(expr: Object, ctx: Context) -> MonoType:
+    if isinstance(expr, (Int, Float, Bytes, Hole, String)):
+        return infer_common(expr)
     if isinstance(expr, Var):
         scheme = ctx.get(expr.name)
         if scheme is None:
             raise InferenceError(f"Unbound variable {expr.name}")
         return set_type(expr, instantiate(scheme))
-    if isinstance(expr, Int):
-        return set_type(expr, IntType)
-    if isinstance(expr, Float):
-        return set_type(expr, FloatType)
-    if isinstance(expr, String):
-        return set_type(expr, StringType)
     if isinstance(expr, Function):
         arg_tyvar = fresh_tyvar()
         assert isinstance(expr.arg, Var)
@@ -4399,10 +4407,6 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
             case_ty = infer_type(case, ctx)
             unify_type(result, case_ty)
         return set_type(expr, result)
-    if isinstance(expr, Bytes):
-        return set_type(expr, BytesType)
-    if isinstance(expr, Hole):
-        return set_type(expr, HoleType)
     if isinstance(expr, Record):
         fields = {}
         rest: TyVar | TyRow | TyEmptyRow = empty_row

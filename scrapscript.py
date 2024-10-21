@@ -4221,42 +4221,6 @@ def fresh_tyvar(prefix: str = "t") -> TyVar:
     return TyVar(result)
 
 
-def collect_vars_in_pattern(pattern: Object, pattern_ty: TyVar) -> Context:
-    if isinstance(pattern, (Int, Float, String)):
-        return {}
-    if isinstance(pattern, Var):
-        return {pattern.name: Forall([], fresh_tyvar())}
-    if isinstance(pattern, List):
-        result: dict[str, Forall] = {}
-        for item in pattern.items:
-            if isinstance(item, Spread):
-                if item.name is not None:
-                    result[item.name] = Forall([], pattern_ty)
-                break
-            result.update(collect_vars_in_pattern(item, fresh_tyvar()))
-        return result
-    if isinstance(pattern, Record):
-        result = {}
-        rest: TyVar | TyEmptyRow = empty_row
-        for item in pattern.data.values():
-            if isinstance(item, Spread):
-                rest = fresh_tyvar()
-                if item.name is not None:
-                    result[item.name] = Forall([], rest)
-                break
-            result.update(collect_vars_in_pattern(item, fresh_tyvar()))
-        # TODO(max): This is kind of gross. We should not be calling unify_type
-        # inside collect_vars_in_pattern or inventing a bunch of type variables
-        # just so we can match spread to row rest. Figure out another way to do
-        # this, ideally from inside infer_type.
-        unify_type(
-            pattern_ty,
-            TyRow({key: fresh_tyvar() for key, value in pattern.data.items() if not isinstance(value, Spread)}, rest),
-        )
-        return result
-    raise InferenceError(f"Unexpected type {type(pattern)}")
-
-
 IntType = TyCon("int", [])
 StringType = TyCon("string", [])
 FloatType = TyCon("float", [])
@@ -4340,6 +4304,41 @@ def set_type(expr: Object, ty: MonoType) -> MonoType:
     return ty
 
 
+def infer_pattern_type(pattern: Object, ctx: Context) -> MonoType:
+    if isinstance(pattern, Int):
+        return set_type(pattern, IntType)
+    if isinstance(pattern, Float):
+        return set_type(pattern, FloatType)
+    if isinstance(pattern, Var):
+        result = fresh_tyvar()
+        ctx[pattern.name] = Forall([], result)
+        return set_type(pattern, result)
+    if isinstance(pattern, List):
+        list_item_ty = fresh_tyvar()
+        result_ty = list_type(list_item_ty)
+        for item in pattern.items:
+            if isinstance(item, Spread):
+                if item.name is not None:
+                    ctx[item.name] = Forall([], result_ty)
+                break
+            item_ty = infer_pattern_type(item, ctx)
+            unify_type(list_item_ty, item_ty)
+        return set_type(pattern, result_ty)
+    if isinstance(pattern, Record):
+        fields = {}
+        rest: TyVar | TyRow | TyEmptyRow = empty_row  # Default closed row
+        for key, value in pattern.data.items():
+            if isinstance(value, Spread):
+                # Open row
+                rest = fresh_tyvar()
+                if value.name is not None:
+                    ctx[value.name] = Forall([], rest)
+                break
+            fields[key] = infer_pattern_type(value, ctx)
+        return set_type(pattern, TyRow(fields, rest))
+    raise NotImplementedError(type(pattern))
+
+
 def infer_type(expr: Object, ctx: Context) -> MonoType:
     if isinstance(expr, Var):
         scheme = ctx.get(expr.name)
@@ -4378,21 +4377,14 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
     if isinstance(expr, List):
         list_item_ty = fresh_tyvar()
         for item in expr.items:
-            if isinstance(item, Spread):
-                # Spread can only occur in the last position and only in match.
-                # While we know it's the same type as the rest of the list, we
-                # can't use it to gain any more information in inference.
-                break
+            assert not isinstance(item, Spread), f"Spread can only occur in list match (for now)"
             item_ty = infer_type(item, ctx)
             unify_type(list_item_ty, item_ty)
         return set_type(expr, list_type(list_item_ty))
     if isinstance(expr, MatchCase):
-        pattern_ty = fresh_tyvar()
-        pattern_ctx = collect_vars_in_pattern(expr.pattern, pattern_ty)
-        body_ctx = {**ctx, **pattern_ctx}
-        pattern_ty_inferred = infer_type(expr.pattern, body_ctx)
-        unify_type(pattern_ty, pattern_ty_inferred)
-        body_ty = infer_type(expr.body, body_ctx)
+        pattern_ctx = {}
+        pattern_ty = infer_pattern_type(expr.pattern, pattern_ctx)
+        body_ty = infer_type(expr.body, {**ctx, **pattern_ctx})
         return set_type(expr, func_type(pattern_ty, body_ty))
     if isinstance(expr, Apply):
         func_ty = infer_type(expr.func, ctx)
@@ -4414,11 +4406,7 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
         fields = {}
         rest: TyVar | TyRow | TyEmptyRow = empty_row
         for key, value in expr.data.items():
-            if isinstance(value, Spread):
-                # Spread can only occur in the last position and only in match.
-                # If it's in a match, we want an open row.
-                rest = fresh_tyvar()
-                break
+            assert not isinstance(value, Spread), f"Spread can only occur in record match (for now)"
             fields[key] = infer_type(value, ctx)
         return set_type(expr, TyRow(fields, rest))
     if isinstance(expr, Access):
@@ -4765,22 +4753,22 @@ class InferTypeTests(unittest.TestCase):
         """)
         )
         ty = infer_type(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
-        self.assertTyEqual(ty, func_type(list_type(TyVar("t11")), IntType))
+        self.assertTyEqual(ty, func_type(list_type(TyVar("t8")), IntType))
 
     def test_match_list_to_list(self) -> None:
         expr = parse(tokenize("| [] -> [] | x -> x"))
         ty = infer_type(expr, {})
-        self.assertTyEqual(ty, func_type(list_type(TyVar("t2")), list_type(TyVar("t2"))))
+        self.assertTyEqual(ty, func_type(list_type(TyVar("t1")), list_type(TyVar("t1"))))
 
     def test_match_list_spread(self) -> None:
         expr = parse(tokenize("head . head = | [x, ...] -> x"))
         ty = infer_type(expr, {})
-        self.assertTyEqual(ty, func_type(list_type(TyVar("t6")), TyVar("t6")))
+        self.assertTyEqual(ty, func_type(list_type(TyVar("t4")), TyVar("t4")))
 
     def test_match_list_spread_rest(self) -> None:
         expr = parse(tokenize("tail . tail = | [x, ...xs] -> xs"))
         ty = infer_type(expr, {})
-        self.assertTyEqual(ty, func_type(list_type(TyVar("t6")), list_type(TyVar("t6"))))
+        self.assertTyEqual(ty, func_type(list_type(TyVar("t4")), list_type(TyVar("t4"))))
 
     def test_match_list_spread_named(self) -> None:
         expr = parse(tokenize("sum . sum = | [] -> 0 | [x, ...xs] -> x + sum xs"))
@@ -4837,7 +4825,7 @@ class InferTypeTests(unittest.TestCase):
             ]
         )
         ty = infer_type(expr, {})
-        self.assertTyEqual(ty, func_type(TyRow({"x": TyVar("t3")}), TyVar("t3")))
+        self.assertTyEqual(ty, func_type(TyRow({"x": TyVar("t1")}), TyVar("t1")))
 
     def test_access_poly(self) -> None:
         expr = Function(Var("r"), Access(Var("r"), Var("x")))
@@ -4897,7 +4885,7 @@ class InferTypeTests(unittest.TestCase):
 """)
         )
         ty = infer_type(expr, {"+": Forall([], func_type(IntType, IntType, IntType))})
-        self.assertTyEqual(ty, func_type(TyRow({"x": TyVar("t3")}, TyVar("t6")), TyVar("t6")))
+        self.assertTyEqual(ty, func_type(TyRow({"x": TyVar("t1")}, TyVar("t2")), TyVar("t2")))
 
     def test_example_match_rec_access_rest(self) -> None:
         expr = parse(

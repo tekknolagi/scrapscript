@@ -4315,7 +4315,7 @@ def infer_common(expr: Object) -> MonoType:
         return set_type(expr, HoleType)
     if isinstance(expr, String):
         return set_type(expr, StringType)
-    raise NotImplementedError(f"{type(expr)} can't be simply inferred")
+    raise InferenceError(f"{type(expr)} can't be simply inferred")
 
 
 def infer_pattern_type(pattern: Object, ctx: Context) -> MonoType:
@@ -4349,7 +4349,7 @@ def infer_pattern_type(pattern: Object, ctx: Context) -> MonoType:
                 break
             fields[key] = infer_pattern_type(value, ctx)
         return set_type(pattern, TyRow(fields, rest))
-    raise NotImplementedError(type(pattern))
+    raise InferenceError(f"{type(expr)} isn't allowed in a pattern")
 
 
 def infer_type(expr: Object, ctx: Context) -> MonoType:

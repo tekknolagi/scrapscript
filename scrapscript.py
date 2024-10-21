@@ -4305,6 +4305,7 @@ def set_type(expr: Object, ty: MonoType) -> MonoType:
 
 
 def infer_pattern_type(pattern: Object, ctx: Context) -> MonoType:
+    assert isinstance(ctx, dict)
     if isinstance(pattern, Int):
         return set_type(pattern, IntType)
     if isinstance(pattern, Float):
@@ -4382,7 +4383,7 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
             unify_type(list_item_ty, item_ty)
         return set_type(expr, list_type(list_item_ty))
     if isinstance(expr, MatchCase):
-        pattern_ctx = {}
+        pattern_ctx: Context = {}
         pattern_ty = infer_pattern_type(expr.pattern, pattern_ctx)
         body_ty = infer_type(expr.body, {**ctx, **pattern_ctx})
         return set_type(expr, func_type(pattern_ty, body_ty))

@@ -4004,6 +4004,9 @@ class TyVar(MonoType):
             raise InferenceError(f"{self} is already resolved to {chain_end}")
         chain_end.forwarded = other
 
+    def is_unbound(self) -> bool:
+        return self.forwarded is None
+
 
 @dataclasses.dataclass
 class TyCon(MonoType):
@@ -4492,13 +4495,13 @@ class InferTypeTests(unittest.TestCase):
         r = TyRow({"y": IntType}, TyVar("r1"))
         unify_type(l, r)
         self.assertTyEqual(l.rest, TyRow({"y": IntType}, TyVar("r1")))
-        self.assertIs(r.rest, r.rest.find())  # unbound
+        self.assertTrue(r.rest.is_unbound())
 
     def test_unify_right_missing_open(self) -> None:
         l = TyRow({"x": IntType}, TyVar("r0"))
         r = TyRow({}, TyVar("r1"))
         unify_type(l, r)
-        self.assertIs(l.rest, l.rest.find())  # unbound
+        self.assertTrue(l.rest.is_unbound())
         self.assertTyEqual(r.rest, TyRow({"x": IntType}, TyVar("r0")))
 
     def test_unify_both_missing_open(self) -> None:

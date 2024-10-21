@@ -4247,8 +4247,6 @@ def apply_ty(ty: MonoType, subst: Subst) -> MonoType:
 
 
 def instantiate(scheme: Forall) -> MonoType:
-    if not scheme.tyvars:
-        return scheme.ty
     fresh = {tyvar.name: fresh_tyvar() for tyvar in scheme.tyvars}
     return apply_ty(scheme.ty, fresh)
 

@@ -4280,6 +4280,7 @@ def generalize(ty: MonoType, ctx: Context) -> Forall:
 def type_of(expr: Object) -> MonoType:
     ty = getattr(expr, "inferred_type", None)
     if ty is not None:
+        assert isinstance(ty, MonoType)
         return ty.find()
     return set_type(expr, fresh_tyvar())
 

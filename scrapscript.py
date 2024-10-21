@@ -4166,15 +4166,27 @@ def unify_type(ty1: MonoType, ty2: MonoType) -> None:
             elif ty2_val is None:
                 ty2_missing[key] = ty1_val
         # TODO(max): Test all cases
+        # In general, we want to:
+        # 1) Add missing fields from one row to the other row
+        # 2) "Keep the rows unified" by linking each row's rest to the other
+        #    row's rest
         if not ty1_missing and not ty2_missing:
+            # The rests are either both empty (rows were closed) or both
+            # unbound type variables (rows were open); unify the rest variables
             unify_type(ty1_rest, ty2_rest)
             return
         if not ty1_missing:
+            # The first row has fields that the second row doesn't have; add
+            # them to the second row
             unify_type(ty2_rest, TyRow(ty2_missing, ty1_rest))
             return
         if not ty2_missing:
+            # The second row has fields that the first row doesn't have; add
+            # them to the first row
             unify_type(ty1_rest, TyRow(ty1_missing, ty2_rest))
             return
+        # They each have fields the other lacks; create new rows sharing a rest
+        # and add the missing fields to each row
         rest = fresh_tyvar()
         unify_type(ty1_rest, TyRow(ty1_missing, rest))
         unify_type(ty2_rest, TyRow(ty2_missing, rest))

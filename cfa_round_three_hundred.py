@@ -133,8 +133,8 @@ class CFATests(unittest.TestCase):
         self.assertEqual(cache.at(label_of(exp)), FunctionSet({f}))
 
     def test_apply_id_crossed(self) -> None:
-        f = Function(Var("arg"), Var("arg"))
-        g = Function(Var("arg"), Var("arg"))
+        f = Function(Var("x"), Var("x"))
+        g = Function(Var("y"), Var("y"))
         exp = Apply(Apply(f, g), f)
         cache = Cache()
         eval_exp({}, cache, exp)

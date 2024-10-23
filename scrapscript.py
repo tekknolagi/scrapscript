@@ -4048,6 +4048,27 @@ class TyRow(MonoType):
         return "{" + ", ".join(result) + "}"
 
 
+@dataclasses.dataclass
+class TyRecord(MonoType):
+    row: TyRow
+
+
+@dataclasses.dataclass
+class TyVariant(MonoType):
+    row: TyRow
+
+    def __str__(self) -> str:
+        flat, rest = row_flatten(self.row)
+        # sort to make tests deterministic
+        is_open = ""
+        if isinstance(rest, TyVar):
+            is_open = f">{rest}"
+        else:
+            assert isinstance(rest, TyEmptyRow)
+        result = [f"#{key} {val}" for key, val in sorted(flat.items())]
+        return f"[{is_open} " + " | ".join(result) + "]"
+
+
 def row_flatten(rec: MonoType) -> tuple[dict[str, MonoType], TyVar | TyEmptyRow]:
     if isinstance(rec, TyVar):
         rec = rec.find()
@@ -4404,6 +4425,9 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
         # "has field" constraint in the form of an open row
         unify_type(obj_ty, TyRow({expr.at.name: value_ty}, fresh_tyvar()))
         return value_ty
+    if isinstance(expr, Variant):
+        value_ty = infer_type(expr.value, ctx)
+        return set_type(expr, TyVariant(TyRow({expr.tag: value_ty}, fresh_tyvar())))
     raise InferenceError(f"Unexpected type {type(expr)}")
 
 
@@ -4583,6 +4607,9 @@ class InferTypeTests(unittest.TestCase):
             for key in l_keys:
                 self.assertTyEqual(l_flat[key], r_flat[key])
             self.assertTyEqual(l_rest, r_rest)
+            return True
+        if isinstance(l, TyVariant) and isinstance(r, TyVariant):
+            self.assertTyEqual(l.row, r.row)
             return True
         self.fail(f"Type mismatch: {l} != {r}")
 
@@ -4917,6 +4944,11 @@ filter_x {x=1, y=2}
         )
         with self.assertRaisesRegex(InferenceError, "Unifying empty row with row {z=int}"):
             infer_type(expr, {})
+
+    def test_variant(self) -> None:
+        expr = Variant("abc", Int(123))
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, TyVariant(TyRow({"abc": IntType}, TyVar("t0"))))
 
 
 class SerializerTests(unittest.TestCase):

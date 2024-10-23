@@ -4152,6 +4152,8 @@ def occurs_in(tyvar: TyVar, ty: MonoType) -> bool:
         return False
     if isinstance(ty, TyRow):
         return any(occurs_in(tyvar, val) for val in ty.fields.values()) or occurs_in(tyvar, ty.rest)
+    if isinstance(ty, TyVariant):
+        return occurs_in(tyvar, ty.row)
     raise InferenceError(f"Unknown type: {ty}")
 
 
@@ -4218,6 +4220,9 @@ def unify_type(ty1: MonoType, ty2: MonoType) -> None:
         rest = fresh_tyvar()
         unify_type(ty1_rest, TyRow(ty1_missing, rest))
         unify_type(ty2_rest, TyRow(ty2_missing, rest))
+        return
+    if isinstance(ty1, TyVariant) and isinstance(ty2, TyVariant):
+        unify_type(ty1.row, ty2.row)
         return
     if isinstance(ty1, TyRow) and isinstance(ty2, TyEmptyRow):
         raise InferenceError(f"Unifying row {ty1} with empty row")
@@ -4353,6 +4358,9 @@ def infer_pattern_type(pattern: Object, ctx: Context) -> MonoType:
                 break
             fields[key] = infer_pattern_type(value, ctx)
         return set_type(pattern, TyRow(fields, rest))
+    if isinstance(pattern, Variant):
+        value_ty = infer_type(pattern.value, ctx)
+        return set_type(pattern, TyVariant(TyRow({pattern.tag: value_ty}, fresh_tyvar())))
     raise InferenceError(f"{type(pattern)} isn't allowed in a pattern")
 
 
@@ -4949,6 +4957,31 @@ filter_x {x=1, y=2}
         expr = Variant("abc", Int(123))
         ty = infer_type(expr, {})
         self.assertTyEqual(ty, TyVariant(TyRow({"abc": IntType}, TyVar("t0"))))
+
+    def test_variant(self) -> None:
+        expr = Variant("abc", Int(123))
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, TyVariant(TyRow({"abc": IntType}, TyVar("t0"))))
+
+    def test_match_one_variant(self) -> None:
+        expr = MatchFunction([MatchCase(Variant("abc", Int(123)), Int(1))])
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, func_type(TyVariant(TyRow({"abc": IntType}, TyVar("t1"))), IntType))
+
+    def test_match_two_variants(self) -> None:
+        expr = MatchFunction([MatchCase(Variant("abc", Int(123)), Int(1)), MatchCase(Variant("xyz", Int(123)), Int(1))])
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, func_type(TyVariant(TyRow({"abc": IntType, "xyz": IntType}, TyVar("t3"))), IntType))
+
+    def test_match_return_one_variant(self) -> None:
+        expr = MatchFunction([MatchCase(Int(1), Variant("abc", Int(123)))])
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, func_type(IntType, TyVariant(TyRow({"abc": IntType}, TyVar("t1")))))
+
+    def test_match_return_two_variants(self) -> None:
+        expr = MatchFunction([MatchCase(Int(1), Variant("abc", Int(123))), MatchCase(Int(2), Variant("xyz", Int(123)))])
+        ty = infer_type(expr, {})
+        self.assertTyEqual(ty, func_type(IntType, TyVariant(TyRow({"abc": IntType, "xyz": IntType}, TyVar("t3")))))
 
 
 class SerializerTests(unittest.TestCase):

@@ -50,10 +50,15 @@ class CompiledFunction:
 
     def __post_init__(self) -> None:
         self.id = next(fn_counter)
-        self.code.append("HANDLES();")
         for param in self.params:
             # The parameters are raw pointers and must be updated on GC
+            self.use_handles()
             self.code.append(f"GC_PROTECT({param});")
+
+    def use_handles(self) -> None:
+        if self.code and self.code[0] == "HANDLES();":
+            return
+        self.code.insert(0, "HANDLES();")
 
     def decl(self) -> str:
         args = ", ".join(f"struct object* {arg}" for arg in self.params)
@@ -120,6 +125,7 @@ class Compiler:
 
     def _handle(self, name: str, exp: str) -> str:
         # TODO(max): Liveness analysis to avoid unnecessary handles
+        self.function.use_handles()
         self._emit(f"OBJECT_HANDLE({name}, {exp});")
         return name
 

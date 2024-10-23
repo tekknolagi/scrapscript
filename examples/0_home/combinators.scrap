@@ -14,7 +14,5 @@ Z factr 5
 . Y = f -> (x -> f (x x)) (x -> f (x x))
 . Z = f -> (x -> f (v -> (x x) v)) (x -> f (v -> (x x) v))
 
-. factr = facti ->
-  | 0 -> 1
-  | n -> (mult n) (facti (n - 1))
+. factr = facti -> n -> mult n 10
 . mult = x -> y -> x * y

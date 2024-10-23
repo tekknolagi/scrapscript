@@ -4574,13 +4574,15 @@ class InferTypeTests(unittest.TestCase):
         if isinstance(l, TyEmptyRow) and isinstance(r, TyEmptyRow):
             return True
         if isinstance(l, TyRow) and isinstance(r, TyRow):
-            l_keys = set(l.fields.keys())
-            r_keys = set(r.fields.keys())
+            l_flat, l_rest = row_flatten(l)
+            r_flat, r_rest = row_flatten(r)
+            l_keys = set(l_flat.keys())
+            r_keys = set(r_flat.keys())
             if l_keys != r_keys:
                 self.fail(f"Type mismatch: {l} != {r}")
             for key in l_keys:
-                self.assertTyEqual(l.fields[key], r.fields[key])
-            self.assertTyEqual(l.rest, r.rest)
+                self.assertTyEqual(l_flat[key], r_flat[key])
+            self.assertTyEqual(l_rest, r_rest)
             return True
         self.fail(f"Type mismatch: {l} != {r}")
 

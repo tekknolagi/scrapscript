@@ -4059,12 +4059,12 @@ class TyVariant(MonoType):
 
     def __str__(self) -> str:
         flat, rest = row_flatten(self.row)
-        # sort to make tests deterministic
         is_open = ""
         if isinstance(rest, TyVar):
             is_open = f">{rest}"
         else:
             assert isinstance(rest, TyEmptyRow)
+        # sort to make tests deterministic
         result = [f"#{key} {val}" for key, val in sorted(flat.items())]
         return f"[{is_open} " + " | ".join(result) + "]"
 

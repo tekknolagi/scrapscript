@@ -246,9 +246,15 @@ class Compiler:
             updates = {}
             use_spread = False
             for key, pattern_value in pattern.data.items():
-                assert not isinstance(pattern_value, Spread), "record spread not yet supported"
+                if isinstance(pattern_value, Spread):
+                    use_spread = True
+                    if pattern_value.name:
+                        raise NotImplementedError("named record spread not yet supported")
+                    break
                 key_idx = self.record_key(key)
                 record_value = self._mktemp(f"record_get({arg}, {key_idx})")
+                # TODO(max): If the key is present in the type, don't emit this
+                # check
                 self._emit(f"if ({record_value} == NULL) {{ goto {fallthrough}; }}")
                 updates.update(self.try_match(env, record_value, pattern_value, fallthrough))
             if not use_spread:

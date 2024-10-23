@@ -4501,6 +4501,27 @@ class InferTypeTests(unittest.TestCase):
         with self.assertRaisesRegex(InferenceError, "Unifying empty row with row {y=int, ...'t0}"):
             unify_type(l, r)
 
+    def test_unify_one_open_one_closed(self) -> None:
+        rest = TyVar("r1")
+        l = TyRow({"x": IntType})
+        r = TyRow({"x": IntType}, rest)
+        unify_type(l, r)
+        self.assertTyEqual(rest.find(), TyEmptyRow())
+
+    def test_unify_one_open_more_than_one_closed(self) -> None:
+        rest = TyVar("r1")
+        l = TyRow({"x": IntType})
+        r = TyRow({"x": IntType, "y": StringType}, rest)
+        with self.assertRaisesRegex(InferenceError, "Unifying empty row with row {y=string, ...'r1}"):
+            unify_type(l, r)
+
+    def test_unify_one_open_one_closed_more(self) -> None:
+        rest = TyVar("r1")
+        l = TyRow({"x": IntType, "y": StringType})
+        r = TyRow({"x": IntType}, rest)
+        unify_type(l, r)
+        self.assertTyEqual(rest.find(), TyRow({"y": StringType}))
+
     def test_unify_left_missing_open(self) -> None:
         l = TyRow({}, TyVar("r0"))
         r = TyRow({"y": IntType}, TyVar("r1"))

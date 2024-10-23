@@ -4028,9 +4028,6 @@ class TyEmptyRow(MonoType):
         return "{}"
 
 
-empty_row = TyEmptyRow()
-
-
 @dataclasses.dataclass
 class TyRow(MonoType):
     fields: dict[str, MonoType]
@@ -4325,7 +4322,7 @@ def infer_pattern_type(pattern: Object, ctx: Context) -> MonoType:
         return set_type(pattern, result_ty)
     if isinstance(pattern, Record):
         fields = {}
-        rest: TyVar | TyEmptyRow = empty_row  # Default closed row
+        rest: TyVar | TyEmptyRow = TyEmptyRow()  # Default closed row
         for key, value in pattern.data.items():
             if isinstance(value, Spread):
                 # Open row
@@ -4395,7 +4392,7 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
         return set_type(expr, result)
     if isinstance(expr, Record):
         fields = {}
-        rest: TyVar | TyEmptyRow = empty_row
+        rest: TyVar | TyEmptyRow = TyEmptyRow()
         for key, value in expr.data.items():
             assert not isinstance(value, Spread), "Spread can only occur in record match (for now)"
             fields[key] = infer_type(value, ctx)

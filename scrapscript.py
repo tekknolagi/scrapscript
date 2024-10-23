@@ -4034,7 +4034,7 @@ empty_row = TyEmptyRow()
 @dataclasses.dataclass
 class TyRow(MonoType):
     fields: dict[str, MonoType]
-    rest: TyVar | TyRow | TyEmptyRow = dataclasses.field(default_factory=TyEmptyRow)
+    rest: TyVar | TyEmptyRow = dataclasses.field(default_factory=TyEmptyRow)
 
     def __post_init__(self) -> None:
         if not self.fields and isinstance(self.rest, TyEmptyRow):
@@ -4241,7 +4241,7 @@ def apply_ty(ty: MonoType, subst: Subst) -> MonoType:
         return ty
     if isinstance(ty, TyRow):
         rest = apply_ty(ty.rest, subst)
-        assert isinstance(rest, (TyVar, TyRow, TyEmptyRow))
+        assert isinstance(rest, (TyVar, TyEmptyRow))
         return TyRow({key: apply_ty(val, subst) for key, val in ty.fields.items()}, rest)
     raise InferenceError(f"Unknown type: {ty}")
 
@@ -4325,7 +4325,7 @@ def infer_pattern_type(pattern: Object, ctx: Context) -> MonoType:
         return set_type(pattern, result_ty)
     if isinstance(pattern, Record):
         fields = {}
-        rest: TyVar | TyRow | TyEmptyRow = empty_row  # Default closed row
+        rest: TyVar | TyEmptyRow = empty_row  # Default closed row
         for key, value in pattern.data.items():
             if isinstance(value, Spread):
                 # Open row
@@ -4395,7 +4395,7 @@ def infer_type(expr: Object, ctx: Context) -> MonoType:
         return set_type(expr, result)
     if isinstance(expr, Record):
         fields = {}
-        rest: TyVar | TyRow | TyEmptyRow = empty_row
+        rest: TyVar | TyEmptyRow = empty_row
         for key, value in expr.data.items():
             assert not isinstance(value, Spread), "Spread can only occur in record match (for now)"
             fields[key] = infer_type(value, ctx)

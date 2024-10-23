@@ -32,6 +32,7 @@ from scrapscript import (
     StringType,
     TyEmptyRow,
     TyRow,
+    TyCon,
     row_flatten,
     parse,  # needed for /compilerepl
     tokenize,  # needed for /compilerepl
@@ -141,6 +142,10 @@ class Compiler:
         ty = type_of(exp)
         return isinstance(ty, TyCon) and ty.name == "list"
 
+    def _is_hole(self, exp: Object) -> bool:
+        ty = type_of(exp)
+        return isinstance(ty, TyCon) and ty.name == "hole"
+
     def _is_record(self, exp: Object) -> bool:
         return isinstance(type_of(exp), TyRow) or isinstance(type_of(exp), TyEmptyRow)
 
@@ -227,8 +232,8 @@ class Compiler:
                 # necessary; the non-Hole case would work just fine.
                 self._emit(f"if ({arg} != mk_immediate_variant(Tag_{pattern.tag})) {{ goto {fallthrough}; }}")
                 return {}
-            if not self._is_variant(pattern):
-                self._emit(f"if (!is_variant({arg})) {{ goto {fallthrough}; }}")
+            # TODO(max): Check if it's a variant
+            self._emit(f"if (!is_variant({arg})) {{ goto {fallthrough}; }}")
             self._emit(f"if (variant_tag({arg}) != Tag_{pattern.tag}) {{ goto {fallthrough}; }}")
             return self.try_match(env, self._mktemp(f"variant_value({arg})"), pattern.value, fallthrough)
 

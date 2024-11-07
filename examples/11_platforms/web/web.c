@@ -13,13 +13,13 @@ static int
 dispatch(struct wby_con *connection, void *userdata)
 {
     HANDLES();
-    GC_HANDLE(struct object*, handler, *(struct object**)userdata);
-    GC_HANDLE(struct object*, url, mkstring(heap, connection->request.uri, strlen(connection->request.uri)));
-    GC_HANDLE(struct object*, response, closure_call(handler, url));
+    GC_HANDLE(Object*, handler, *(Object**)userdata);
+    GC_HANDLE(Object*, url, mkstring(heap, connection->request.uri, strlen(connection->request.uri)));
+    GC_HANDLE(Object*, response, closure_call(handler, url));
     assert(is_record(response));
-    GC_HANDLE(struct object*, code, record_get(response, Record_code));
+    GC_HANDLE(Object*, code, record_get(response, Record_code));
     assert(is_num(code));
-    GC_HANDLE(struct object*, body, record_get(response, Record_body));
+    GC_HANDLE(Object*, body, record_get(response, Record_body));
     assert(is_string(body));
 
     wby_response_begin(connection, num_value(code), string_length(body), NULL, 0);
@@ -41,7 +41,7 @@ int main(int argc, const char * argv[])
 #endif
     init_heap(heap, space);
     HANDLES();
-    GC_HANDLE(struct object*, handler, scrap_main());
+    GC_HANDLE(Object*, handler, scrap_main());
     assert(is_closure(handler));
 
     /* setup config */

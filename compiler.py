@@ -56,8 +56,8 @@ class CompiledFunction:
             self.code.append(f"GC_PROTECT({param});")
 
     def decl(self) -> str:
-        args = ", ".join(f"struct object* {arg}" for arg in self.params)
-        return f"struct object* {self.name}({args})"
+        args = ", ".join(f"Object* {arg}" for arg in self.params)
+        return f"Object* {self.name}({args})"
 
 
 class Compiler:
@@ -326,7 +326,7 @@ class Compiler:
         length = len(value)
         assert length < 8, "small string must be less than 8 bytes"
         value_int = int.from_bytes(value, "little")
-        return f"(struct object*)(({hex(value_int)}ULL << kBitsPerByte) | ({length}ULL << kImmediateTagBits) | (uword)kSmallStringTag /* {value_str!r} */)"
+        return f"(Object*)(({hex(value_int)}ULL << kBitsPerByte) | ({length}ULL << kImmediateTagBits) | (uword)kSmallStringTag /* {value_str!r} */)"
 
     def _emit_const(self, exp: Object) -> str:
         assert self._is_const(exp), f"not a constant {exp}"
@@ -475,7 +475,7 @@ def compile_to_string(program: Object, debug: bool) -> str:
         ("uword", "kMaxSmallStringLength", "kWordSize - 1"),
         ("uword", "kBitsPerByte", 8),
         # Up to the five least significant bits are used to tag the object's layout.
-        # The three low bits make up a primary tag, used to differentiate gc_obj
+        # The three low bits make up a primary tag, used to differentiate HeapObject
         # from immediate objects. All even tags map to SmallInt, which is
         # optimized by checking only the lowest bit for parity.
         ("uword", "kSmallIntTag", 0),  # 0b****0
@@ -499,7 +499,7 @@ def compile_to_string(program: Object, debug: bool) -> str:
     dirname = os.path.dirname(__file__)
     with open(os.path.join(dirname, "runtime.c"), "r") as runtime:
         print(runtime.read(), file=f)
-    print("#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct object*, name, exp)", file=f)
+    print("#define OBJECT_HANDLE(name, exp) GC_HANDLE(Object*, name, exp)", file=f)
     if compiler.record_keys:
         print("const char* record_keys[] = {", file=f)
         for key in compiler.record_keys:
@@ -528,7 +528,7 @@ def compile_to_string(program: Object, debug: bool) -> str:
     for function in compiler.functions:
         print(function.decl() + ";", file=f)
     # Emit the const heap
-    print("#define ptrto(obj) ((struct object*)((uword)&(obj) + 1))", file=f)
+    print("#define ptrto(obj) ((Object*)((uword)&(obj) + 1))", file=f)
     for line in compiler.const_heap:
         print(line, file=f)
     for function in compiler.functions:

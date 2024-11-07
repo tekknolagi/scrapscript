@@ -7,7 +7,7 @@ int main() {
 #endif
   init_heap(heap, space);
   HANDLES();
-  GC_HANDLE(struct object*, result, scrap_main());
+  GC_HANDLE(Object*, result, scrap_main());
   println(result);
   destroy_space(space);
   return 0;

@@ -40,10 +40,20 @@ class Constant(Value):
         return f"Constant({self.value})"
 
 
+opcounter = 0
+
+
 class Operation(Value):
-    def __init__(self, name: str, args: list[Value]):
+    def __init__(self, name: str, args: list[Value], comment=None):
         self.name = name
         self.args = args
+        self.comment = comment
+        global opcounter
+        self.id = opcounter
+        opcounter += 1
+
+    def v(self):
+        return f"v{self.id}"
 
     def __repr__(self):
         return f"Operation({self.name}, {self.args})"
@@ -56,14 +66,17 @@ Env = typing.Dict[str, Operation]
 
 
 class Block(list):
+    def set_function(self, function):
+        self.function = function
+
     def opbuilder(opname):
         def wraparg(arg):
             if not isinstance(arg, Value):
                 arg = Constant(arg)
             return arg
 
-        def build(self, *args):
-            op = Operation(opname, [wraparg(arg) for arg in args])
+        def build(self, *args, comment=None):
+            op = Operation(opname, [wraparg(arg) for arg in args], comment=comment)
             self.append(op)
             return op
 
@@ -81,11 +94,12 @@ class CompiledFunction:
     id: int = dataclasses.field(default=0, init=False, compare=False, hash=False)
     name: str
     params: typing.List[str]
-    fields: typing.List[str] = dataclasses.field(default_factory=list)
+    freevars: typing.Dict[str, Value] = dataclasses.field(default_factory=dict)
     blocks: typing.List[Block] = dataclasses.field(default_factory=list)
 
     def new_block(self) -> Block:
         block = Block()
+        block.set_function(self)
         self.blocks.append(block)
         return block
 
@@ -103,6 +117,15 @@ class Compiler:
         self.gensym_counter += 1
         return f"{stem}_{self.gensym_counter-1}"
 
+    def lookup_name(self, block: Block, env: Env, name: str) -> Value:
+        value = env.get(name)
+        if value is not None:
+            return value
+        value = block.function.freevars.get(name)
+        if value is not None:
+            return value
+        raise NameError(f"lookup_name: {name}")
+
     def compile(self, block: Block, env: Env, exp: Object) -> str:
         if isinstance(exp, Int):
             return block.box_small_int(exp.value)
@@ -112,7 +135,7 @@ class Compiler:
             value = self.compile(block, env, value)
             return self.compile(block, {**env, name: value}, body)
         if isinstance(exp, Var):
-            return env[exp.name]
+            return self.lookup_name(block, env, exp.name)
         if isinstance(exp, Binop):
             left = self.compile(block, env, exp.left)
             right = self.compile(block, env, exp.right)
@@ -122,17 +145,30 @@ class Compiler:
                 return block.mul(left, right)
             raise NotImplementedError(f"compile: {exp.op}")
         if isinstance(exp, Function):
-            fn = CompiledFunction(self.gensym(), [exp.arg])
+            argname = exp.arg.name
+            freevars = free_in(exp)
+            freevar_values = {var: self.lookup_name(block, env, var) for var in freevars}
+            fn = CompiledFunction(self.gensym(), [argname], freevars=freevar_values)
             new_block = fn.new_block()
-            arg = new_block.load_arg(0)
-            self.compile(new_block, {exp.arg.name: arg}, exp.body)
+            arg = new_block.load_arg(0, comment=argname)
+            self.compile(new_block, {argname: arg}, exp.body)
             new_block.return_(new_block[-1])
             self.functions.append(fn)
-            return Constant(fn)
+            return block.alloc_closure(fn, *[freevar_values[var] for var in freevars])
         if isinstance(exp, Apply):
             func = self.compile(block, env, exp.func)
             arg = self.compile(block, env, exp.arg)
             return block.apply(func, arg)
+        # if isinstance(exp, MatchFunction):
+        #     argname = self.gensym()
+        #     fn = CompiledFunction(self.gensym(), [argname])
+        #     entry = fn.new_block()
+        #     arg = entry.load_arg(0)
+        #     for case in exp.cases:
+        #         case_block = fn.new_block()
+        #         case_block.return_(self.compile(case_block, {argname: arg}, case))
+        #     self.functions.append(fn)
+        #     return Constant(fn)
         raise NotImplementedError(f"compile: {type(exp)}")
 
 
@@ -142,20 +178,22 @@ def bb_to_str(bb: Block, varprefix: str = "v", indent=""):
             if isinstance(arg.value, CompiledFunction):
                 return f"fn {arg.value.name}"
             return str(arg.value)
-        return varnames[arg]
+        return arg.v()
 
     varnames = {}
     res = []
     for index, op in enumerate(bb):
         var = f"{varprefix}{index}"
-        varnames[op] = var
+        # varnames[op] = var
         arguments = ", ".join(arg_to_str(op.arg(i)) for i in range(len(op.args)))
-        strop = f"{indent}{var} = {op.name}({arguments})"
+        comment = f"  # {op.comment}" if op.comment else ""
+        strop = f"{indent}{op.v()} = {op.name}({arguments}){comment}"
         res.append(strop)
     return "\n".join(res)
 
 
-expr = parse(tokenize("inc (a + b) . a = 1 . b = 2 . inc = x -> x + 1"))
+# expr = parse(tokenize("inc (a + b) . a = 1 . b = 2 . inc = x -> x + 1 --| 0 -> 1 | 3 -> 4"))
+expr = parse(tokenize("f . f = x -> x + a . a = 1"))
 fn = CompiledFunction("main", [])
 block = fn.new_block()
 compiler = Compiler(fn)
@@ -163,7 +201,11 @@ compiler.compile(block, {}, expr)
 block.return_(block[-1])
 
 for fn in compiler.functions:
-    print(f"fn {fn.name} {fn.params}")
+    if fn.freevars:
+        fv_string = " "+", ".join([f"{v.v()}={k}" for k, v in fn.freevars.items()])
+    else:
+        fv_string = ""
+    print(f"fn {fn.name}({', '.join(fn.params)}){fv_string}:")
     for index, block in enumerate(fn.blocks):
         print(f"  bb{index}:")
         print(bb_to_str(block, "v", indent=" " * 4))

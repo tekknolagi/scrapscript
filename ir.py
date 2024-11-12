@@ -88,6 +88,7 @@ class Block(list):
     return_ = opbuilder("return")
     load_arg = opbuilder("load_arg")
     apply = opbuilder("apply")
+    alloc_closure = opbuilder("alloc_closure")
 
 
 @dataclasses.dataclass

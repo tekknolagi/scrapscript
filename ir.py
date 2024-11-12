@@ -157,7 +157,7 @@ class Compiler:
             self.compile(new_block, {argname: arg}, exp.body)
             new_block.return_(new_block[-1])
             self.functions.append(fn)
-            result = block.alloc_closure(fn)
+            result = block.alloc_closure(fn, len(freevars))
             for idx, var in enumerate(freevars):
                 block.write_field(result, idx, freevar_values[var])
             return result

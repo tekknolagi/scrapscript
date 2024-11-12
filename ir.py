@@ -1,5 +1,6 @@
-import typing
 import dataclasses
+import sys
+import typing
 
 from scrapscript import (
     Access,
@@ -193,7 +194,9 @@ def bb_to_str(bb: Block, varprefix: str = "v", indent=""):
 
 
 # expr = parse(tokenize("inc (a + b) . a = 1 . b = 2 . inc = x -> x + 1 --| 0 -> 1 | 3 -> 4"))
-expr = parse(tokenize("f . f = x -> x + a . a = 1"))
+with open(sys.argv[1]) as f:
+    source = f.read()
+expr = parse(tokenize(source))
 fn = CompiledFunction("main", [])
 block = fn.new_block()
 compiler = Compiler(fn)

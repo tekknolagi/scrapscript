@@ -89,6 +89,7 @@ class Block(list):
     load_arg = opbuilder("load_arg")
     apply = opbuilder("apply")
     alloc_closure = opbuilder("alloc_closure")
+    write_field = opbuilder("write_field")
 
 
 @dataclasses.dataclass
@@ -156,7 +157,10 @@ class Compiler:
             self.compile(new_block, {argname: arg}, exp.body)
             new_block.return_(new_block[-1])
             self.functions.append(fn)
-            return block.alloc_closure(fn, *[freevar_values[var] for var in freevars])
+            result = block.alloc_closure(fn)
+            for idx, var in enumerate(freevars):
+                block.write_field(result, idx, freevar_values[var])
+            return result
         if isinstance(exp, Apply):
             func = self.compile(block, env, exp.func)
             arg = self.compile(block, env, exp.arg)

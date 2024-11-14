@@ -66,7 +66,17 @@ class Operation(Value):
 Env = typing.Dict[str, Operation]
 
 
+blockcounter = 0
+
+
 class Block(list):
+    def __init__(self):
+        super().__init__()
+        self.function = None
+        global blockcounter
+        self.id = blockcounter
+        blockcounter += 1
+
     def set_function(self, function):
         self.function = function
 
@@ -83,13 +93,22 @@ class Block(list):
 
         return build
 
-    box_small_int = opbuilder("box_small_int")
+    def __str__(self):
+        return f"bb{self.id}"
+
+    is_smallint = opbuilder("is_smallint")
+    box_smallint = opbuilder("box_smallint")
+    unbox_smallint = opbuilder("unbox_smallint")
     int_add = opbuilder("int_add")
+    int_equal = opbuilder("int_equal")
     return_ = opbuilder("return")
     load_arg = opbuilder("load_arg")
     apply = opbuilder("apply")
     alloc_closure = opbuilder("alloc_closure")
     write_field = opbuilder("write_field")
+    cond_branch = opbuilder("cond_branch")
+    branch = opbuilder("branch")
+    abort = opbuilder("abort")
 
 
 @dataclasses.dataclass
@@ -129,9 +148,23 @@ class Compiler:
             return value
         raise NameError(f"lookup_name: {name}")
 
-    def compile(self, block: Block, env: Env, exp: Object) -> str:
+    def try_match(self, fn: CompiledFunction, pattern_entry: Block, body_entry: Block, env: Env, arg: Value, pattern: Object, fallthrough: Block) -> Env:
+        if isinstance(pattern, Int):
+            assert -2**63 < pattern.value < 2**63, "not a smallint"
+            is_smallint = pattern_entry.is_smallint(arg)
+            block = fn.new_block()
+            pattern_entry.cond_branch(is_smallint, block, fallthrough)
+            unboxed = block.unbox_smallint(arg)
+            eq = block.int_equal(unboxed, pattern.value)
+            # TODO(max): Not body_entry but instead whatever the next block is
+            # to match in the pattern; might be recursive
+            block.cond_branch(eq, body_entry, fallthrough)
+            return {}
+        raise NotImplementedError(f"try_match: {type(pattern)}")
+
+    def compile(self, block: Block, env: Env, exp: Object) -> Value:
         if isinstance(exp, Int):
-            return block.box_small_int(exp.value)
+            return block.box_smallint(exp.value)
         if isinstance(exp, Where):
             assert isinstance(exp.binding, Assign)
             name, value, body = exp.binding.name.name, exp.binding.value, exp.body
@@ -165,16 +198,28 @@ class Compiler:
             func = self.compile(block, env, exp.func)
             arg = self.compile(block, env, exp.arg)
             return block.apply(func, arg)
-        # if isinstance(exp, MatchFunction):
-        #     argname = self.gensym()
-        #     fn = CompiledFunction(self.gensym(), [argname])
-        #     entry = fn.new_block()
-        #     arg = entry.load_arg(0)
-        #     for case in exp.cases:
-        #         case_block = fn.new_block()
-        #         case_block.return_(self.compile(case_block, {argname: arg}, case))
-        #     self.functions.append(fn)
-        #     return Constant(fn)
+        if isinstance(exp, MatchFunction):
+            argname = self.gensym()
+            fn = CompiledFunction(self.gensym(), [argname])
+            entry = fn.new_block()
+            arg = entry.load_arg(0)
+            case_blocks = [fn.new_block() for _ in exp.cases]
+            case_blocks.append(fn.new_block())  # no match
+            entry.branch(case_blocks[0])
+            funcenv = {argname: arg}
+            for i, case in enumerate(exp.cases):
+                pattern_entry = case_blocks[i]
+                fallthrough = case_blocks[i + 1]
+                body_entry = fn.new_block()
+                env_updates = self.try_match(fn, pattern_entry, body_entry,
+                                             funcenv, arg, case.pattern,
+                                             fallthrough)
+                case_result = self.compile(body_entry, {**funcenv, **env_updates},
+                                           case.body)
+                body_entry.return_(case_result)
+            case_blocks[-1].abort("No match")
+            self.functions.append(fn)
+            return Constant(fn)
         raise NotImplementedError(f"compile: {type(exp)}")
 
 
@@ -186,6 +231,9 @@ def bb_to_str(bb: Block, varprefix: str = "v", indent=""):
             return str(arg.value)
         return arg.v()
 
+    def is_terminator(op):
+        return op.name in ("return", "cond_branch", "branch", "abort")
+
     varnames = {}
     res = []
     for index, op in enumerate(bb):
@@ -193,7 +241,10 @@ def bb_to_str(bb: Block, varprefix: str = "v", indent=""):
         # varnames[op] = var
         arguments = ", ".join(arg_to_str(op.arg(i)) for i in range(len(op.args)))
         comment = f"  # {op.comment}" if op.comment else ""
-        strop = f"{indent}{op.v()} = {op.name}({arguments}){comment}"
+        if is_terminator(op):
+            strop = f"{indent}{op.name}({arguments}){comment}"
+        else:
+            strop = f"{indent}{op.v()} = {op.name}({arguments}){comment}"
         res.append(strop)
     return "\n".join(res)
 
@@ -205,8 +256,8 @@ expr = parse(tokenize(source))
 fn = CompiledFunction("main", [])
 block = fn.new_block()
 compiler = Compiler(fn)
-compiler.compile(block, {}, expr)
-block.return_(block[-1])
+result = compiler.compile(block, {}, expr)
+block.return_(result)
 
 for fn in compiler.functions:
     if fn.freevars:
@@ -214,7 +265,7 @@ for fn in compiler.functions:
     else:
         fv_string = ""
     print(f"fn {fn.name}({', '.join(fn.params)}){fv_string}:")
-    for index, block in enumerate(fn.blocks):
-        print(f"  bb{index}:")
+    for block in fn.blocks:
+        print(f"  {block}:")
         print(bb_to_str(block, "v", indent=" " * 4))
     print()

@@ -4269,7 +4269,6 @@ def generalize(ty: MonoType, ctx: Context) -> Forall:
         return set().union(*(ftv_scheme(scheme) for scheme in ctx.values()))
 
     # TODO(max): Freshen?
-    # TODO(max): Test with free type variable in the context
     tyvars = ftv_ty(ty) - ftv_ctx(ctx)
     return Forall([TyVar(name) for name in sorted(tyvars)], ty)
 
@@ -4670,6 +4669,12 @@ class InferTypeTests(unittest.TestCase):
         )
         ty = self.infer(expr, {"f": Forall([TyVar("a")], func_type(TyVar("a"), TyVar("a")))})
         self.assertTyEqual(ty, IntType)
+
+    def test_generalization(self) -> None:
+        # From https://okmij.org/ftp/ML/generalization.html
+        expr = parse(tokenize("x -> (y . y = x)"))
+        ty = self.infer(expr, {})
+        self.assertTyEqual(ty, func_type(TyVar("a"), TyVar("a")))
 
     def test_id(self) -> None:
         expr = Function(Var("x"), Var("x"))

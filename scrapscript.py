@@ -4123,27 +4123,21 @@ def unify_fail(ty1: MonoType, ty2: MonoType) -> None:
     raise InferenceError(f"Unification failed for {ty1} and {ty2}")
 
 
-def occurs_in(tyvar: TyVar, ty: MonoType) -> None:
+def occurs_in(tyvar: TyVar, ty: MonoType) -> bool:
     if isinstance(ty, TyVar):
         if tyvar == ty:
             raise InferenceError(f"Occurs check failed for {tyvar} and {ty}")
         if ty.is_unbound():
             min_level = min(tyvar.level, ty.level) if tyvar.is_unbound() else tyvar.level
             ty.level = min_level
-            return
-        occurs_in(tyvar, ty.find())
-        return
+            return False
+        return occurs_in(tyvar, ty.find())
     if isinstance(ty, TyCon):
-        for arg in ty.args:
-            occurs_in(tyvar, arg)
-        return
+        return any(occurs_in(tyvar, arg) for arg in ty.args)
     if isinstance(ty, TyEmptyRow):
-        return
+        return False
     if isinstance(ty, TyRow):
-        for val in ty.fields.values():
-            occurs_in(tyvar, val)
-        occurs_in(tyvar, ty.rest)
-        return
+        return any(occurs_in(tyvar, val) for val in ty.fields.values()) or occurs_in(tyvar, ty.rest)
     raise InferenceError(f"Unknown type: {ty}")
 
 

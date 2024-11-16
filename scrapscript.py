@@ -4283,7 +4283,7 @@ def ftv_ty(ty: MonoType, min_level: int = -1) -> set[str]:
         return set()
     if isinstance(ty, TyRow):
         return set().union(ftv_ty(ty.rest, min_level), *(ftv_ty(val, min_level) for val in ty.fields.values()))
-    raise InferenceError(f"ftv_ty: Unknown type: {ty}")
+    raise InferenceError(f"Unknown type: {ty}")
 
 
 def generalize(ty: MonoType) -> Forall:

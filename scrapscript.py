@@ -4669,6 +4669,12 @@ class InferTypeTests(unittest.TestCase):
         ty = self.infer(expr, {})
         self.assertTyEqual(ty, func_type(TyVar("a"), TyVar("a")))
 
+    def test_generalization2(self) -> None:
+        # From https://okmij.org/ftp/ML/generalization.html
+        expr = parse(tokenize("x -> (y . y = z -> x z)"))
+        ty = self.infer(expr, {})
+        self.assertTyEqual(ty, func_type(func_type(TyVar("a"), TyVar("b")), func_type(TyVar("a"), TyVar("b"))))
+
     def test_id(self) -> None:
         expr = Function(Var("x"), Var("x"))
         ty = self.infer(expr, {})

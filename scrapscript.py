@@ -4131,7 +4131,7 @@ def occurs_in(tyvar: TyVar, ty: MonoType) -> None:
             min_level = min(tyvar.level, ty.level) if tyvar.is_unbound() else tyvar.level
             ty.level = min_level
             return
-        occurs_in(tyvar, ty.forwarded)
+        occurs_in(tyvar, ty.find())
         return
     if isinstance(ty, TyCon):
         for arg in ty.args:
@@ -4275,13 +4275,13 @@ def instantiate(scheme: Forall) -> MonoType:
     return apply_ty(scheme.ty, fresh)
 
 
-def ftv_ty(ty: MonoType, min_level=-1) -> set[str]:
+def ftv_ty(ty: MonoType, min_level: int = -1) -> set[str]:
     if isinstance(ty, TyVar):
         if ty.is_unbound():
             if ty.level > min_level:
                 return {ty.name}
         else:
-            return ftv_ty(ty.forwarded, min_level)
+            return ftv_ty(ty.find(), min_level)
         return set()
     if isinstance(ty, TyCon):
         return set().union(*(ftv_ty(arg, min_level) for arg in ty.args))

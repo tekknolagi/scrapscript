@@ -4126,7 +4126,7 @@ def unify_fail(ty1: MonoType, ty2: MonoType) -> None:
 def occurs_in(tyvar: TyVar, ty: MonoType) -> bool:
     if isinstance(ty, TyVar):
         if tyvar == ty:
-            raise InferenceError(f"Occurs check failed for {tyvar} and {ty}")
+            return True
         if ty.is_unbound():
             min_level = min(tyvar.level, ty.level) if tyvar.is_unbound() else tyvar.level
             ty.level = min_level
@@ -4147,8 +4147,8 @@ def unify_type(ty1: MonoType, ty2: MonoType) -> None:
     ty1 = ty1.find()
     ty2 = ty2.find()
     if isinstance(ty1, TyVar):
-        # ty1 is unbound if it's still a TyVar after .find()
-        occurs_in(ty1, ty2)
+        if occurs_in(ty1, ty2):
+            raise InferenceError(f"Occurs check failed for {ty1} and {ty2}")
         ty1.make_equal_to(ty2)
         return
     if isinstance(ty2, TyVar):  # Mirror

@@ -124,10 +124,10 @@ struct gc_heap {
   struct space space;
 };
 
-static uintptr_t align(uintptr_t val, uintptr_t alignment) {
+static ALWAYS_INLINE uintptr_t align(uintptr_t val, uintptr_t alignment) {
   return (val + alignment - 1) & ~(alignment - 1);
 }
-static uintptr_t align_size(uintptr_t size) {
+static ALWAYS_INLINE uintptr_t align_size(uintptr_t size) {
   return align(size, sizeof(uintptr_t));
 }
 
@@ -163,12 +163,20 @@ void init_heap(struct gc_heap* heap, struct space space) {
   heap->from_space = heap->limit = heap->hp + space.size / 2;
 }
 
+static ALWAYS_INLINE bool is_power_of_two(uword x) { return (x & (x - 1)) == 0; }
+
+static ALWAYS_INLINE bool is_aligned(uword value, uword alignment) {
+  assert(is_power_of_two(alignment));
+  return (value & (alignment - 1)) == 0;
+}
+
 struct gc_obj* copy(struct gc_heap* heap, struct gc_obj* obj) {
   size_t size = heap_object_size(obj);
   struct gc_obj* new_obj = (struct gc_obj*)heap->hp;
   memcpy(new_obj, obj, size);
   forward(obj, new_obj);
   heap->hp += align_size(size);
+  assert(is_aligned(heap->hp, 1 << kPrimaryTagBits) && "need 3 bits for tagging");
   return new_obj;
 }
 
@@ -292,13 +300,6 @@ static NEVER_INLINE void heap_grow(struct gc_heap* heap) {
 }
 #endif
 
-bool is_power_of_two(uword x) { return (x & (x - 1)) == 0; }
-
-bool is_aligned(uword value, uword alignment) {
-  assert(is_power_of_two(alignment));
-  return (value & (alignment - 1)) == 0;
-}
-
 uword make_tag(uword tag, uword size_bytes) {
   assert(size_bytes <= 0xffffffff);
   return (size_bytes << kBitsPerByte) | tag;
@@ -321,13 +322,14 @@ static NEVER_INLINE void allocate_slow_path(struct gc_heap* heap, uword size) {
 
 static ALWAYS_INLINE ALLOCATOR struct object* allocate(struct gc_heap* heap,
                                                        uword tag, uword size) {
-  assert(is_aligned(size, 1 << kPrimaryTagBits) && "need 3 bits for tagging");
   uintptr_t addr = heap->hp;
   uintptr_t new_hp = align_size(addr + size);
+  assert(is_aligned(new_hp, 1 << kPrimaryTagBits) && "need 3 bits for tagging");
   if (UNLIKELY(heap->limit < new_hp)) {
     allocate_slow_path(heap, size);
     addr = heap->hp;
     new_hp = align_size(addr + size);
+    assert(is_aligned(new_hp, 1 << kPrimaryTagBits) && "need 3 bits for tagging");
   }
   heap->hp = new_hp;
   ((struct gc_obj*)addr)->tag = make_tag(tag, size);

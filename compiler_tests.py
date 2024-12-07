@@ -48,8 +48,11 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_small_string_concat(self) -> None:
         self.assertEqual(self._run('"abc" ++ "def"'), '"abcdef"\n')
 
-    def test_heap_string(self) -> None:
+    def test_const_large_string(self) -> None:
         self.assertEqual(self._run('"hello world"'), '"hello world"\n')
+
+    def test_heap_string_concat(self) -> None:
+        self.assertEqual(self._run('"hello world" ++ " and goodbye"'), '"hello world and goodbye"\n')
 
     def test_const_list(self) -> None:
         self.assertEqual(
@@ -68,6 +71,9 @@ class CompilerEndToEndTests(unittest.TestCase):
 
     def test_list(self) -> None:
         self.assertEqual(self._run("[1, 2, 3]"), "[1, 2, 3]\n")
+
+    def test_list_concat(self) -> None:
+        self.assertEqual(self._run("0 >+ [1, 2, 3]"), "[0, 1, 2, 3]\n")
 
     def test_var(self) -> None:
         self.assertEqual(self._run("a . a = 1"), "1\n")

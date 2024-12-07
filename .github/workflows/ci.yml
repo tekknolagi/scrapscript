@@ -29,10 +29,7 @@ jobs:
     - run: poetry run ruff check scrapscript.py
     - run: poetry run ruff format --check scrapscript.py
     - run: poetry run mypy --strict scrapscript.py
-  run_interpreter_unit_tests:
-    strategy:
-      matrix:
-        PYTHON: [python3.8, python3.9, python3.10, python3.11, python3.12, python3.13]
+  install_pythons:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -40,11 +37,18 @@ jobs:
       run: sudo add-apt-repository --yes ppa:deadsnakes/ppa
     - name: Update local package lists
       run: sudo apt update
-    - name: Install Python
-      run: sudo apt install --yes ${{matrix.PYTHON}}
+    - name: Install Pythons
+      run: sudo apt install --yes python3.8 python3.9 python3.10 python3.11 python3.12 python3.13
+  run_interpreter_unit_tests:
+    needs: [install_pythons]
+    strategy:
+      matrix:
+        PYTHON: [python3.8, python3.9, python3.10, python3.11, python3.12, python3.13]
+    steps:
     - name: Run interpreter tests
       run: ${{matrix.PYTHON}} scrapscript.py test
   run_compiler_unit_tests:
+    needs: [install_pythons]
     strategy:
       matrix:
         PYTHON: [python3.8, python3.9, python3.10, python3.11, python3.12, python3.13]
@@ -52,13 +56,8 @@ jobs:
         USE_STATIC_HEAP: ["-DSTATIC_HEAP", ""]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Get deadsnakes repo
-      run: sudo add-apt-repository --yes ppa:deadsnakes/ppa
-    - name: Update local package lists
-      run: sudo apt update
     - name: Install deps
-      run: sudo apt install --yes ${{matrix.PYTHON}} ${{matrix.CC}} valgrind
+      run: sudo apt install --yes ${{matrix.CC}} valgrind
     - name: Run compiler tests
       run: CC=${{matrix.CC}} CFLAGS="${{matrix.USE_STATIC_HEAP}}" ${{matrix.PYTHON}} compiler_tests.py
     - name: Run compiler tests with ASAN

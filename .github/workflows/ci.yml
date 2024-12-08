@@ -41,6 +41,7 @@ jobs:
       run: sudo apt install --yes python3.8 python3.9 python3.10 python3.11 python3.12 python3.13
   run_interpreter_unit_tests:
     needs: [install_pythons]
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         PYTHON: [python3.8, python3.9, python3.10, python3.11, python3.12, python3.13]

@@ -388,6 +388,8 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         # we can match variants in MatchFunction
         # It needs to be higher than the precedence of the && operator so that
         # we can use #true() and #false() in boolean expressions
+        # It needs to be higher than the precedence of juxtaposition so that
+        # f #true() #false() is parsed as f(TRUE)(FALSE)
         l = Variant(token.value, parse(tokens, PS[""].pr + 1))
     elif isinstance(token, BytesLit):
         base = token.base

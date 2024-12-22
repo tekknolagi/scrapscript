@@ -107,12 +107,6 @@ class RightBracket(Token):
 
 
 @dataclass(eq=True)
-class Juxt(Token):
-    # The space between other tokens that indicates function application.
-    pass
-
-
-@dataclass(eq=True)
 class VariantToken(Token):
     value: str
 
@@ -394,8 +388,6 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
         # we can match variants in MatchFunction
         # It needs to be higher than the precedence of the && operator so that
         # we can use #true() and #false() in boolean expressions
-        # It needs to be higher than the precedence of juxtaposition so that
-        # f #true() #false() is parsed as f(TRUE)(FALSE)
         l = Variant(token.value, parse(tokens, PS[""].pr + 1))
     elif isinstance(token, BytesLit):
         base = token.base
@@ -517,7 +509,6 @@ def parse(tokens: typing.List[Token], p: float = 0) -> "Object":
             # TODO: revisit whether to use @ or . for field access
             l = Access(l, parse(tokens, pr))
         else:
-            assert not isinstance(op, Juxt)
             assert isinstance(op, Operator)
             l = Binop(BinopKind.from_str(op.value), l, parse(tokens, pr))
     return l

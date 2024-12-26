@@ -61,6 +61,8 @@ jobs:
       run: sudo apt install --yes ${{matrix.PYTHON}} ${{matrix.CC}} valgrind
     - name: Run compiler tests
       run: CC=${{matrix.CC}} CFLAGS="${{matrix.USE_STATIC_HEAP}}" ${{matrix.PYTHON}} compiler_tests.py
+    - name: Run compiler tests -DNDEBUG
+      run: CC=${{matrix.CC}} CFLAGS="${{matrix.USE_STATIC_HEAP}} -DNDEBUG" ${{matrix.PYTHON}} compiler_tests.py
     - name: Run compiler tests with ASAN
       run: CC=${{matrix.CC}} CFLAGS="-fsanitize=address ${{matrix.USE_STATIC_HEAP}}" ${{matrix.PYTHON}} compiler_tests.py
     - name: Run compiler tests with UBSAN

@@ -375,6 +375,7 @@ def parse_expression(tokens: typing.List[Token], p: float = 0) -> "Object":
     if not tokens:
         raise UnexpectedEOFError("unexpected end of input")
     token = tokens.pop(0)
+    l: Object
     if isinstance(token, IntLit):
         return Int(token.value)
     elif isinstance(token, FloatLit):

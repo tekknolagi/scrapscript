@@ -157,8 +157,8 @@ void destroy_space(struct space space) {
 
 void init_heap(struct gc_heap* heap, struct space space) {
   if (align(space.size, kPageSize) != space.size) {
-    fprintf(stderr, "heap size (%lu) must be a multiple of %lu\n",
-            space.size, kPageSize);
+    fprintf(stderr, "heap size (%lu) must be a multiple of %lu\n", space.size,
+            kPageSize);
     abort();
   }
   heap->space = space;
@@ -240,8 +240,8 @@ void assert_in_heap(struct object** pointer, struct gc_heap* heap) {
     return;
   }
   if (!in_heap(heap, obj)) {
-    fprintf(stderr, "pointer %p not in heap [%p, %p)\n", obj, (void*)heap->to_space,
-            (void*)heap->hp);
+    fprintf(stderr, "pointer %p not in heap [%p, %p)\n", obj,
+            (void*)heap->to_space, (void*)heap->hp);
     abort();
   }
 }
@@ -315,7 +315,8 @@ byte obj_tag(struct gc_obj* obj) { return (obj->tag & 0xff); }
 
 bool obj_has_tag(struct gc_obj* obj, byte tag) { return obj_tag(obj) == tag; }
 
-static NEVER_INLINE ALLOCATOR struct object* allocate_slow_path(struct gc_heap* heap, uword tag, uword size) {
+static NEVER_INLINE ALLOCATOR struct object* allocate_slow_path(
+    struct gc_heap* heap, uword tag, uword size) {
   // Outlining allocate_slow_path like this helps the compiler generate better
   // code in callers of allocate such as mklist. For some reason we have to
   // tail-duplicate allocate, too :(
@@ -552,7 +553,8 @@ struct record* as_record(struct object* obj) {
 }
 
 struct object* mkrecord(struct gc_heap* heap, size_t num_fields) {
-uword size = align_size(sizeof(struct record) + num_fields * sizeof(struct record_field));
+  uword size = align_size(sizeof(struct record) +
+                          num_fields * sizeof(struct record_field));
   struct object* result = allocate(heap, TAG_RECORD, size);
   as_record(result)->size = num_fields;
   // Assumes the items will be filled in immediately after calling mkrecord so
@@ -851,5 +853,5 @@ struct object* println(struct object* obj) {
 // __stop_const_heap are defined by the linker.
 #define CONST_HEAP const __attribute__((section("const_heap")))
 CONST_HEAP
-    __attribute__((used)) struct heap_string private_unused_const_heap = {
-        .HEAD.tag = TAG_STRING, .size = 11, .data = "hello world"};
+__attribute__((used)) struct heap_string private_unused_const_heap = {
+    .HEAD.tag = TAG_STRING, .size = 11, .data = "hello world"};

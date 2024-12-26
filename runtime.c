@@ -80,7 +80,7 @@ static ALWAYS_INLINE char small_string_at(struct object* obj, uword index) {
   // +1 for (length | tag) byte
   return ((uword)obj >> ((index + 1) * kBitsPerByte)) & 0xFF;
 }
-struct gc_obj* as_heap_object(struct object* obj) {
+static ALWAYS_INLINE struct gc_obj* as_heap_object(struct object* obj) {
   assert(is_heap_object(obj));
   assert(kHeapObjectTag == 1);
   return (struct gc_obj*)((uword)obj - 1);
@@ -128,7 +128,10 @@ static ALWAYS_INLINE uintptr_t align(uintptr_t val, uintptr_t alignment) {
   return (val + alignment - 1) & ~(alignment - 1);
 }
 static ALWAYS_INLINE uintptr_t align_size(uintptr_t size) {
-  return align(size, sizeof(uintptr_t));
+  return align(size, kObjectAlignment);
+}
+static ALWAYS_INLINE bool is_size_aligned(uword size) {
+  return size == align_size(size);
 }
 
 #ifdef STATIC_HEAP
@@ -163,20 +166,23 @@ void init_heap(struct gc_heap* heap, struct space space) {
   heap->from_space = heap->limit = heap->hp + space.size / 2;
 }
 
-static ALWAYS_INLINE bool is_power_of_two(uword x) { return (x & (x - 1)) == 0; }
-
-static ALWAYS_INLINE bool is_aligned(uword value, uword alignment) {
-  assert(is_power_of_two(alignment));
-  return (value & (alignment - 1)) == 0;
+static ALWAYS_INLINE uintptr_t heap_ptr(struct gc_heap* heap) {
+#if defined(NDEBUG) && defined(__GNUC__)
+  // Clang and GCC support this; TCC does not
+  return (uintptr_t)__builtin_assume_aligned((void*)heap->hp, kObjectAlignment);
+#else
+  assert(is_size_aligned(heap->hp) && "need 3 bits for tagging");
+  return heap->hp;
+#endif
 }
 
 struct gc_obj* copy(struct gc_heap* heap, struct gc_obj* obj) {
   size_t size = heap_object_size(obj);
-  struct gc_obj* new_obj = (struct gc_obj*)heap->hp;
+  struct gc_obj* new_obj = (struct gc_obj*)heap_ptr(heap);
   memcpy(new_obj, obj, size);
   forward(obj, new_obj);
-  heap->hp += align_size(size);
-  assert(is_aligned(heap->hp, 1 << kPrimaryTagBits) && "need 3 bits for tagging");
+  heap->hp += size;
+  assert(is_size_aligned(heap->hp) && "need 3 bits for tagging");
   return new_obj;
 }
 
@@ -309,28 +315,38 @@ byte obj_tag(struct gc_obj* obj) { return (obj->tag & 0xff); }
 
 bool obj_has_tag(struct gc_obj* obj, byte tag) { return obj_tag(obj) == tag; }
 
-static NEVER_INLINE void allocate_slow_path(struct gc_heap* heap, uword size) {
+static NEVER_INLINE ALLOCATOR struct object* allocate_slow_path(struct gc_heap* heap, uword tag, uword size) {
+  // Outlining allocate_slow_path like this helps the compiler generate better
+  // code in callers of allocate such as mklist. For some reason we have to
+  // tail-duplicate allocate, too :(
 #ifndef STATIC_HEAP
   heap_grow(heap);
 #endif
-  // size is already aligned
+  assert(is_size_aligned(size) && "need 3 bits for tagging");
   if (UNLIKELY(heap->limit - heap->hp < size)) {
     fprintf(stderr, "out of memory\n");
     abort();
   }
+  // NOTE: Keep in sync with allocate
+  uintptr_t addr = heap_ptr(heap);
+  uintptr_t new_hp = addr + size;
+  assert(is_size_aligned(new_hp) && "need 3 bits for tagging");
+  heap->hp = new_hp;
+  ((struct gc_obj*)addr)->tag = make_tag(tag, size);
+  return heap_tag(addr);
 }
 
 static ALWAYS_INLINE ALLOCATOR struct object* allocate(struct gc_heap* heap,
                                                        uword tag, uword size) {
-  uintptr_t addr = heap->hp;
-  uintptr_t new_hp = align_size(addr + size);
-  assert(is_aligned(new_hp, 1 << kPrimaryTagBits) && "need 3 bits for tagging");
+  assert(is_size_aligned(size) && "need 3 bits for tagging");
+  // NOTE: Keep in sync with allocate_slow_path
+  uintptr_t addr = heap_ptr(heap);
+  uintptr_t new_hp = addr + size;
+  assert(is_size_aligned(new_hp) && "need 3 bits for tagging");
   if (UNLIKELY(heap->limit < new_hp)) {
-    allocate_slow_path(heap, size);
-    addr = heap->hp;
-    new_hp = align_size(addr + size);
-    assert(is_aligned(new_hp, 1 << kPrimaryTagBits) && "need 3 bits for tagging");
+    return allocate_slow_path(heap, tag, size);
   }
+  // NOTE: Keep in sync with allocate_slow_path
   heap->hp = new_hp;
   ((struct gc_obj*)addr)->tag = make_tag(tag, size);
   return heap_tag(addr);
@@ -352,11 +368,13 @@ enum {
 #undef ENUM_TAG
 };
 
+#define HEAP_ALIGNED __attribute__((__aligned__(kObjectAlignment)))
+
 struct list {
   struct gc_obj HEAD;
   struct object* first;
   struct object* rest;
-};
+} HEAP_ALIGNED;
 
 typedef struct object* (*ClosureFn)(struct object*, struct object*);
 
@@ -367,7 +385,7 @@ struct closure {
   ClosureFn fn;
   size_t size;
   struct object* env[];
-};
+};  // Not HEAP_ALIGNED; env is variable size
 
 struct record_field {
   size_t key;
@@ -378,21 +396,25 @@ struct record {
   struct gc_obj HEAD;
   size_t size;
   struct record_field fields[];
-};
+};  // Not HEAP_ALIGNED; fields is variable size
 
 struct heap_string {
   struct gc_obj HEAD;
   size_t size;
   char data[];
-};
+};  // Not HEAP_ALIGNED; data is variable size
 
 struct variant {
   struct gc_obj HEAD;
   size_t tag;
   struct object* value;
-};
+} HEAP_ALIGNED;
 
-size_t heap_object_size(struct gc_obj* obj) { return obj->tag >> kBitsPerByte; }
+size_t heap_object_size(struct gc_obj* obj) {
+  size_t result = obj->tag >> kBitsPerByte;
+  assert(is_size_aligned(result));
+  return result;
+}
 
 size_t trace_heap_object(struct gc_obj* obj, struct gc_heap* heap,
                          VisitFn visit) {
@@ -492,8 +514,8 @@ struct closure* as_closure(struct object* obj) {
 
 struct object* mkclosure(struct gc_heap* heap, ClosureFn fn,
                          size_t num_fields) {
-  struct object* result = allocate(
-      heap, TAG_CLOSURE, sizeof(struct closure) + num_fields * kPointerSize);
+  uword size = align_size(sizeof(struct closure) + num_fields * kPointerSize);
+  struct object* result = allocate(heap, TAG_CLOSURE, size);
   as_closure(result)->fn = fn;
   as_closure(result)->size = num_fields;
   // Assumes the items will be filled in immediately after calling mkclosure so
@@ -530,9 +552,8 @@ struct record* as_record(struct object* obj) {
 }
 
 struct object* mkrecord(struct gc_heap* heap, size_t num_fields) {
-  struct object* result = allocate(
-      heap, TAG_RECORD,
-      sizeof(struct record) + num_fields * sizeof(struct record_field));
+uword size = align_size(sizeof(struct record) + num_fields * sizeof(struct record_field));
+  struct object* result = allocate(heap, TAG_RECORD, size);
   as_record(result)->size = num_fields;
   // Assumes the items will be filled in immediately after calling mkrecord so
   // they are not initialized
@@ -576,8 +597,8 @@ struct heap_string* as_heap_string(struct object* obj) {
 
 struct object* mkstring_uninit_private(struct gc_heap* heap, size_t count) {
   assert(count > kMaxSmallStringLength);  // can't fill in small string later
-  struct object* result =
-      allocate(heap, TAG_STRING, sizeof(struct heap_string) + count);
+  uword size = align_size(sizeof(struct heap_string) + count);
+  struct object* result = allocate(heap, TAG_STRING, size);
   as_heap_string(result)->size = count;
   return result;
 }

@@ -37,19 +37,14 @@ from scrapscript import (
 Env = Dict[str, str]
 
 
-fn_counter = itertools.count()
-
-
 @dataclasses.dataclass
 class CompiledFunction:
-    id: int = dataclasses.field(default=0, init=False, compare=False, hash=False)
     name: str
     params: typing.List[str]
     fields: typing.List[str] = dataclasses.field(default_factory=list)
     code: typing.List[str] = dataclasses.field(default_factory=list)
 
     def __post_init__(self) -> None:
-        self.id = next(fn_counter)
         self.code.append("HANDLES();")
         for param in self.params:
             # The parameters are raw pointers and must be updated on GC

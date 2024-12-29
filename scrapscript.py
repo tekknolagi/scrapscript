@@ -467,6 +467,12 @@ def parse_unary(tokens: typing.List[Token], p: float) -> "Object":
         # Precedence was chosen to be higher than function application so that
         # -a b is (-a) b and not -(a b).
         r = parse_binary(tokens, HIGHEST_PREC + 1)
+        if isinstance(r, Int):
+            assert r.value >= 0, "Tokens should never have negative values"
+            return Int(-r.value)
+        if isinstance(r, Float):
+            assert r.value >= 0, "Tokens should never have negative values"
+            return Float(-r.value)
         return Binop(BinopKind.SUB, Int(0), r)
     else:
         raise ParseError(f"unexpected token {token!r}")
@@ -1859,10 +1865,10 @@ class ParserTests(unittest.TestCase):
     def test_parse_digits_returns_int(self) -> None:
         self.assertEqual(parse([IntLit(123)]), Int(123))
 
-    def test_parse_negative_int_returns_binary_sub_int(self) -> None:
-        self.assertEqual(parse([Operator("-"), IntLit(123)]), Binop(BinopKind.SUB, Int(0), Int(123)))
+    def test_parse_negative_int_returns_negative_int(self) -> None:
+        self.assertEqual(parse([Operator("-"), IntLit(123)]), Int(-123))
 
-    def test_parse_negative_var_returns_binary_sub_int(self) -> None:
+    def test_parse_negative_var_returns_binary_sub_var(self) -> None:
         self.assertEqual(parse([Operator("-"), Name("x")]), Binop(BinopKind.SUB, Int(0), Var("x")))
 
     def test_parse_negative_int_binds_tighter_than_plus(self) -> None:
@@ -1893,7 +1899,7 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse([FloatLit(3.14)]), Float(3.14))
 
     def test_parse_negative_float_returns_binary_sub_float(self) -> None:
-        self.assertEqual(parse([Operator("-"), FloatLit(3.14)]), Binop(BinopKind.SUB, Int(0), Float(3.14)))
+        self.assertEqual(parse([Operator("-"), FloatLit(3.14)]), Float(-3.14))
 
     def test_parse_var_returns_var(self) -> None:
         self.assertEqual(parse([Name("abc_123")]), Var("abc_123"))

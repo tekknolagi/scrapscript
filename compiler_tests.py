@@ -42,6 +42,20 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_int(self) -> None:
         self.assertEqual(self._run("1"), "1\n")
 
+    def test_int_small_int_max(self) -> None:
+        self.assertEqual(self._run("4611686018427387903"), "4611686018427387903\n")
+
+    def test_int_small_int_too_big(self) -> None:
+        with self.assertRaisesRegex(NotImplementedError, "too big"):
+            self._run("4611686018427387904")
+
+    def test_int_small_int_min(self) -> None:
+        self.assertEqual(self._run("-4611686018427387904"), "-4611686018427387904\n")
+
+    def test_int_small_int_too_small(self) -> None:
+        with self.assertRaisesRegex(NotImplementedError, "too big"):
+            self._run("-4611686018427387905")
+
     def test_small_string(self) -> None:
         self.assertEqual(self._run('"hello"'), '"hello"\n')
 

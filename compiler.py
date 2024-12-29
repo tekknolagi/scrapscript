@@ -329,7 +329,12 @@ class Compiler:
             return "hole()"
         if isinstance(exp, Int):
             # TODO(max): Bignum
-            return f"_mksmallint({exp.value})"
+            # TODO(max): assert not too big. but what we should do is
+            # mknum_fromstring("") or literally encode the heap object as a
+            # constant with digits
+            if exp.value > 0x3fffffffffffffff or exp.value < -0x4000000000000000:
+                raise NotImplementedError("too big :(")
+            return f"_mksmallint({exp.value}ULL)"
         if isinstance(exp, List):
             items = [self._emit_const(item) for item in exp.items]
             result = "empty_list()"
@@ -496,7 +501,6 @@ def compile_to_string(program: Object, debug: bool) -> str:
     dirname = os.path.dirname(__file__)
     with open(os.path.join(dirname, "runtime.c"), "r") as runtime:
         print(runtime.read(), file=f)
-    print("#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct object*, name, exp)", file=f)
     if compiler.record_keys:
         print("const char* record_keys[] = {", file=f)
         for key in compiler.record_keys:

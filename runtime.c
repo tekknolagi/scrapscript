@@ -446,6 +446,7 @@ size_t trace_heap_object(struct gc_obj* obj, struct gc_heap* heap,
       }
       break;
     case TAG_STRING:
+    case TAG_LARGEINT:
       break;
     case TAG_VARIANT:
       visit(&((struct variant*)obj)->value, heap);
@@ -935,8 +936,19 @@ extern const char* record_keys[];
 extern const char* variant_names[];
 
 struct object* print(struct object* obj) {
-  if (is_num(obj)) {
+  if (is_small_int(obj)) {
     printf("%ld", num_value(obj));
+  } else if (is_large_int(obj)) {
+    printf("largeint%d(", kLargeintDigitSize * kPointerSize);
+    uword num_digits = large_int_num_digits(obj);
+    for (uword i = 0; i < num_digits; i++) {
+      if (i > 0) {
+        fprintf(stdout, ", ");
+      }
+      fprintf(stdout, "%lx", large_int_digit_at(obj, num_digits - i - 1));
+    }
+    printf(")");
+    return obj;
   } else if (is_list(obj)) {
     putchar('[');
     while (!is_empty_list(obj)) {

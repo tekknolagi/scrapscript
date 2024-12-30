@@ -332,7 +332,7 @@ class Compiler:
         if isinstance(exp, Hole):
             return "hole()"
         if isinstance(exp, Int):
-            if -0x4000000000000000 <= exp.value <= 0x3fffffffffffffff:
+            if -0x4000000000000000 <= exp.value <= 0x3FFFFFFFFFFFFFFF:
                 return f"_mksmallint({exp.value}ULL)"
             # Divide number into 64-bit digits
             if exp.value < 0:
@@ -341,9 +341,9 @@ class Compiler:
             value = exp.value
             digits = []
             while value:
-                digits.append(value & 0xffffffffffffffff)
+                digits.append(value & 0xFFFFFFFFFFFFFFFF)
                 value >>= 64
-            tag = self._make_tag("TAG_LARGEINT", f"sizeof(struct large_int)+{len(digits)}ULL*kLargeintDigitSize")
+            tag = self._make_tag("TAG_LARGEINT", f"sizeof(struct large_int)+{len(digits)}ULL*kLargeIntDigitSize")
             parts = ", ".join(f"{digit}ULL" for digit in digits)
             return self._const_obj("large_int", tag, f".digits={{ {parts} }}")
         if isinstance(exp, List):
@@ -485,6 +485,7 @@ def compile_to_string(program: Object, debug: bool) -> str:
         ("uword", "kPrimaryTagMask", "(1ULL << kPrimaryTagBits) - 1"),
         ("uword", "kImmediateTagMask", "(1ULL << kImmediateTagBits) - 1"),
         ("uword", "kWordSize", "sizeof(word)"),
+        ("uword", "kLargeIntDigitSize", "sizeof(large_int_digit)"),
         ("uword", "kMaxSmallStringLength", "kWordSize - 1"),
         ("uword", "kBitsPerByte", 8),
         # Up to the five least significant bits are used to tag the object's layout.

@@ -18,7 +18,6 @@ typedef intptr_t word;
 typedef uintptr_t uword;
 typedef unsigned char byte;
 typedef uint64_t large_int_digit;
-const int kLargeintDigitSize = sizeof(large_int_digit);
 const word kMinWord = INTPTR_MIN;
 const word kMaxWord = INTPTR_MAX;
 const uword kMaxUword = UINTPTR_MAX;
@@ -483,7 +482,7 @@ static ALWAYS_INLINE struct large_int* as_large_int(struct object* obj) {
 uword large_int_num_digits(struct object* obj) {
   assert(is_large_int(obj));
   size_t size = heap_object_size(as_heap_object(obj)) - sizeof(struct gc_obj);
-  return size / kLargeintDigitSize;
+  return size / kLargeIntDigitSize;
 }
 
 uword num_digits(struct object* obj) {
@@ -523,7 +522,7 @@ uword digit_at(struct object* obj, uword index) {
 
 struct object* _mklarge_int_uninit_private(struct gc_heap* heap,
                                            uword num_digits) {
-  uword digits_size = num_digits * kLargeintDigitSize;
+  uword digits_size = num_digits * kLargeIntDigitSize;
   uword size = align_size(sizeof(struct large_int) + digits_size);
   return allocate(heap, TAG_LARGEINT, size);
 }
@@ -531,7 +530,7 @@ struct object* _mklarge_int_uninit_private(struct gc_heap* heap,
 struct object* _mklarge_int(struct gc_heap* heap, uword num_digits,
                             large_int_digit* digits) {
   struct object* result = _mklarge_int_uninit_private(heap, num_digits);
-  uword digits_size = num_digits * kLargeintDigitSize;
+  uword digits_size = num_digits * kLargeIntDigitSize;
   memcpy(as_large_int(result)->digits, digits, digits_size);
   return result;
 }
@@ -788,17 +787,25 @@ void trace_roots(struct gc_heap* heap, VisitFn visit) {
 struct gc_heap heap_object;
 struct gc_heap* heap = &heap_object;
 
+#if !__has_builtin(__builtin_uaddl_overflow)
+bool __builtin_uaddl_overflow(uword left, uword right, uword* result) {
+  *result = left + right;
+  return *result < left;
+}
+#endif
+
 static uword add_with_carry(uword x, uword y, uword carry_in,
                             uword* carry_out) {
   assert(carry_in <= 1 && "carry must be 0 or 1");
   uword sum;
-  uword carry0 = __builtin_add_overflow(x, y, &sum);
-  uword carry1 = __builtin_add_overflow(sum, carry_in, &sum);
+  uword carry0 = __builtin_uaddl_overflow(x, y, &sum);
+  uword carry1 = __builtin_uaddl_overflow(sum, carry_in, &sum);
   *carry_out = carry0 | carry1;
   return sum;
 }
 
-struct object* normalize_large_int(struct gc_heap*, struct object* obj) {
+struct object* normalize_large_int(struct gc_heap* heap, struct object* obj) {
+  (void)heap;
   word num_digits = large_int_num_digits(obj);
   word shrink_to_digits = num_digits;
   for (word digit = large_int_digit_at(obj, shrink_to_digits - 1), next_digit;
@@ -968,7 +975,7 @@ struct object* print(struct object* obj) {
   if (is_small_int(obj)) {
     printf("%ld", num_value(obj));
   } else if (is_large_int(obj)) {
-    printf("largeint%d(", kLargeintDigitSize * kPointerSize);
+    printf("largeint%d(", kLargeIntDigitSize * kPointerSize);
     uword num_digits = large_int_num_digits(obj);
     for (uword i = 0; i < num_digits; i++) {
       if (i > 0) {

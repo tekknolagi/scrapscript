@@ -883,11 +883,13 @@ struct object* num_add(struct object* left, struct object* right) {
 }
 
 struct object* num_sub(struct object* a, struct object* b) {
+  // TODO(max): Implement large_int subtraction
   // NB: doesn't use pointers after allocating
   return mknum(heap, num_value(a) - num_value(b));
 }
 
 struct object* num_mul(struct object* a, struct object* b) {
+  // TODO(max): Implement large_int multiplication
   // NB: doesn't use pointers after allocating
   return mknum(heap, num_value(a) * num_value(b));
 }

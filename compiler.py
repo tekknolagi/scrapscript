@@ -332,14 +332,11 @@ class Compiler:
         if isinstance(exp, Hole):
             return "hole()"
         if isinstance(exp, Int):
-            # TODO(max): Bignum
-            # TODO(max): assert not too big. but what we should do is
-            # mknum_fromstring("") or literally encode the heap object as a
-            # constant with digits
             if -0x4000000000000000 <= exp.value <= 0x3fffffffffffffff:
                 return f"_mksmallint({exp.value}ULL)"
             # Divide number into 64-bit digits
             if exp.value < 0:
+                # TODO(max): Handle negative largeint
                 raise NotImplementedError(f"negative largeint64({exp.value})")
             value = exp.value
             digits = []

@@ -56,6 +56,14 @@ class CompilerEndToEndTests(unittest.TestCase):
         with self.assertRaisesRegex(NotImplementedError, "too big"):
             self._run("-4611686018427387905")
 
+    def test_int_add_to_large_int(self) -> None:
+        self.assertEqual(self._run("4611686018427387903 + 1"), "largeint64(0x4000000000000000)\n")
+
+    def test_int_add_to_large_int_two_digits(self) -> None:
+        program = "4611686018427387903 + 4611686018427387903 + 4611686018427387903 + 4611686018427387903 + 4611686018427387903 + 4611686018427387903 + 4611686018427387903"
+        self.assertEqual(hex(eval(program)), "0x1bffffffffffffff9")
+        self.assertEqual(self._run(program), "largeint64(0x1, 0xbffffffffffffff9)\n")
+
     def test_small_string(self) -> None:
         self.assertEqual(self._run('"hello"'), '"hello"\n')
 

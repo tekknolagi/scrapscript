@@ -499,7 +499,8 @@ large_int_digit large_int_digit_at(struct object* obj, uword index) {
   return as_large_int(obj)->digits[index];
 }
 
-void large_int_digit_at_put(struct object* obj, uword index, large_int_digit digit) {
+void large_int_digit_at_put(struct object* obj, uword index,
+                            large_int_digit digit) {
   assert(is_large_int(obj));
   assert(index < large_int_num_digits(obj));
   as_large_int(obj)->digits[index] = digit;
@@ -519,14 +520,15 @@ uword digit_at(struct object* obj, uword index) {
   return large_int_digit_at(obj, index);
 }
 
-struct object* _mklarge_int_uninit_private(struct gc_heap* heap, uword num_digits) {
+struct object* _mklarge_int_uninit_private(struct gc_heap* heap,
+                                           uword num_digits) {
   uword digits_size = num_digits * kLargeintDigitSize;
   uword size = align_size(sizeof(struct large_int) + digits_size);
   return allocate(heap, TAG_LARGEINT, size);
 }
 
 struct object* _mklarge_int(struct gc_heap* heap, uword num_digits,
-                           large_int_digit* digits) {
+                            large_int_digit* digits) {
   struct object* result = _mklarge_int_uninit_private(heap, num_digits);
   uword digits_size = num_digits * kLargeintDigitSize;
   memcpy(as_large_int(result)->digits, digits, digits_size);
@@ -542,7 +544,9 @@ struct object* mknum(struct gc_heap* heap, word value) {
   return _mklarge_int(heap, 1, digits);
 }
 
-bool is_num(struct object* obj) { return is_small_int(obj) || is_large_int(obj); }
+bool is_num(struct object* obj) {
+  return is_small_int(obj) || is_large_int(obj);
+}
 
 bool is_num_equal_word(struct object* obj, word value) {
   assert(smallint_is_valid(value));
@@ -783,7 +787,8 @@ void trace_roots(struct gc_heap* heap, VisitFn visit) {
 struct gc_heap heap_object;
 struct gc_heap* heap = &heap_object;
 
-static uword add_with_carry(uword x, uword y, uword carry_in, uword* carry_out) {
+static uword add_with_carry(uword x, uword y, uword carry_in,
+                            uword* carry_out) {
   assert(carry_in <= 1 && "carry must be 0 or 1");
   uword sum;
   uword carry0 = __builtin_add_overflow(x, y, &sum);
@@ -792,7 +797,7 @@ static uword add_with_carry(uword x, uword y, uword carry_in, uword* carry_out) 
   return sum;
 }
 
-struct object* normalize_large_int(struct gc_heap *, struct object *obj) {
+struct object* normalize_large_int(struct gc_heap*, struct object* obj) {
   return obj;
 }
 
@@ -830,14 +835,14 @@ struct object* num_add(struct object* left, struct object* right) {
   OBJECT_HANDLE(result, _mklarge_int_uninit_private(heap, result_digits));
   uword carry = 0;
   for (uword i = 0; i < shorter_digits; i++) {
-    uword sum = add_with_carry(
-        digit_at(longer, i), digit_at(shorter, i), carry, &carry);
+    uword sum = add_with_carry(digit_at(longer, i), digit_at(shorter, i), carry,
+                               &carry);
     large_int_digit_at_put(result, i, sum);
   }
   uword shorter_sign_extension = is_negative(shorter) ? kMaxUword : 0;
   for (uword i = shorter_digits; i < longer_digits; i++) {
-    uword sum = add_with_carry(
-        digit_at(longer, i), shorter_sign_extension, carry, &carry);
+    uword sum = add_with_carry(digit_at(longer, i), shorter_sign_extension,
+                               carry, &carry);
     large_int_digit_at_put(result, i, sum);
   }
   uword longer_sign_extension = is_negative(longer) ? kMaxUword : 0;

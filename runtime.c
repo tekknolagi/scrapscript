@@ -798,7 +798,30 @@ static uword add_with_carry(uword x, uword y, uword carry_in,
 }
 
 struct object* normalize_large_int(struct gc_heap*, struct object* obj) {
-  return obj;
+  word num_digits = large_int_num_digits(obj);
+  word shrink_to_digits = num_digits;
+  for (word digit = large_int_digit_at(obj, shrink_to_digits - 1), next_digit;
+       shrink_to_digits > 1; shrink_to_digits--, digit = next_digit) {
+    next_digit = large_int_digit_at(obj, shrink_to_digits - 2);
+    // break if we have neither a redundant sign-extension nor a redundnant
+    // zero-extension.
+    if ((digit != -1 || next_digit >= 0) && (digit != 0 || next_digit < 0)) {
+      break;
+    }
+  }
+  if (shrink_to_digits == 1 && smallint_is_valid(large_int_digit_at(obj, 0))) {
+    return mksmallint(large_int_digit_at(obj, 0));
+  }
+  if (shrink_to_digits == num_digits) {
+    return obj;
+  }
+  HANDLES();
+  GC_PROTECT(obj);
+  OBJECT_HANDLE(result, _mklarge_int_uninit_private(heap, shrink_to_digits));
+  for (word i = 0; i < shrink_to_digits; i++) {
+    large_int_digit_at_put(result, i, large_int_digit_at(obj, i));
+  }
+  return result;
 }
 
 bool small_int_is_negative(struct object* obj) {

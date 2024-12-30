@@ -787,7 +787,13 @@ void trace_roots(struct gc_heap* heap, VisitFn visit) {
 struct gc_heap heap_object;
 struct gc_heap* heap = &heap_object;
 
+#ifndef __has_builtin
+// Some versions of TCC don't have __has_builtin.
+#define __has_builtin(x) 0
+#endif
+
 #if !__has_builtin(__builtin_uaddl_overflow)
+// No version of TCC has __builtin_uaddl_overflow.
 bool __builtin_uaddl_overflow(uword left, uword right, uword* result) {
   *result = left + right;
   return *result < left;

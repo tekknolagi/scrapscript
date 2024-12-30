@@ -950,7 +950,7 @@ struct object* print(struct object* obj) {
       if (i > 0) {
         fprintf(stdout, ", ");
       }
-      fprintf(stdout, "%lx", large_int_digit_at(obj, num_digits - i - 1));
+      fprintf(stdout, "0x%lx", large_int_digit_at(obj, num_digits - i - 1));
     }
     printf(")");
     return obj;

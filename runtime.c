@@ -424,7 +424,8 @@ struct large_int {
 
 size_t heap_object_size(struct gc_obj* obj) {
   size_t result = obj->tag >> kBitsPerByte;
-  assert(is_size_aligned(result));
+  // Size need not be aligned if the object is in the constant heap.
+  assert(in_const_heap(obj) || is_size_aligned(result));
   return result;
 }
 

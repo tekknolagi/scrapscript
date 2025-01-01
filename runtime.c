@@ -106,8 +106,7 @@ typedef void (*VisitFn)(struct object**, struct gc_heap*);
 
 // To implement by the user:
 size_t heap_object_size(struct gc_obj* obj);
-size_t trace_heap_object(struct gc_obj* obj, struct gc_heap* heap,
-                         VisitFn visit);
+void trace_heap_object(struct gc_obj* obj, struct gc_heap* heap, VisitFn visit);
 void trace_roots(struct gc_heap* heap, VisitFn visit);
 
 struct space {
@@ -252,7 +251,11 @@ static NEVER_INLINE void heap_verify(struct gc_heap* heap) {
   uintptr_t scan = heap->base;
   while (scan < heap->hp) {
     struct gc_obj* obj = (struct gc_obj*)scan;
-    scan += align_size(trace_heap_object(obj, heap, assert_in_heap));
+    size_t size = heap_object_size(obj);
+    uword end = scan + size;
+    assert(is_size_aligned(end));
+    trace_heap_object(obj, heap, assert_in_heap);
+    scan = end;
   }
 }
 
@@ -262,7 +265,11 @@ void collect_no_verify(struct gc_heap* heap) {
   trace_roots(heap, visit_field);
   while (scan < heap->hp) {
     struct gc_obj* obj = (struct gc_obj*)scan;
-    scan += align_size(trace_heap_object(obj, heap, visit_field));
+    size_t size = heap_object_size(obj);
+    uword end = scan + size;
+    assert(is_size_aligned(end));
+    trace_heap_object(obj, heap, visit_field);
+    scan = end;
   }
   // TODO(max): If we have < 25% heap utilization, shrink the heap
 #ifndef NDEBUG
@@ -417,8 +424,8 @@ size_t heap_object_size(struct gc_obj* obj) {
   return result;
 }
 
-size_t trace_heap_object(struct gc_obj* obj, struct gc_heap* heap,
-                         VisitFn visit) {
+void trace_heap_object(struct gc_obj* obj, struct gc_heap* heap,
+                       VisitFn visit) {
   switch (obj_tag(obj)) {
     case TAG_LIST:
       visit(&((struct list*)obj)->first, heap);
@@ -443,7 +450,6 @@ size_t trace_heap_object(struct gc_obj* obj, struct gc_heap* heap,
       fprintf(stderr, "unknown tag: %u\n", obj_tag(obj));
       abort();
   }
-  return heap_object_size(obj);
 }
 
 bool smallint_is_valid(word value) {
@@ -515,7 +521,8 @@ struct closure* as_closure(struct object* obj) {
 
 struct object* mkclosure(struct gc_heap* heap, ClosureFn fn,
                          size_t num_fields) {
-  uword size = align_size(sizeof(struct closure) + num_fields * kPointerSize);
+  uword size = sizeof(struct closure) + num_fields * kPointerSize;
+  assert(is_size_aligned(size));
   struct object* result = allocate(heap, TAG_CLOSURE, size);
   as_closure(result)->fn = fn;
   as_closure(result)->size = num_fields;
@@ -553,8 +560,8 @@ struct record* as_record(struct object* obj) {
 }
 
 struct object* mkrecord(struct gc_heap* heap, size_t num_fields) {
-  uword size = align_size(sizeof(struct record) +
-                          num_fields * sizeof(struct record_field));
+  uword size = sizeof(struct record) + num_fields * sizeof(struct record_field);
+  assert(is_size_aligned(size));
   struct object* result = allocate(heap, TAG_RECORD, size);
   as_record(result)->size = num_fields;
   // Assumes the items will be filled in immediately after calling mkrecord so

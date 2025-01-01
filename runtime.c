@@ -680,7 +680,10 @@ struct handle_scope {
 
 static struct object** handle_stack[MAX_HANDLES];
 static struct object*** handles = handle_stack;
+#ifndef NDEBUG
+// Only used to check for handle stack overflow.
 static struct object*** handles_end = &handle_stack[MAX_HANDLES];
+#endif
 
 void pop_handles(void* local_handles) {
   handles = ((struct handle_scope*)local_handles)->base;

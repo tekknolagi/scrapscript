@@ -3060,9 +3060,11 @@ class EvalTests(unittest.TestCase):
 
 
 class EndToEndTestsBase(unittest.TestCase):
-    def _run(self, text: str, env: Optional[Env] = None) -> Object:
+    def _run(self, text: str, env: Optional[Env] = None, check: bool = False) -> Object:
         tokens = tokenize(text)
         ast = parse(tokens)
+        if check:
+            infer_type(ast, OP_ENV)
         if env is None:
             env = boot_env()
         return eval_exp(env, ast)
@@ -3526,6 +3528,11 @@ class EndToEndTests(EndToEndTestsBase):
             ),
             Int(7),
         )
+
+    def test_int_div_returns_float(self) -> None:
+        self.assertEqual(self._run("1 / 2 + 3"), Float(3.5))
+        with self.assertRaisesRegex(InferenceError, "int and float"):
+            self._run("1 / 2 + 3", check=True)
 
 
 class ClosureOptimizeTests(unittest.TestCase):
@@ -5697,7 +5704,7 @@ OP_ENV = {
     "+": Forall([], func_type(IntType, IntType, IntType)),
     "-": Forall([], func_type(IntType, IntType, IntType)),
     "*": Forall([], func_type(IntType, IntType, IntType)),
-    "/": Forall([], func_type(IntType, IntType, IntType)),
+    "/": Forall([], func_type(IntType, IntType, FloatType)),
     "++": Forall([], func_type(StringType, StringType, StringType)),
     ">+": Forall([TyVar("a")], func_type(TyVar("a"), list_type(TyVar("a")), list_type(TyVar("a")))),
     "+<": Forall([TyVar("a")], func_type(list_type(TyVar("a")), TyVar("a"), list_type(TyVar("a")))),

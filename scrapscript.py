@@ -149,7 +149,7 @@ class Lexer:
         result.lineno = self.lineno
         return result
 
-    def read_one(self) -> Token:
+    def read_token(self) -> Token:
         while self.has_input():
             c = self.read_char()
             if not c.isspace():
@@ -161,10 +161,10 @@ class Lexer:
         if c == "-":
             if self.has_input() and self.peek_char() == "-":
                 self.read_comment()
-                return self.read_one()
+                return self.read_token()
             return self.read_op(c)
         if c == "#":
-            value = self.read_one()
+            value = self.read_token()
             if isinstance(value, EOF):
                 raise UnexpectedEOFError("while reading symbol")
             if not isinstance(value, Name):
@@ -262,7 +262,7 @@ class Lexer:
 def tokenize(x: str) -> typing.List[Token]:
     lexer = Lexer(x)
     tokens = []
-    while (token := lexer.read_one()) and not isinstance(token, EOF):
+    while (token := lexer.read_token()) and not isinstance(token, EOF):
         tokens.append(token)
     return tokens
 
@@ -1749,12 +1749,12 @@ class TokenizerTests(unittest.TestCase):
         l.read_char()
         self.assertEqual(l.line, "")
 
-    def test_read_one_sets_lineno(self) -> None:
+    def test_read_token_sets_lineno(self) -> None:
         l = Lexer("a b \n c d")
-        a = l.read_one()
-        b = l.read_one()
-        c = l.read_one()
-        d = l.read_one()
+        a = l.read_token()
+        b = l.read_token()
+        c = l.read_token()
+        d = l.read_token()
         self.assertEqual(a.lineno, 1)
         self.assertEqual(b.lineno, 1)
         self.assertEqual(c.lineno, 2)

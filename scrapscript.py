@@ -116,6 +116,10 @@ class EOF(Token):
     pass
 
 
+def num_bytes_as_utf8(s: str) -> int:
+    return len(s.encode(encoding="UTF-8"))
+
+
 class Lexer:
     def __init__(self, text: str):
         self.text: str = text

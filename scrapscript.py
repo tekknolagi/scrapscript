@@ -502,7 +502,7 @@ def parse_unary(tokens: typing.List[Token], p: float) -> "Object":
             return Float(-r.value)
         return Binop(BinopKind.SUB, Int(0), r)
     else:
-        raise ParseError(f"unexpected token {token!r}")
+        raise UnexpectedTokenError(token)
 
 
 def parse_binary(tokens: typing.List[Token], p: float) -> "Object":

@@ -350,7 +350,7 @@ class SyntacticError(Exception):
     pass
 
 
-class ParseError(SyntaxError):
+class ParseError(SyntacticError):
     pass
 
 

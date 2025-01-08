@@ -1827,6 +1827,15 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(l.line_number, 2)
         self.assertEqual(l.column_number, 1)
 
+    def test_read_char_increments_byte_number(self) -> None:
+        l = Lexer("abc")
+        l.read_char()
+        self.assertEqual(l.byte_number, 1)
+        l.read_char()
+        self.assertEqual(l.byte_number, 2)
+        l.read_char()
+        self.assertEqual(l.byte_number, 3)
+
     def test_read_char_appends_to_line(self) -> None:
         l = Lexer("ab\nc")
         l.read_char()

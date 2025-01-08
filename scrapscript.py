@@ -1839,8 +1839,8 @@ class TokenizerTests(unittest.TestCase):
             ],
         )
 
-    def test_tokenize_variant_with_space(self) -> None:
-        self.assertEqual(tokenize("# abc"), [VariantToken("abc")])
+    def test_tokenize_variant_with_whitespace(self) -> None:
+        self.assertEqual(tokenize("# \n\r\n\t abc"), [VariantToken("abc")])
 
     def test_tokenize_variant_with_no_space(self) -> None:
         self.assertEqual(tokenize("#abc"), [VariantToken("abc")])

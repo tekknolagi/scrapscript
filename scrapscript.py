@@ -34,6 +34,13 @@ def is_identifier_char(c: str) -> bool:
     return c.isalnum() or c in ("$", "'", "_")
 
 
+@dataclass(eq=True, unsafe_hash=True)
+class SourceLocation:
+    line_number: int = dataclasses.field(default=-1)
+    column_number: int = dataclasses.field(default=-1)
+    byte_number: int = dataclasses.field(default=-1)
+
+
 @dataclass(eq=True)
 class Token:
     lineno: int = dataclasses.field(default=-1, init=False, compare=False)

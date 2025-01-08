@@ -1801,31 +1801,31 @@ class TokenizerTests(unittest.TestCase):
             [Name("f"), Operator("<<"), Name("g")],
         )
 
-    def test_first_lineno_is_one(self) -> None:
+    def test_first_line_number_is_one(self) -> None:
         l = Lexer("abc")
-        self.assertEqual(l.lineno, 1)
+        self.assertEqual(l.line_number, 1)
 
-    def test_first_colno_is_one(self) -> None:
+    def test_first_column_number_is_one(self) -> None:
         l = Lexer("abc")
-        self.assertEqual(l.colno, 1)
+        self.assertEqual(l.column_number, 1)
 
     def test_first_line_is_empty(self) -> None:
         l = Lexer("abc")
         self.assertEqual(l.line, "")
 
-    def test_read_char_increments_colno(self) -> None:
+    def test_read_char_increments_column_number(self) -> None:
         l = Lexer("abc")
         l.read_char()
-        self.assertEqual(l.colno, 2)
-        self.assertEqual(l.lineno, 1)
+        self.assertEqual(l.column_number, 2)
+        self.assertEqual(l.line_number, 1)
 
-    def test_read_newline_increments_lineno(self) -> None:
+    def test_read_newline_increments_line_number(self) -> None:
         l = Lexer("ab\nc")
         l.read_char()
         l.read_char()
         l.read_char()
-        self.assertEqual(l.lineno, 2)
-        self.assertEqual(l.colno, 1)
+        self.assertEqual(l.line_number, 2)
+        self.assertEqual(l.column_number, 1)
 
     def test_read_char_appends_to_line(self) -> None:
         l = Lexer("ab\nc")
@@ -2326,7 +2326,7 @@ class ParserTests(unittest.TestCase):
 
     @unittest.skip("TODO(max): Raise if ...x is used with non-name")
     def test_parse_list_with_non_name_expr_after_spread_raises_parse_error(self) -> None:
-        with self.assertRaisesRegex(ParseError, re.escape("unexpected token IntLit(lineno=-1, value=1)")):
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token IntLit(line_number=-1, value=1)")):
             parse([LeftBracket(), IntLit(1), Operator(","), Operator("..."), IntLit(2), RightBracket()])
 
     def test_parse_list_with_named_spread(self) -> None:

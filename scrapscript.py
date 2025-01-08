@@ -41,6 +41,12 @@ class SourceLocation:
     byte_number: int = dataclasses.field(default=-1)
 
 
+@dataclass(eq=True, unsafe_hash=True)
+class SourceExtent:
+    start: SourceLocation = dataclasses.field(default_factory=SourceLocation)
+    end: SourceLocation = dataclasses.field(default_factory=SourceLocation)
+
+
 @dataclass(eq=True)
 class Token:
     lineno: int = dataclasses.field(default=-1, init=False, compare=False)

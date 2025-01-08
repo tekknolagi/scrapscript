@@ -346,6 +346,10 @@ OPER_CHARS = set("".join(PS.keys()))
 assert " " not in OPER_CHARS
 
 
+class SyntacticError(Exception):
+    pass
+
+
 class ParseError(SyntaxError):
     pass
 

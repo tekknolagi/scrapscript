@@ -49,7 +49,7 @@ class SourceExtent:
 
 @dataclass(eq=True)
 class Token:
-    lineno: int = dataclasses.field(default=-1, init=False, compare=False)
+    source_extent: SourceExtent = dataclasses.field(default_factory=SourceExtent, init=False, compare=False)
 
 
 @dataclass(eq=True)
@@ -137,23 +137,65 @@ class Lexer:
     def __init__(self, text: str):
         self.text: str = text
         self.idx: int = 0
-        self.lineno: int = 1
-        self.colno: int = 1
+        self._line_number: int = 1
+        self._column_number: int = 1
         self.line: str = ""
+        self._byte_number: int = 0
+        self.current_token_source_extent: SourceExtent = SourceExtent(
+            start=SourceLocation(
+                line_number=self._line_number,
+                column_number=self._column_number,
+                byte_number=self._byte_number,
+            ),
+            end=SourceLocation(
+                line_number=self._line_number,
+                column_number=self._column_number,
+                byte_number=self._byte_number,
+            ),
+        )
+        self.token_start_idx: int = self.idx
+        self.token_end_idx: int = self.token_start_idx
+        self.currently_reading_variant_token = False
+
+    @property
+    def line_number(self) -> int:
+        return self._line_number
+
+    @property
+    def column_number(self) -> int:
+        return self._column_number
+
+    @property
+    def byte_number(self) -> int:
+        return self._byte_number
+
+    def mark_token_start(self) -> None:
+        self.current_token_source_extent.start.line_number = self._line_number
+        self.current_token_source_extent.start.column_number = self._column_number
+        self.current_token_source_extent.start.byte_number = self._byte_number
+        self.token_start_idx = self.idx
+
+    def mark_token_end(self) -> None:
+        self.current_token_source_extent.end.line_number = self._line_number
+        self.current_token_source_extent.end.column_number = self._column_number
+        self.current_token_source_extent.end.byte_number = self._byte_number
+        self.token_end_idx = self.idx
 
     def has_input(self) -> bool:
         return self.idx < len(self.text)
 
     def read_char(self) -> str:
+        self.mark_token_end()
         c = self.peek_char()
         if c == "\n":
-            self.lineno += 1
-            self.colno = 1
+            self._line_number += 1
+            self._column_number = 1
             self.line = ""
         else:
             self.line += c
-            self.colno += 1
+            self._column_number += 1
         self.idx += 1
+        self._byte_number += num_bytes_as_utf8(c)
         return c
 
     def peek_char(self) -> str:
@@ -163,12 +205,25 @@ class Lexer:
 
     def make_token(self, cls: type, *args: Any) -> Token:
         result: Token = cls(*args)
-        result.lineno = self.lineno
+
+        # Set start of token's source extent
+        result.source_extent.start.line_number = self.current_token_source_extent.start.line_number
+        result.source_extent.end.line_number = self.current_token_source_extent.end.line_number
+        result.source_extent.start.column_number = self.current_token_source_extent.start.column_number
+
+        # Set end of token's source extent
+        result.source_extent.end.column_number = self.current_token_source_extent.end.column_number
+        result.source_extent.start.byte_number = self.current_token_source_extent.start.byte_number
+        result.source_extent.end.byte_number = self.current_token_source_extent.end.byte_number
+
         return result
 
     def read_token(self) -> Token:
         # Consume all whitespace
         while self.has_input():
+            if not self.currently_reading_variant_token:
+                # Keep updating the token start location until we exhaust all whitespace
+                self.mark_token_start()
             c = self.read_char()
             if not c.isspace():
                 break
@@ -179,10 +234,14 @@ class Lexer:
         if c == "-":
             if self.has_input() and self.peek_char() == "-":
                 self.read_comment()
+                # Need to start reading a new token
+                self.mark_token_start()
                 return self.read_token()
             return self.read_op(c)
         if c == "#":
+            self.currently_reading_variant_token = True
             value = self.read_token()
+            self.currently_reading_variant_token = False
             if isinstance(value, EOF):
                 raise UnexpectedEOFError("while reading symbol")
             if not isinstance(value, Name):
@@ -209,7 +268,7 @@ class Lexer:
             return self.read_op(c)
         if is_identifier_char(c):
             return self.read_var(c)
-        raise ParseError(f"unexpected token {c!r}", ("<input>", self.lineno, self.colno, self.line))
+        raise ParseError(f"unexpected token {c!r}", ("<input>", self._line_number, self._column_number, self.line))
 
     def read_string(self) -> Token:
         buf = ""

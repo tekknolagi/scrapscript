@@ -354,6 +354,11 @@ class ParseError(SyntacticError):
     pass
 
 
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class UnexpectedTokenError(ParseError):
+    unexpected_token: Token
+
+
 # TODO(max): Replace with EOFError?
 class UnexpectedEOFError(ParseError):
     pass

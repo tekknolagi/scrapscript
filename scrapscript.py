@@ -253,9 +253,9 @@ class Lexer:
     def read_bytes(self) -> Token:
         buf = ""
         while self.has_input():
-            if (c := self.read_char()).isspace():
+            if (self.peek_char()).isspace():
                 break
-            buf += c
+            buf += self.read_char()
         base, _, value = buf.rpartition("'")
         return self.make_token(BytesLit, value, int(base) if base else 64)
 

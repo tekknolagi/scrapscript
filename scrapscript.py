@@ -2093,16 +2093,22 @@ class ParserTests(unittest.TestCase):
         )
 
     def test_parse_list_with_only_comma_raises_parse_error(self) -> None:
-        with self.assertRaisesRegex(ParseError, re.escape("unexpected token Operator(lineno=-1, value=',')")):
+        with self.assertRaises(UnexpectedTokenError) as parse_error:
             parse([LeftBracket(), Operator(","), RightBracket()])
 
+        self.assertEqual(parse_error.exception.unexpected_token, Operator(","))
+
     def test_parse_list_with_two_commas_raises_parse_error(self) -> None:
-        with self.assertRaisesRegex(ParseError, re.escape("unexpected token Operator(lineno=-1, value=',')")):
+        with self.assertRaises(UnexpectedTokenError) as parse_error:
             parse([LeftBracket(), Operator(","), Operator(","), RightBracket()])
 
+        self.assertEqual(parse_error.exception.unexpected_token, Operator(","))
+
     def test_parse_list_with_trailing_comma_raises_parse_error(self) -> None:
-        with self.assertRaisesRegex(ParseError, re.escape("unexpected token RightBracket(lineno=-1)")):
+        with self.assertRaises(UnexpectedTokenError) as parse_error:
             parse([LeftBracket(), IntLit(1), Operator(","), RightBracket()])
+
+        self.assertEqual(parse_error.exception.unexpected_token, RightBracket())
 
     def test_parse_assign(self) -> None:
         self.assertEqual(
@@ -2394,16 +2400,22 @@ class ParserTests(unittest.TestCase):
             )
 
     def test_parse_record_with_only_comma_raises_parse_error(self) -> None:
-        with self.assertRaisesRegex(ParseError, re.escape("unexpected token Operator(lineno=-1, value=',')")):
+        with self.assertRaises(UnexpectedTokenError) as parse_error:
             parse([LeftBrace(), Operator(","), RightBrace()])
 
+        self.assertEqual(parse_error.exception.unexpected_token, Operator(","))
+
     def test_parse_record_with_two_commas_raises_parse_error(self) -> None:
-        with self.assertRaisesRegex(ParseError, re.escape("unexpected token Operator(lineno=-1, value=',')")):
+        with self.assertRaises(UnexpectedTokenError) as parse_error:
             parse([LeftBrace(), Operator(","), Operator(","), RightBrace()])
 
+        self.assertEqual(parse_error.exception.unexpected_token, Operator(","))
+
     def test_parse_record_with_trailing_comma_raises_parse_error(self) -> None:
-        with self.assertRaisesRegex(ParseError, re.escape("unexpected token RightBrace(lineno=-1)")):
+        with self.assertRaises(UnexpectedTokenError) as parse_error:
             parse([LeftBrace(), Name("x"), Operator("="), IntLit(1), Operator(","), RightBrace()])
+
+        self.assertEqual(parse_error.exception.unexpected_token, RightBrace())
 
     def test_parse_variant_returns_variant(self) -> None:
         self.assertEqual(parse([VariantToken("abc"), IntLit(1)]), Variant("abc", Int(1)))

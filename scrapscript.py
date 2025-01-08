@@ -150,6 +150,7 @@ class Lexer:
         return result
 
     def read_token(self) -> Token:
+        # Consume all whitespace
         while self.has_input():
             c = self.read_char()
             if not c.isspace():

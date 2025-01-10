@@ -329,7 +329,7 @@ class Lexer:
     def read_bytes(self) -> Token:
         buf = ""
         while self.has_input():
-            if (self.peek_char()).isspace():
+            if self.peek_char().isspace():
                 break
             buf += self.read_char()
         base, _, value = buf.rpartition("'")

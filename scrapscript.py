@@ -122,6 +122,9 @@ class RightBracket(Token):
 @dataclass(eq=True)
 class VariantToken(Token):
     value: str
+class Hash(Token):
+    # #
+    pass
 
 
 @dataclass(eq=True)

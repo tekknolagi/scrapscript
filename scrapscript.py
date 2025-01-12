@@ -208,12 +208,12 @@ class Lexer:
 
         # Set start of token's source extent
         result.source_extent.start.line_number = self.current_token_source_extent.start.line_number
-        result.source_extent.end.line_number = self.current_token_source_extent.end.line_number
         result.source_extent.start.column_number = self.current_token_source_extent.start.column_number
+        result.source_extent.start.byte_number = self.current_token_source_extent.start.byte_number
 
         # Set end of token's source extent
         result.source_extent.end.column_number = self.current_token_source_extent.end.column_number
-        result.source_extent.start.byte_number = self.current_token_source_extent.start.byte_number
+        result.source_extent.end.line_number = self.current_token_source_extent.end.line_number
         result.source_extent.end.byte_number = self.current_token_source_extent.end.byte_number
 
         return result

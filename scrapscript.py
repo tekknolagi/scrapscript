@@ -422,6 +422,11 @@ class UnexpectedTokenError(ParseError):
     unexpected_token: Token
 
 
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class InvalidTokenError(ParseError):
+    unexpected_token: SourceExtent = dataclasses.field(default_factory=SourceExtent, compare=False)
+
+
 # TODO(max): Replace with EOFError?
 class UnexpectedEOFError(ParseError):
     pass

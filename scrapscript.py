@@ -259,7 +259,20 @@ class Lexer:
             return self.read_op(c)
         if is_identifier_char(c):
             return self.read_var(c)
-        raise ParseError(f"unexpected token {c!r}", ("<input>", self._line_number, self._column_number, self.line))
+        raise InvalidTokenError(
+            SourceExtent(
+                start=SourceLocation(
+                    line_number=self.current_token_source_extent.start.line_number,
+                    column_number=self.current_token_source_extent.start.column_number,
+                    byte_number=self.current_token_source_extent.start.byte_number,
+                ),
+                end=SourceLocation(
+                    line_number=self.current_token_source_extent.end.line_number,
+                    column_number=self.current_token_source_extent.end.column_number,
+                    byte_number=self.current_token_source_extent.end.byte_number,
+                ),
+            )
+        )
 
     def read_string(self) -> Token:
         buf = ""

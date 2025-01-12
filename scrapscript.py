@@ -120,8 +120,6 @@ class RightBracket(Token):
 
 
 @dataclass(eq=True)
-class VariantToken(Token):
-    value: str
 class Hash(Token):
     # #
     pass
@@ -158,7 +156,6 @@ class Lexer:
         )
         self.token_start_idx: int = self.idx
         self.token_end_idx: int = self.token_start_idx
-        self.currently_reading_variant_token = False
 
     @property
     def line_number(self) -> int:
@@ -224,9 +221,8 @@ class Lexer:
     def read_token(self) -> Token:
         # Consume all whitespace
         while self.has_input():
-            if not self.currently_reading_variant_token:
-                # Keep updating the token start location until we exhaust all whitespace
-                self.mark_token_start()
+            # Keep updating the token start location until we exhaust all whitespace
+            self.mark_token_start()
             c = self.read_char()
             if not c.isspace():
                 break
@@ -242,14 +238,7 @@ class Lexer:
                 return self.read_token()
             return self.read_op(c)
         if c == "#":
-            self.currently_reading_variant_token = True
-            value = self.read_token()
-            self.currently_reading_variant_token = False
-            if isinstance(value, EOF):
-                raise UnexpectedEOFError("while reading symbol")
-            if not isinstance(value, Name):
-                raise ParseError(f"expected name after #, got {value!r}")
-            return self.make_token(VariantToken, value.value)
+            return self.make_token(Hash)
         if c == "~":
             if self.has_input() and self.peek_char() == "~":
                 self.read_char()
@@ -472,14 +461,20 @@ def parse_unary(tokens: typing.List[Token], p: float) -> "Object":
     elif isinstance(token, Name):
         # TODO: Handle kebab case vars
         return Var(token.value)
-    elif isinstance(token, VariantToken):
-        # It needs to be higher than the precedence of the -> operator so that
-        # we can match variants in MatchFunction
-        # It needs to be higher than the precedence of the && operator so that
-        # we can use #true() and #false() in boolean expressions
-        # It needs to be higher than the precedence of juxtaposition so that
-        # f #true() #false() is parsed as f(TRUE)(FALSE)
-        return Variant(token.value, parse_binary(tokens, PS[""].pr + 1))
+    elif isinstance(token, Hash):
+        if tokens and isinstance(variant := tokens[0], Name):
+            tokens.pop(0)
+            # It needs to be higher than the precedence of the -> operator so that
+            # we can match variants in MatchFunction
+            # It needs to be higher than the precedence of the && operator so that
+            # we can use #true() and #false() in boolean expressions
+            # It needs to be higher than the precedence of juxtaposition so that
+            # f #true() #false() is parsed as f(TRUE)(FALSE)
+            return Variant(variant.value, parse_binary(tokens, PS[""].pr + 1))
+        elif tokens:
+            raise UnexpectedTokenError(variant)
+        else:
+            raise UnexpectedEOFError("unexpected end of input")
     elif isinstance(token, BytesLit):
         base = token.base
         if base == 85:

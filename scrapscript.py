@@ -2574,6 +2574,16 @@ class ParserTests(unittest.TestCase):
     def test_parse_variant_returns_variant(self) -> None:
         self.assertEqual(parse([Hash(), Name("abc"), IntLit(1)]), Variant("abc", Int(1)))
 
+    def test_parse_variant_non_name_raises_parse_error(self) -> None:
+        with self.assertRaises(UnexpectedTokenError) as parse_error:
+            parse([Hash(), IntLit(1)])
+
+        self.assertEqual(parse_error.exception.unexpected_token, IntLit(1))
+
+    def test_parse_variant_eof_raises_unexpected_eof_error(self) -> None:
+        with self.assertRaises(UnexpectedEOFError):
+            parse([Hash()])
+
     def test_match_with_variant(self) -> None:
         ast = parse(tokenize("| #true () -> 123"))
         self.assertEqual(ast, MatchFunction([MatchCase(TRUE, Int(123))]))

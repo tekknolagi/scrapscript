@@ -36,9 +36,9 @@ def is_identifier_char(c: str) -> bool:
 
 @dataclass(eq=True, unsafe_hash=True)
 class SourceLocation:
-    line_number: int = dataclasses.field(default=-1)
-    column_number: int = dataclasses.field(default=-1)
-    byte_number: int = dataclasses.field(default=-1)
+    lineno: int = dataclasses.field(default=-1)
+    colno: int = dataclasses.field(default=-1)
+    byteno: int = dataclasses.field(default=-1)
 
 
 @dataclass(eq=True, unsafe_hash=True)
@@ -138,47 +138,47 @@ class Lexer:
     def __init__(self, text: str):
         self.text: str = text
         self.idx: int = 0
-        self._line_number: int = 1
-        self._column_number: int = 1
+        self._lineno: int = 1
+        self._colno: int = 1
         self.line: str = ""
-        self._byte_number: int = 0
+        self._byteno: int = 0
         self.current_token_source_extent: SourceExtent = SourceExtent(
             start=SourceLocation(
-                line_number=self._line_number,
-                column_number=self._column_number,
-                byte_number=self._byte_number,
+                lineno=self._lineno,
+                colno=self._colno,
+                byteno=self._byteno,
             ),
             end=SourceLocation(
-                line_number=self._line_number,
-                column_number=self._column_number,
-                byte_number=self._byte_number,
+                lineno=self._lineno,
+                colno=self._colno,
+                byteno=self._byteno,
             ),
         )
         self.token_start_idx: int = self.idx
         self.token_end_idx: int = self.token_start_idx
 
     @property
-    def line_number(self) -> int:
-        return self._line_number
+    def lineno(self) -> int:
+        return self._lineno
 
     @property
-    def column_number(self) -> int:
-        return self._column_number
+    def colno(self) -> int:
+        return self._colno
 
     @property
-    def byte_number(self) -> int:
-        return self._byte_number
+    def byteno(self) -> int:
+        return self._byteno
 
     def mark_token_start(self) -> None:
-        self.current_token_source_extent.start.line_number = self._line_number
-        self.current_token_source_extent.start.column_number = self._column_number
-        self.current_token_source_extent.start.byte_number = self._byte_number
+        self.current_token_source_extent.start.lineno = self._lineno
+        self.current_token_source_extent.start.colno = self._colno
+        self.current_token_source_extent.start.byteno = self._byteno
         self.token_start_idx = self.idx
 
     def mark_token_end(self) -> None:
-        self.current_token_source_extent.end.line_number = self._line_number
-        self.current_token_source_extent.end.column_number = self._column_number
-        self.current_token_source_extent.end.byte_number = self._byte_number
+        self.current_token_source_extent.end.lineno = self._lineno
+        self.current_token_source_extent.end.colno = self._colno
+        self.current_token_source_extent.end.byteno = self._byteno
         self.token_end_idx = self.idx
 
     def has_input(self) -> bool:
@@ -188,14 +188,14 @@ class Lexer:
         self.mark_token_end()
         c = self.peek_char()
         if c == "\n":
-            self._line_number += 1
-            self._column_number = 1
+            self._lineno += 1
+            self._colno = 1
             self.line = ""
         else:
             self.line += c
-            self._column_number += 1
+            self._colno += 1
         self.idx += 1
-        self._byte_number += num_bytes_as_utf8(c)
+        self._byteno += num_bytes_as_utf8(c)
         return c
 
     def peek_char(self) -> str:
@@ -207,14 +207,14 @@ class Lexer:
         result: Token = cls(*args)
 
         # Set start of token's source extent
-        result.source_extent.start.line_number = self.current_token_source_extent.start.line_number
-        result.source_extent.start.column_number = self.current_token_source_extent.start.column_number
-        result.source_extent.start.byte_number = self.current_token_source_extent.start.byte_number
+        result.source_extent.start.lineno = self.current_token_source_extent.start.lineno
+        result.source_extent.start.colno = self.current_token_source_extent.start.colno
+        result.source_extent.start.byteno = self.current_token_source_extent.start.byteno
 
         # Set end of token's source extent
-        result.source_extent.end.column_number = self.current_token_source_extent.end.column_number
-        result.source_extent.end.line_number = self.current_token_source_extent.end.line_number
-        result.source_extent.end.byte_number = self.current_token_source_extent.end.byte_number
+        result.source_extent.end.colno = self.current_token_source_extent.end.colno
+        result.source_extent.end.lineno = self.current_token_source_extent.end.lineno
+        result.source_extent.end.byteno = self.current_token_source_extent.end.byteno
 
         return result
 
@@ -262,14 +262,14 @@ class Lexer:
         raise InvalidTokenError(
             SourceExtent(
                 start=SourceLocation(
-                    line_number=self.current_token_source_extent.start.line_number,
-                    column_number=self.current_token_source_extent.start.column_number,
-                    byte_number=self.current_token_source_extent.start.byte_number,
+                    lineno=self.current_token_source_extent.start.lineno,
+                    colno=self.current_token_source_extent.start.colno,
+                    byteno=self.current_token_source_extent.start.byteno,
                 ),
                 end=SourceLocation(
-                    line_number=self.current_token_source_extent.end.line_number,
-                    column_number=self.current_token_source_extent.end.column_number,
-                    byte_number=self.current_token_source_extent.end.byte_number,
+                    lineno=self.current_token_source_extent.end.lineno,
+                    colno=self.current_token_source_extent.end.colno,
+                    byteno=self.current_token_source_extent.end.byteno,
                 ),
             )
         )
@@ -1816,40 +1816,40 @@ class TokenizerTests(unittest.TestCase):
             [Name("f"), Operator("<<"), Name("g")],
         )
 
-    def test_first_line_number_is_one(self) -> None:
+    def test_first_lineno_is_one(self) -> None:
         l = Lexer("abc")
-        self.assertEqual(l.line_number, 1)
+        self.assertEqual(l.lineno, 1)
 
-    def test_first_column_number_is_one(self) -> None:
+    def test_first_colno_is_one(self) -> None:
         l = Lexer("abc")
-        self.assertEqual(l.column_number, 1)
+        self.assertEqual(l.colno, 1)
 
     def test_first_line_is_empty(self) -> None:
         l = Lexer("abc")
         self.assertEqual(l.line, "")
 
-    def test_read_char_increments_column_number(self) -> None:
+    def test_read_char_increments_colno(self) -> None:
         l = Lexer("abc")
         l.read_char()
-        self.assertEqual(l.column_number, 2)
-        self.assertEqual(l.line_number, 1)
+        self.assertEqual(l.colno, 2)
+        self.assertEqual(l.lineno, 1)
 
-    def test_read_newline_increments_line_number(self) -> None:
+    def test_read_newline_increments_lineno(self) -> None:
         l = Lexer("ab\nc")
         l.read_char()
         l.read_char()
         l.read_char()
-        self.assertEqual(l.line_number, 2)
-        self.assertEqual(l.column_number, 1)
+        self.assertEqual(l.lineno, 2)
+        self.assertEqual(l.colno, 1)
 
-    def test_read_char_increments_byte_number(self) -> None:
+    def test_read_char_increments_byteno(self) -> None:
         l = Lexer("abc")
         l.read_char()
-        self.assertEqual(l.byte_number, 1)
+        self.assertEqual(l.byteno, 1)
         l.read_char()
-        self.assertEqual(l.byte_number, 2)
+        self.assertEqual(l.byteno, 2)
         l.read_char()
-        self.assertEqual(l.byte_number, 3)
+        self.assertEqual(l.byteno, 3)
 
     def test_read_char_appends_to_line(self) -> None:
         l = Lexer("ab\nc")
@@ -1859,24 +1859,24 @@ class TokenizerTests(unittest.TestCase):
         l.read_char()
         self.assertEqual(l.line, "")
 
-    def test_read_token_sets_start_and_end_line_numbers(self) -> None:
+    def test_read_token_sets_start_and_end_linenos(self) -> None:
         l = Lexer("a b \n c d")
         a = l.read_token()
         b = l.read_token()
         c = l.read_token()
         d = l.read_token()
 
-        self.assertEqual(a.source_extent.start.line_number, 1)
-        self.assertEqual(a.source_extent.end.line_number, 1)
+        self.assertEqual(a.source_extent.start.lineno, 1)
+        self.assertEqual(a.source_extent.end.lineno, 1)
 
-        self.assertEqual(b.source_extent.start.line_number, 1)
-        self.assertEqual(b.source_extent.end.line_number, 1)
+        self.assertEqual(b.source_extent.start.lineno, 1)
+        self.assertEqual(b.source_extent.end.lineno, 1)
 
-        self.assertEqual(c.source_extent.start.line_number, 2)
-        self.assertEqual(c.source_extent.end.line_number, 2)
+        self.assertEqual(c.source_extent.start.lineno, 2)
+        self.assertEqual(c.source_extent.end.lineno, 2)
 
-        self.assertEqual(d.source_extent.start.line_number, 2)
-        self.assertEqual(d.source_extent.end.line_number, 2)
+        self.assertEqual(d.source_extent.start.lineno, 2)
+        self.assertEqual(d.source_extent.end.lineno, 2)
 
     def test_read_token_sets_source_extents_for_variables(self) -> None:
         l = Lexer("aa bbbb \n ccccc ddddddd")
@@ -1886,33 +1886,33 @@ class TokenizerTests(unittest.TestCase):
         c = l.read_token()
         d = l.read_token()
 
-        self.assertEqual(a.source_extent.start.line_number, 1)
-        self.assertEqual(a.source_extent.end.line_number, 1)
-        self.assertEqual(a.source_extent.start.column_number, 1)
-        self.assertEqual(a.source_extent.end.column_number, 2)
-        self.assertEqual(a.source_extent.start.byte_number, 0)
-        self.assertEqual(a.source_extent.end.byte_number, 1)
+        self.assertEqual(a.source_extent.start.lineno, 1)
+        self.assertEqual(a.source_extent.end.lineno, 1)
+        self.assertEqual(a.source_extent.start.colno, 1)
+        self.assertEqual(a.source_extent.end.colno, 2)
+        self.assertEqual(a.source_extent.start.byteno, 0)
+        self.assertEqual(a.source_extent.end.byteno, 1)
 
-        self.assertEqual(b.source_extent.start.line_number, 1)
-        self.assertEqual(b.source_extent.end.line_number, 1)
-        self.assertEqual(b.source_extent.start.column_number, 4)
-        self.assertEqual(b.source_extent.end.column_number, 7)
-        self.assertEqual(b.source_extent.start.byte_number, 3)
-        self.assertEqual(b.source_extent.end.byte_number, 6)
+        self.assertEqual(b.source_extent.start.lineno, 1)
+        self.assertEqual(b.source_extent.end.lineno, 1)
+        self.assertEqual(b.source_extent.start.colno, 4)
+        self.assertEqual(b.source_extent.end.colno, 7)
+        self.assertEqual(b.source_extent.start.byteno, 3)
+        self.assertEqual(b.source_extent.end.byteno, 6)
 
-        self.assertEqual(c.source_extent.start.line_number, 2)
-        self.assertEqual(c.source_extent.end.line_number, 2)
-        self.assertEqual(c.source_extent.start.column_number, 2)
-        self.assertEqual(c.source_extent.end.column_number, 6)
-        self.assertEqual(c.source_extent.start.byte_number, 10)
-        self.assertEqual(c.source_extent.end.byte_number, 14)
+        self.assertEqual(c.source_extent.start.lineno, 2)
+        self.assertEqual(c.source_extent.end.lineno, 2)
+        self.assertEqual(c.source_extent.start.colno, 2)
+        self.assertEqual(c.source_extent.end.colno, 6)
+        self.assertEqual(c.source_extent.start.byteno, 10)
+        self.assertEqual(c.source_extent.end.byteno, 14)
 
-        self.assertEqual(d.source_extent.start.line_number, 2)
-        self.assertEqual(d.source_extent.end.line_number, 2)
-        self.assertEqual(d.source_extent.start.column_number, 8)
-        self.assertEqual(d.source_extent.end.column_number, 14)
-        self.assertEqual(d.source_extent.start.byte_number, 16)
-        self.assertEqual(d.source_extent.end.byte_number, 22)
+        self.assertEqual(d.source_extent.start.lineno, 2)
+        self.assertEqual(d.source_extent.end.lineno, 2)
+        self.assertEqual(d.source_extent.start.colno, 8)
+        self.assertEqual(d.source_extent.end.colno, 14)
+        self.assertEqual(d.source_extent.start.byteno, 16)
+        self.assertEqual(d.source_extent.end.byteno, 22)
 
     def test_read_token_correctly_sets_source_extents_for_variants(self) -> None:
         l = Lexer("# \n\r\n\t abc")
@@ -1920,29 +1920,29 @@ class TokenizerTests(unittest.TestCase):
         a = l.read_token()
         b = l.read_token()
 
-        self.assertEqual(a.source_extent.start.line_number, 1)
-        self.assertEqual(a.source_extent.end.line_number, 1)
-        self.assertEqual(a.source_extent.start.column_number, 1)
+        self.assertEqual(a.source_extent.start.lineno, 1)
+        self.assertEqual(a.source_extent.end.lineno, 1)
+        self.assertEqual(a.source_extent.start.colno, 1)
         # TODO(max): Should tabs count as one column?
-        self.assertEqual(a.source_extent.end.column_number, 1)
+        self.assertEqual(a.source_extent.end.colno, 1)
 
-        self.assertEqual(b.source_extent.start.line_number, 3)
-        self.assertEqual(b.source_extent.end.line_number, 3)
-        self.assertEqual(b.source_extent.start.column_number, 3)
-        self.assertEqual(b.source_extent.end.column_number, 5)
+        self.assertEqual(b.source_extent.start.lineno, 3)
+        self.assertEqual(b.source_extent.end.lineno, 3)
+        self.assertEqual(b.source_extent.start.colno, 3)
+        self.assertEqual(b.source_extent.end.colno, 5)
 
     def test_read_token_correctly_sets_source_extents_for_strings(self) -> None:
         l = Lexer('"今日は、Maxさん。"')
         a = l.read_token()
 
-        self.assertEqual(a.source_extent.start.line_number, 1)
-        self.assertEqual(a.source_extent.end.line_number, 1)
+        self.assertEqual(a.source_extent.start.lineno, 1)
+        self.assertEqual(a.source_extent.end.lineno, 1)
 
-        self.assertEqual(a.source_extent.start.column_number, 1)
-        self.assertEqual(a.source_extent.end.column_number, 12)
+        self.assertEqual(a.source_extent.start.colno, 1)
+        self.assertEqual(a.source_extent.end.colno, 12)
 
-        self.assertEqual(a.source_extent.start.byte_number, 0)
-        self.assertEqual(a.source_extent.end.byte_number, 25)
+        self.assertEqual(a.source_extent.start.byteno, 0)
+        self.assertEqual(a.source_extent.end.byteno, 25)
 
     def test_read_token_correctly_sets_source_extents_for_byte_literals(self) -> None:
         l = Lexer("~~QUJD ~~85'K|(_ ~~64'QUJD\n ~~32'IFBEG=== ~~16'414243")
@@ -1952,78 +1952,78 @@ class TokenizerTests(unittest.TestCase):
         d = l.read_token()
         e = l.read_token()
 
-        self.assertEqual(a.source_extent.start.line_number, 1)
-        self.assertEqual(a.source_extent.end.line_number, 1)
-        self.assertEqual(a.source_extent.start.column_number, 1)
-        self.assertEqual(a.source_extent.end.column_number, 6)
-        self.assertEqual(a.source_extent.start.byte_number, 0)
-        self.assertEqual(a.source_extent.end.byte_number, 5)
+        self.assertEqual(a.source_extent.start.lineno, 1)
+        self.assertEqual(a.source_extent.end.lineno, 1)
+        self.assertEqual(a.source_extent.start.colno, 1)
+        self.assertEqual(a.source_extent.end.colno, 6)
+        self.assertEqual(a.source_extent.start.byteno, 0)
+        self.assertEqual(a.source_extent.end.byteno, 5)
 
-        self.assertEqual(b.source_extent.start.line_number, 1)
-        self.assertEqual(b.source_extent.end.line_number, 1)
-        self.assertEqual(b.source_extent.start.column_number, 8)
-        self.assertEqual(b.source_extent.end.column_number, 16)
-        self.assertEqual(b.source_extent.start.byte_number, 7)
-        self.assertEqual(b.source_extent.end.byte_number, 15)
+        self.assertEqual(b.source_extent.start.lineno, 1)
+        self.assertEqual(b.source_extent.end.lineno, 1)
+        self.assertEqual(b.source_extent.start.colno, 8)
+        self.assertEqual(b.source_extent.end.colno, 16)
+        self.assertEqual(b.source_extent.start.byteno, 7)
+        self.assertEqual(b.source_extent.end.byteno, 15)
 
-        self.assertEqual(c.source_extent.start.line_number, 1)
-        self.assertEqual(c.source_extent.end.line_number, 1)
-        self.assertEqual(c.source_extent.start.column_number, 18)
-        self.assertEqual(c.source_extent.end.column_number, 26)
-        self.assertEqual(c.source_extent.start.byte_number, 17)
-        self.assertEqual(c.source_extent.end.byte_number, 25)
+        self.assertEqual(c.source_extent.start.lineno, 1)
+        self.assertEqual(c.source_extent.end.lineno, 1)
+        self.assertEqual(c.source_extent.start.colno, 18)
+        self.assertEqual(c.source_extent.end.colno, 26)
+        self.assertEqual(c.source_extent.start.byteno, 17)
+        self.assertEqual(c.source_extent.end.byteno, 25)
 
-        self.assertEqual(d.source_extent.start.line_number, 2)
-        self.assertEqual(d.source_extent.end.line_number, 2)
-        self.assertEqual(d.source_extent.start.column_number, 2)
-        self.assertEqual(d.source_extent.end.column_number, 14)
-        self.assertEqual(d.source_extent.start.byte_number, 28)
-        self.assertEqual(d.source_extent.end.byte_number, 40)
+        self.assertEqual(d.source_extent.start.lineno, 2)
+        self.assertEqual(d.source_extent.end.lineno, 2)
+        self.assertEqual(d.source_extent.start.colno, 2)
+        self.assertEqual(d.source_extent.end.colno, 14)
+        self.assertEqual(d.source_extent.start.byteno, 28)
+        self.assertEqual(d.source_extent.end.byteno, 40)
 
-        self.assertEqual(e.source_extent.start.line_number, 2)
-        self.assertEqual(e.source_extent.end.line_number, 2)
-        self.assertEqual(e.source_extent.start.column_number, 16)
-        self.assertEqual(e.source_extent.end.column_number, 26)
-        self.assertEqual(e.source_extent.start.byte_number, 42)
-        self.assertEqual(e.source_extent.end.byte_number, 52)
+        self.assertEqual(e.source_extent.start.lineno, 2)
+        self.assertEqual(e.source_extent.end.lineno, 2)
+        self.assertEqual(e.source_extent.start.colno, 16)
+        self.assertEqual(e.source_extent.end.colno, 26)
+        self.assertEqual(e.source_extent.start.byteno, 42)
+        self.assertEqual(e.source_extent.end.byteno, 52)
 
     def test_read_token_correctly_sets_source_extents_for_numbers(self) -> None:
         l = Lexer("123 123.456")
         a = l.read_token()
         b = l.read_token()
 
-        self.assertEqual(a.source_extent.start.line_number, 1)
-        self.assertEqual(a.source_extent.end.line_number, 1)
-        self.assertEqual(a.source_extent.start.column_number, 1)
-        self.assertEqual(a.source_extent.end.column_number, 3)
-        self.assertEqual(a.source_extent.start.byte_number, 0)
-        self.assertEqual(a.source_extent.end.byte_number, 2)
+        self.assertEqual(a.source_extent.start.lineno, 1)
+        self.assertEqual(a.source_extent.end.lineno, 1)
+        self.assertEqual(a.source_extent.start.colno, 1)
+        self.assertEqual(a.source_extent.end.colno, 3)
+        self.assertEqual(a.source_extent.start.byteno, 0)
+        self.assertEqual(a.source_extent.end.byteno, 2)
 
-        self.assertEqual(b.source_extent.start.line_number, 1)
-        self.assertEqual(b.source_extent.end.line_number, 1)
-        self.assertEqual(b.source_extent.start.column_number, 5)
-        self.assertEqual(b.source_extent.end.column_number, 11)
-        self.assertEqual(b.source_extent.start.byte_number, 4)
-        self.assertEqual(b.source_extent.end.byte_number, 10)
+        self.assertEqual(b.source_extent.start.lineno, 1)
+        self.assertEqual(b.source_extent.end.lineno, 1)
+        self.assertEqual(b.source_extent.start.colno, 5)
+        self.assertEqual(b.source_extent.end.colno, 11)
+        self.assertEqual(b.source_extent.start.byteno, 4)
+        self.assertEqual(b.source_extent.end.byteno, 10)
 
     def test_read_token_correctly_sets_source_extents_for_operators(self) -> None:
         l = Lexer("> >>")
         a = l.read_token()
         b = l.read_token()
 
-        self.assertEqual(a.source_extent.start.line_number, 1)
-        self.assertEqual(a.source_extent.end.line_number, 1)
-        self.assertEqual(a.source_extent.start.column_number, 1)
-        self.assertEqual(a.source_extent.end.column_number, 1)
-        self.assertEqual(a.source_extent.start.byte_number, 0)
-        self.assertEqual(a.source_extent.end.byte_number, 0)
+        self.assertEqual(a.source_extent.start.lineno, 1)
+        self.assertEqual(a.source_extent.end.lineno, 1)
+        self.assertEqual(a.source_extent.start.colno, 1)
+        self.assertEqual(a.source_extent.end.colno, 1)
+        self.assertEqual(a.source_extent.start.byteno, 0)
+        self.assertEqual(a.source_extent.end.byteno, 0)
 
-        self.assertEqual(b.source_extent.start.line_number, 1)
-        self.assertEqual(b.source_extent.end.line_number, 1)
-        self.assertEqual(b.source_extent.start.column_number, 3)
-        self.assertEqual(b.source_extent.end.column_number, 4)
-        self.assertEqual(b.source_extent.start.byte_number, 2)
-        self.assertEqual(b.source_extent.end.byte_number, 3)
+        self.assertEqual(b.source_extent.start.lineno, 1)
+        self.assertEqual(b.source_extent.end.lineno, 1)
+        self.assertEqual(b.source_extent.start.colno, 3)
+        self.assertEqual(b.source_extent.end.colno, 4)
+        self.assertEqual(b.source_extent.start.byteno, 2)
+        self.assertEqual(b.source_extent.end.byteno, 3)
 
     def test_tokenize_list_with_only_spread(self) -> None:
         self.assertEqual(tokenize("[ ... ]"), [LeftBracket(), Operator("..."), RightBracket()])
@@ -2497,7 +2497,7 @@ class ParserTests(unittest.TestCase):
 
     @unittest.skip("TODO(max): Raise if ...x is used with non-name")
     def test_parse_list_with_non_name_expr_after_spread_raises_parse_error(self) -> None:
-        with self.assertRaisesRegex(ParseError, re.escape("unexpected token IntLit(line_number=-1, value=1)")):
+        with self.assertRaisesRegex(ParseError, re.escape("unexpected token IntLit(lineno=-1, value=1)")):
             parse([LeftBracket(), IntLit(1), Operator(","), Operator("..."), IntLit(2), RightBracket()])
 
     def test_parse_list_with_named_spread(self) -> None:

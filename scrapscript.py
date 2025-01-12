@@ -234,7 +234,6 @@ class Lexer:
             if self.has_input() and self.peek_char() == "-":
                 self.read_comment()
                 # Need to start reading a new token
-                self.mark_token_start()
                 return self.read_token()
             return self.read_op(c)
         if c == "#":

@@ -1899,12 +1899,20 @@ class TokenizerTests(unittest.TestCase):
 
     def test_read_token_correctly_sets_source_extents_for_variants(self) -> None:
         l = Lexer("# \n\r\n\t abc")
+
         a = l.read_token()
+        b = l.read_token()
+
         self.assertEqual(a.source_extent.start.line_number, 1)
-        self.assertEqual(a.source_extent.end.line_number, 3)
+        self.assertEqual(a.source_extent.end.line_number, 1)
         self.assertEqual(a.source_extent.start.column_number, 1)
         # TODO(max): Should tabs count as one column?
-        self.assertEqual(a.source_extent.end.column_number, 5)
+        self.assertEqual(a.source_extent.end.column_number, 1)
+
+        self.assertEqual(b.source_extent.start.line_number, 3)
+        self.assertEqual(b.source_extent.end.line_number, 3)
+        self.assertEqual(b.source_extent.start.column_number, 3)
+        self.assertEqual(b.source_extent.end.column_number, 5)
 
     def test_read_token_correctly_sets_source_extents_for_strings(self) -> None:
         l = Lexer('"今日は、Maxさん。"')
@@ -2079,18 +2087,10 @@ class TokenizerTests(unittest.TestCase):
         )
 
     def test_tokenize_variant_with_whitespace(self) -> None:
-        self.assertEqual(tokenize("# \n\r\n\t abc"), [VariantToken("abc")])
+        self.assertEqual(tokenize("# \n\r\n\t abc"), [Hash(), Name("abc")])
 
     def test_tokenize_variant_with_no_space(self) -> None:
-        self.assertEqual(tokenize("#abc"), [VariantToken("abc")])
-
-    def test_tokenize_variant_non_name_raises_parse_error(self) -> None:
-        with self.assertRaisesRegex(ParseError, "expected name"):
-            tokenize("#1")
-
-    def test_tokenize_variant_eof_raises_unexpected_eof_error(self) -> None:
-        with self.assertRaisesRegex(UnexpectedEOFError, "while reading symbol"):
-            tokenize("#")
+        self.assertEqual(tokenize("#abc"), [Hash(), Name("abc")])
 
 
 class ParserTests(unittest.TestCase):
@@ -2572,7 +2572,7 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parse_error.exception.unexpected_token, RightBrace())
 
     def test_parse_variant_returns_variant(self) -> None:
-        self.assertEqual(parse([VariantToken("abc"), IntLit(1)]), Variant("abc", Int(1)))
+        self.assertEqual(parse([Hash(), Name("abc"), IntLit(1)]), Variant("abc", Int(1)))
 
     def test_match_with_variant(self) -> None:
         ast = parse(tokenize("| #true () -> 123"))

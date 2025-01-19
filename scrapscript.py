@@ -494,7 +494,7 @@ class UnexpectedEOFError(ParseError):
     pass
 
 
-def parse_assign(tokens: typing.List[Token], p: float = 0) -> "Assign":
+def parse_assign(tokens: Peekable, p: float = 0) -> "Assign":
     assign = parse_binary(tokens, p)
     if isinstance(assign, Spread):
         return Assign(Var("..."), assign)

@@ -2171,134 +2171,138 @@ class TokenizerTests(unittest.TestCase):
 class ParserTests(unittest.TestCase):
     def test_parse_with_empty_tokens_raises_parse_error(self) -> None:
         with self.assertRaises(UnexpectedEOFError) as ctx:
-            parse([])
+            parse(Peekable(iter([])))
         self.assertEqual(ctx.exception.args[0], "unexpected end of input")
 
     def test_parse_digit_returns_int(self) -> None:
-        self.assertEqual(parse([IntLit(1)]), Int(1))
+        self.assertEqual(parse(Peekable(iter([IntLit(1)]))), Int(1))
 
     def test_parse_digits_returns_int(self) -> None:
-        self.assertEqual(parse([IntLit(123)]), Int(123))
+        self.assertEqual(parse(Peekable(iter([IntLit(123)]))), Int(123))
 
     def test_parse_negative_int_returns_negative_int(self) -> None:
-        self.assertEqual(parse([Operator("-"), IntLit(123)]), Int(-123))
+        self.assertEqual(parse(Peekable(iter([Operator("-"), IntLit(123)]))), Int(-123))
 
     def test_parse_negative_var_returns_binary_sub_var(self) -> None:
-        self.assertEqual(parse([Operator("-"), Name("x")]), Binop(BinopKind.SUB, Int(0), Var("x")))
+        self.assertEqual(parse(Peekable(iter([Operator("-"), Name("x")]))), Binop(BinopKind.SUB, Int(0), Var("x")))
 
     def test_parse_negative_int_binds_tighter_than_plus(self) -> None:
         self.assertEqual(
-            parse([Operator("-"), Name("l"), Operator("+"), Name("r")]),
+            parse(Peekable(iter([Operator("-"), Name("l"), Operator("+"), Name("r")]))),
             Binop(BinopKind.ADD, Binop(BinopKind.SUB, Int(0), Var("l")), Var("r")),
         )
 
     def test_parse_negative_int_binds_tighter_than_mul(self) -> None:
         self.assertEqual(
-            parse([Operator("-"), Name("l"), Operator("*"), Name("r")]),
+            parse(Peekable(iter([Operator("-"), Name("l"), Operator("*"), Name("r")]))),
             Binop(BinopKind.MUL, Binop(BinopKind.SUB, Int(0), Var("l")), Var("r")),
         )
 
     def test_parse_negative_int_binds_tighter_than_index(self) -> None:
         self.assertEqual(
-            parse([Operator("-"), Name("l"), Operator("@"), Name("r")]),
+            parse(Peekable(iter([Operator("-"), Name("l"), Operator("@"), Name("r")]))),
             Access(Binop(BinopKind.SUB, Int(0), Var("l")), Var("r")),
         )
 
     def test_parse_negative_int_binds_tighter_than_apply(self) -> None:
         self.assertEqual(
-            parse([Operator("-"), Name("l"), Name("r")]),
+            parse(Peekable(iter([Operator("-"), Name("l"), Name("r")]))),
             Apply(Binop(BinopKind.SUB, Int(0), Var("l")), Var("r")),
         )
 
     def test_parse_decimal_returns_float(self) -> None:
-        self.assertEqual(parse([FloatLit(3.14)]), Float(3.14))
+        self.assertEqual(parse(Peekable(iter([FloatLit(3.14)]))), Float(3.14))
 
     def test_parse_negative_float_returns_binary_sub_float(self) -> None:
-        self.assertEqual(parse([Operator("-"), FloatLit(3.14)]), Float(-3.14))
+        self.assertEqual(parse(Peekable(iter([Operator("-"), FloatLit(3.14)]))), Float(-3.14))
 
     def test_parse_var_returns_var(self) -> None:
-        self.assertEqual(parse([Name("abc_123")]), Var("abc_123"))
+        self.assertEqual(parse(Peekable(iter([Name("abc_123")]))), Var("abc_123"))
 
     def test_parse_sha_var_returns_var(self) -> None:
-        self.assertEqual(parse([Name("$sha1'abc")]), Var("$sha1'abc"))
+        self.assertEqual(parse(Peekable(iter([Name("$sha1'abc")]))), Var("$sha1'abc"))
 
     def test_parse_sha_var_without_quote_returns_var(self) -> None:
-        self.assertEqual(parse([Name("$sha1abc")]), Var("$sha1abc"))
+        self.assertEqual(parse(Peekable(iter([Name("$sha1abc")]))), Var("$sha1abc"))
 
     def test_parse_dollar_returns_var(self) -> None:
-        self.assertEqual(parse([Name("$")]), Var("$"))
+        self.assertEqual(parse(Peekable(iter([Name("$")]))), Var("$"))
 
     def test_parse_dollar_dollar_returns_var(self) -> None:
-        self.assertEqual(parse([Name("$$")]), Var("$$"))
+        self.assertEqual(parse(Peekable(iter([Name("$$")]))), Var("$$"))
 
     @unittest.skip("TODO: make this fail to parse")
     def test_parse_sha_var_without_dollar_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, "unexpected token"):
-            parse([Name("sha1'abc")])
+            parse(Peekable(iter([Name("sha1'abc")])))
 
     def test_parse_dollar_dollar_var_returns_var(self) -> None:
-        self.assertEqual(parse([Name("$$bills")]), Var("$$bills"))
+        self.assertEqual(parse(Peekable(iter([Name("$$bills")]))), Var("$$bills"))
 
     def test_parse_bytes_returns_bytes(self) -> None:
-        self.assertEqual(parse([BytesLit("QUJD", 64)]), Bytes(b"ABC"))
+        self.assertEqual(parse(Peekable(iter([BytesLit("QUJD", 64)]))), Bytes(b"ABC"))
 
     def test_parse_binary_add_returns_binop(self) -> None:
-        self.assertEqual(parse([IntLit(1), Operator("+"), IntLit(2)]), Binop(BinopKind.ADD, Int(1), Int(2)))
+        self.assertEqual(
+            parse(Peekable(iter([IntLit(1), Operator("+"), IntLit(2)]))), Binop(BinopKind.ADD, Int(1), Int(2))
+        )
 
     def test_parse_binary_sub_returns_binop(self) -> None:
-        self.assertEqual(parse([IntLit(1), Operator("-"), IntLit(2)]), Binop(BinopKind.SUB, Int(1), Int(2)))
+        self.assertEqual(
+            parse(Peekable(iter([IntLit(1), Operator("-"), IntLit(2)]))), Binop(BinopKind.SUB, Int(1), Int(2))
+        )
 
     def test_parse_binary_add_right_returns_binop(self) -> None:
         self.assertEqual(
-            parse([IntLit(1), Operator("+"), IntLit(2), Operator("+"), IntLit(3)]),
+            parse(Peekable(iter([IntLit(1), Operator("+"), IntLit(2), Operator("+"), IntLit(3)]))),
             Binop(BinopKind.ADD, Int(1), Binop(BinopKind.ADD, Int(2), Int(3))),
         )
 
     def test_mul_binds_tighter_than_add_right(self) -> None:
         self.assertEqual(
-            parse([IntLit(1), Operator("+"), IntLit(2), Operator("*"), IntLit(3)]),
+            parse(Peekable(iter([IntLit(1), Operator("+"), IntLit(2), Operator("*"), IntLit(3)]))),
             Binop(BinopKind.ADD, Int(1), Binop(BinopKind.MUL, Int(2), Int(3))),
         )
 
     def test_mul_binds_tighter_than_add_left(self) -> None:
         self.assertEqual(
-            parse([IntLit(1), Operator("*"), IntLit(2), Operator("+"), IntLit(3)]),
+            parse(Peekable(iter([IntLit(1), Operator("*"), IntLit(2), Operator("+"), IntLit(3)]))),
             Binop(BinopKind.ADD, Binop(BinopKind.MUL, Int(1), Int(2)), Int(3)),
         )
 
     def test_mul_and_div_bind_left_to_right(self) -> None:
         self.assertEqual(
-            parse([IntLit(1), Operator("/"), IntLit(3), Operator("*"), IntLit(3)]),
+            parse(Peekable(iter([IntLit(1), Operator("/"), IntLit(3), Operator("*"), IntLit(3)]))),
             Binop(BinopKind.MUL, Binop(BinopKind.DIV, Int(1), Int(3)), Int(3)),
         )
 
     def test_exp_binds_tighter_than_mul_right(self) -> None:
         self.assertEqual(
-            parse([IntLit(5), Operator("*"), IntLit(2), Operator("^"), IntLit(3)]),
+            parse(Peekable(iter([IntLit(5), Operator("*"), IntLit(2), Operator("^"), IntLit(3)]))),
             Binop(BinopKind.MUL, Int(5), Binop(BinopKind.EXP, Int(2), Int(3))),
         )
 
     def test_list_access_binds_tighter_than_append(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator("+<"), Name("ls"), Operator("@"), IntLit(0)]),
+            parse(Peekable(iter([Name("a"), Operator("+<"), Name("ls"), Operator("@"), IntLit(0)]))),
             Binop(BinopKind.LIST_APPEND, Var("a"), Access(Var("ls"), Int(0))),
         )
 
     def test_parse_binary_str_concat_returns_binop(self) -> None:
         self.assertEqual(
-            parse([StringLit("abc"), Operator("++"), StringLit("def")]),
+            parse(Peekable(iter([StringLit("abc"), Operator("++"), StringLit("def")]))),
             Binop(BinopKind.STRING_CONCAT, String("abc"), String("def")),
         )
 
     def test_parse_binary_list_cons_returns_binop(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator(">+"), Name("b")]),
+            parse(Peekable(iter([Name("a"), Operator(">+"), Name("b")]))),
             Binop(BinopKind.LIST_CONS, Var("a"), Var("b")),
         )
 
     def test_parse_binary_list_append_returns_binop(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator("+<"), Name("b")]),
+            parse(Peekable(iter([Name("a"), Operator("+<"), Name("b")]))),
             Binop(BinopKind.LIST_APPEND, Var("a"), Var("b")),
         )
 
@@ -2307,207 +2311,239 @@ class ParserTests(unittest.TestCase):
         for op in ops:
             with self.subTest(op=op):
                 kind = BinopKind.from_str(op)
-                self.assertEqual(parse([Name("a"), Operator(op), Name("b")]), Binop(kind, Var("a"), Var("b")))
+                self.assertEqual(
+                    parse(Peekable(iter([Name("a"), Operator(op), Name("b")]))), Binop(kind, Var("a"), Var("b"))
+                )
 
     def test_parse_empty_list(self) -> None:
         self.assertEqual(
-            parse([LeftBracket(), RightBracket()]),
+            parse(Peekable(iter([LeftBracket(), RightBracket()]))),
             List([]),
         )
 
     def test_parse_list_of_ints_returns_list(self) -> None:
         self.assertEqual(
-            parse([LeftBracket(), IntLit(1), Operator(","), IntLit(2), RightBracket()]),
+            parse(Peekable(iter([LeftBracket(), IntLit(1), Operator(","), IntLit(2), RightBracket()]))),
             List([Int(1), Int(2)]),
         )
 
     def test_parse_list_with_only_comma_raises_parse_error(self) -> None:
         with self.assertRaises(UnexpectedTokenError) as parse_error:
-            parse([LeftBracket(), Operator(","), RightBracket()])
+            parse(Peekable(iter([LeftBracket(), Operator(","), RightBracket()])))
 
         self.assertEqual(parse_error.exception.unexpected_token, Operator(","))
 
     def test_parse_list_with_two_commas_raises_parse_error(self) -> None:
         with self.assertRaises(UnexpectedTokenError) as parse_error:
-            parse([LeftBracket(), Operator(","), Operator(","), RightBracket()])
+            parse(Peekable(iter([LeftBracket(), Operator(","), Operator(","), RightBracket()])))
 
         self.assertEqual(parse_error.exception.unexpected_token, Operator(","))
 
     def test_parse_list_with_trailing_comma_raises_parse_error(self) -> None:
         with self.assertRaises(UnexpectedTokenError) as parse_error:
-            parse([LeftBracket(), IntLit(1), Operator(","), RightBracket()])
+            parse(Peekable(iter([LeftBracket(), IntLit(1), Operator(","), RightBracket()])))
 
         self.assertEqual(parse_error.exception.unexpected_token, RightBracket())
 
     def test_parse_assign(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator("="), IntLit(1)]),
+            parse(Peekable(iter([Name("a"), Operator("="), IntLit(1)]))),
             Assign(Var("a"), Int(1)),
         )
 
     def test_parse_function_one_arg_returns_function(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator("->"), Name("a"), Operator("+"), IntLit(1)]),
+            parse(Peekable(iter([Name("a"), Operator("->"), Name("a"), Operator("+"), IntLit(1)]))),
             Function(Var("a"), Binop(BinopKind.ADD, Var("a"), Int(1))),
         )
 
     def test_parse_function_two_args_returns_functions(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator("->"), Name("b"), Operator("->"), Name("a"), Operator("+"), Name("b")]),
+            parse(
+                Peekable(
+                    iter([Name("a"), Operator("->"), Name("b"), Operator("->"), Name("a"), Operator("+"), Name("b")])
+                )
+            ),
             Function(Var("a"), Function(Var("b"), Binop(BinopKind.ADD, Var("a"), Var("b")))),
         )
 
     def test_parse_assign_function(self) -> None:
         self.assertEqual(
-            parse([Name("id"), Operator("="), Name("x"), Operator("->"), Name("x")]),
+            parse(Peekable(iter([Name("id"), Operator("="), Name("x"), Operator("->"), Name("x")]))),
             Assign(Var("id"), Function(Var("x"), Var("x"))),
         )
 
     def test_parse_function_application_one_arg(self) -> None:
-        self.assertEqual(parse([Name("f"), Name("a")]), Apply(Var("f"), Var("a")))
+        self.assertEqual(parse(Peekable(iter([Name("f"), Name("a")]))), Apply(Var("f"), Var("a")))
 
     def test_parse_function_application_two_args(self) -> None:
-        self.assertEqual(parse([Name("f"), Name("a"), Name("b")]), Apply(Apply(Var("f"), Var("a")), Var("b")))
+        self.assertEqual(
+            parse(Peekable(iter([Name("f"), Name("a"), Name("b")]))), Apply(Apply(Var("f"), Var("a")), Var("b"))
+        )
 
     def test_parse_where(self) -> None:
-        self.assertEqual(parse([Name("a"), Operator("."), Name("b")]), Where(Var("a"), Var("b")))
+        self.assertEqual(parse(Peekable(iter([Name("a"), Operator("."), Name("b")]))), Where(Var("a"), Var("b")))
 
     def test_parse_nested_where(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator("."), Name("b"), Operator("."), Name("c")]),
+            parse(Peekable(iter([Name("a"), Operator("."), Name("b"), Operator("."), Name("c")]))),
             Where(Where(Var("a"), Var("b")), Var("c")),
         )
 
     def test_parse_assert(self) -> None:
-        self.assertEqual(parse([Name("a"), Operator("?"), Name("b")]), Assert(Var("a"), Var("b")))
+        self.assertEqual(parse(Peekable(iter([Name("a"), Operator("?"), Name("b")]))), Assert(Var("a"), Var("b")))
 
     def test_parse_nested_assert(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator("?"), Name("b"), Operator("?"), Name("c")]),
+            parse(Peekable(iter([Name("a"), Operator("?"), Name("b"), Operator("?"), Name("c")]))),
             Assert(Assert(Var("a"), Var("b")), Var("c")),
         )
 
     def test_parse_mixed_assert_where(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator("?"), Name("b"), Operator("."), Name("c")]),
+            parse(Peekable(iter([Name("a"), Operator("?"), Name("b"), Operator("."), Name("c")]))),
             Where(Assert(Var("a"), Var("b")), Var("c")),
         )
 
     def test_parse_hastype(self) -> None:
-        self.assertEqual(parse([Name("a"), Operator(":"), Name("b")]), Binop(BinopKind.HASTYPE, Var("a"), Var("b")))
+        self.assertEqual(
+            parse(Peekable(iter([Name("a"), Operator(":"), Name("b")]))), Binop(BinopKind.HASTYPE, Var("a"), Var("b"))
+        )
 
     def test_parse_hole(self) -> None:
-        self.assertEqual(parse([LeftParen(), RightParen()]), Hole())
+        self.assertEqual(parse(Peekable(iter([LeftParen(), RightParen()]))), Hole())
 
     def test_parse_parenthesized_expression(self) -> None:
         self.assertEqual(
-            parse([LeftParen(), IntLit(1), Operator("+"), IntLit(2), RightParen()]),
+            parse(Peekable(iter([LeftParen(), IntLit(1), Operator("+"), IntLit(2), RightParen()]))),
             Binop(BinopKind.ADD, Int(1), Int(2)),
         )
 
     def test_parse_parenthesized_add_mul(self) -> None:
         self.assertEqual(
-            parse([LeftParen(), IntLit(1), Operator("+"), IntLit(2), RightParen(), Operator("*"), IntLit(3)]),
+            parse(
+                Peekable(
+                    iter([LeftParen(), IntLit(1), Operator("+"), IntLit(2), RightParen(), Operator("*"), IntLit(3)])
+                )
+            ),
             Binop(BinopKind.MUL, Binop(BinopKind.ADD, Int(1), Int(2)), Int(3)),
         )
 
     def test_parse_pipe(self) -> None:
         self.assertEqual(
-            parse([IntLit(1), Operator("|>"), Name("f")]),
+            parse(Peekable(iter([IntLit(1), Operator("|>"), Name("f")]))),
             Apply(Var("f"), Int(1)),
         )
 
     def test_parse_nested_pipe(self) -> None:
         self.assertEqual(
-            parse([IntLit(1), Operator("|>"), Name("f"), Operator("|>"), Name("g")]),
+            parse(Peekable(iter([IntLit(1), Operator("|>"), Name("f"), Operator("|>"), Name("g")]))),
             Apply(Var("g"), Apply(Var("f"), Int(1))),
         )
 
     def test_parse_reverse_pipe(self) -> None:
         self.assertEqual(
-            parse([Name("f"), Operator("<|"), IntLit(1)]),
+            parse(Peekable(iter([Name("f"), Operator("<|"), IntLit(1)]))),
             Apply(Var("f"), Int(1)),
         )
 
     def test_parse_nested_reverse_pipe(self) -> None:
         self.assertEqual(
-            parse([Name("g"), Operator("<|"), Name("f"), Operator("<|"), IntLit(1)]),
+            parse(Peekable(iter([Name("g"), Operator("<|"), Name("f"), Operator("<|"), IntLit(1)]))),
             Apply(Var("g"), Apply(Var("f"), Int(1))),
         )
 
     def test_parse_empty_record(self) -> None:
-        self.assertEqual(parse([LeftBrace(), RightBrace()]), Record({}))
+        self.assertEqual(parse(Peekable(iter([LeftBrace(), RightBrace()]))), Record({}))
 
     def test_parse_record_single_field(self) -> None:
-        self.assertEqual(parse([LeftBrace(), Name("a"), Operator("="), IntLit(4), RightBrace()]), Record({"a": Int(4)}))
+        self.assertEqual(
+            parse(Peekable(iter([LeftBrace(), Name("a"), Operator("="), IntLit(4), RightBrace()]))),
+            Record({"a": Int(4)}),
+        )
 
     def test_parse_record_with_expression(self) -> None:
         self.assertEqual(
-            parse([LeftBrace(), Name("a"), Operator("="), IntLit(1), Operator("+"), IntLit(2), RightBrace()]),
+            parse(
+                Peekable(
+                    iter([LeftBrace(), Name("a"), Operator("="), IntLit(1), Operator("+"), IntLit(2), RightBrace()])
+                )
+            ),
             Record({"a": Binop(BinopKind.ADD, Int(1), Int(2))}),
         )
 
     def test_parse_record_multiple_fields(self) -> None:
         self.assertEqual(
             parse(
-                [
-                    LeftBrace(),
-                    Name("a"),
-                    Operator("="),
-                    IntLit(4),
-                    Operator(","),
-                    Name("b"),
-                    Operator("="),
-                    StringLit("z"),
-                    RightBrace(),
-                ]
+                Peekable(
+                    iter(
+                        [
+                            LeftBrace(),
+                            Name("a"),
+                            Operator("="),
+                            IntLit(4),
+                            Operator(","),
+                            Name("b"),
+                            Operator("="),
+                            StringLit("z"),
+                            RightBrace(),
+                        ]
+                    )
+                )
             ),
             Record({"a": Int(4), "b": String("z")}),
         )
 
     def test_non_variable_in_assignment_raises_parse_error(self) -> None:
         with self.assertRaises(ParseError) as ctx:
-            parse([IntLit(3), Operator("="), IntLit(4)])
+            parse(Peekable(iter([IntLit(3), Operator("="), IntLit(4)])))
         self.assertEqual(ctx.exception.args[0], "expected variable in assignment Int(value=3)")
 
     def test_non_assign_in_record_constructor_raises_parse_error(self) -> None:
         with self.assertRaises(ParseError) as ctx:
-            parse([LeftBrace(), IntLit(1), Operator(","), IntLit(2), RightBrace()])
+            parse(Peekable(iter([LeftBrace(), IntLit(1), Operator(","), IntLit(2), RightBrace()])))
         self.assertEqual(ctx.exception.args[0], "failed to parse variable assignment in record constructor")
 
     def test_parse_right_eval_returns_binop(self) -> None:
-        self.assertEqual(parse([Name("a"), Operator("!"), Name("b")]), Binop(BinopKind.RIGHT_EVAL, Var("a"), Var("b")))
+        self.assertEqual(
+            parse(Peekable(iter([Name("a"), Operator("!"), Name("b")]))),
+            Binop(BinopKind.RIGHT_EVAL, Var("a"), Var("b")),
+        )
 
     def test_parse_right_eval_with_defs_returns_binop(self) -> None:
         self.assertEqual(
-            parse([Name("a"), Operator("!"), Name("b"), Operator("."), Name("c")]),
+            parse(Peekable(iter([Name("a"), Operator("!"), Name("b"), Operator("."), Name("c")]))),
             Binop(BinopKind.RIGHT_EVAL, Var("a"), Where(Var("b"), Var("c"))),
         )
 
     def test_parse_match_no_cases_raises_parse_error(self) -> None:
         with self.assertRaises(ParseError) as ctx:
-            parse([Operator("|")])
+            parse(Peekable(iter([Operator("|")])))
         self.assertEqual(ctx.exception.args[0], "unexpected end of input")
 
     def test_parse_match_one_case(self) -> None:
         self.assertEqual(
-            parse([Operator("|"), IntLit(1), Operator("->"), IntLit(2)]),
+            parse(Peekable(iter([Operator("|"), IntLit(1), Operator("->"), IntLit(2)]))),
             MatchFunction([MatchCase(Int(1), Int(2))]),
         )
 
     def test_parse_match_two_cases(self) -> None:
         self.assertEqual(
             parse(
-                [
-                    Operator("|"),
-                    IntLit(1),
-                    Operator("->"),
-                    IntLit(2),
-                    Operator("|"),
-                    IntLit(2),
-                    Operator("->"),
-                    IntLit(3),
-                ]
+                Peekable(
+                    iter(
+                        [
+                            Operator("|"),
+                            IntLit(1),
+                            Operator("->"),
+                            IntLit(2),
+                            Operator("|"),
+                            IntLit(2),
+                            Operator("->"),
+                            IntLit(3),
+                        ]
+                    )
+                )
             ),
             MatchFunction(
                 [
@@ -2520,21 +2556,21 @@ class ParserTests(unittest.TestCase):
     def test_parse_compose(self) -> None:
         gensym_reset()
         self.assertEqual(
-            parse([Name("f"), Operator(">>"), Name("g")]),
+            parse(Peekable(iter([Name("f"), Operator(">>"), Name("g")]))),
             Function(Var("$v0"), Apply(Var("g"), Apply(Var("f"), Var("$v0")))),
         )
 
     def test_parse_compose_reverse(self) -> None:
         gensym_reset()
         self.assertEqual(
-            parse([Name("f"), Operator("<<"), Name("g")]),
+            parse(Peekable(iter([Name("f"), Operator("<<"), Name("g")]))),
             Function(Var("$v0"), Apply(Var("f"), Apply(Var("g"), Var("$v0")))),
         )
 
     def test_parse_double_compose(self) -> None:
         gensym_reset()
         self.assertEqual(
-            parse([Name("f"), Operator("<<"), Name("g"), Operator("<<"), Name("h")]),
+            parse(Peekable(iter([Name("f"), Operator("<<"), Name("g"), Operator("<<"), Name("h")]))),
             Function(
                 Var("$v1"),
                 Apply(Var("f"), Apply(Function(Var("$v0"), Apply(Var("g"), Apply(Var("h"), Var("$v0")))), Var("$v1"))),
@@ -2543,121 +2579,161 @@ class ParserTests(unittest.TestCase):
 
     def test_boolean_and_binds_tighter_than_or(self) -> None:
         self.assertEqual(
-            parse([Name("x"), Operator("||"), Name("y"), Operator("&&"), Name("z")]),
+            parse(Peekable(iter([Name("x"), Operator("||"), Name("y"), Operator("&&"), Name("z")]))),
             Binop(BinopKind.BOOL_OR, Var("x"), Binop(BinopKind.BOOL_AND, Var("y"), Var("z"))),
         )
 
     def test_parse_list_spread(self) -> None:
         self.assertEqual(
-            parse([LeftBracket(), IntLit(1), Operator(","), Operator("..."), RightBracket()]),
+            parse(Peekable(iter([LeftBracket(), IntLit(1), Operator(","), Operator("..."), RightBracket()]))),
             List([Int(1), Spread()]),
         )
 
     @unittest.skip("TODO(max): Raise if ...x is used with non-name")
     def test_parse_list_with_non_name_expr_after_spread_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, re.escape("unexpected token IntLit(lineno=-1, value=1)")):
-            parse([LeftBracket(), IntLit(1), Operator(","), Operator("..."), IntLit(2), RightBracket()])
+            parse(Peekable(iter([LeftBracket(), IntLit(1), Operator(","), Operator("..."), IntLit(2), RightBracket()])))
 
     def test_parse_list_with_named_spread(self) -> None:
         self.assertEqual(
             parse(
-                [
-                    LeftBracket(),
-                    IntLit(1),
-                    Operator(","),
-                    Operator("..."),
-                    Name("rest"),
-                    RightBracket(),
-                ]
+                Peekable(
+                    iter(
+                        [
+                            LeftBracket(),
+                            IntLit(1),
+                            Operator(","),
+                            Operator("..."),
+                            Name("rest"),
+                            RightBracket(),
+                        ]
+                    )
+                )
             ),
             List([Int(1), Spread("rest")]),
         )
 
     def test_parse_list_spread_beginning_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of list match")):
-            parse([LeftBracket(), Operator("..."), Operator(","), IntLit(1), RightBracket()])
+            parse(Peekable(iter([LeftBracket(), Operator("..."), Operator(","), IntLit(1), RightBracket()])))
 
     def test_parse_list_named_spread_beginning_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of list match")):
-            parse([LeftBracket(), Operator("..."), Name("rest"), Operator(","), IntLit(1), RightBracket()])
+            parse(
+                Peekable(iter([LeftBracket(), Operator("..."), Name("rest"), Operator(","), IntLit(1), RightBracket()]))
+            )
 
     def test_parse_list_spread_middle_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of list match")):
-            parse([LeftBracket(), IntLit(1), Operator(","), Operator("..."), Operator(","), IntLit(1), RightBracket()])
+            parse(
+                Peekable(
+                    iter(
+                        [
+                            LeftBracket(),
+                            IntLit(1),
+                            Operator(","),
+                            Operator("..."),
+                            Operator(","),
+                            IntLit(1),
+                            RightBracket(),
+                        ]
+                    )
+                )
+            )
 
     def test_parse_list_named_spread_middle_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of list match")):
             parse(
-                [
-                    LeftBracket(),
-                    IntLit(1),
-                    Operator(","),
-                    Operator("..."),
-                    Name("rest"),
-                    Operator(","),
-                    IntLit(1),
-                    RightBracket(),
-                ]
+                Peekable(
+                    iter(
+                        [
+                            LeftBracket(),
+                            IntLit(1),
+                            Operator(","),
+                            Operator("..."),
+                            Name("rest"),
+                            Operator(","),
+                            IntLit(1),
+                            RightBracket(),
+                        ]
+                    )
+                )
             )
 
     def test_parse_record_spread(self) -> None:
         self.assertEqual(
-            parse([LeftBrace(), Name("x"), Operator("="), IntLit(1), Operator(","), Operator("..."), RightBrace()]),
+            parse(
+                Peekable(
+                    iter(
+                        [LeftBrace(), Name("x"), Operator("="), IntLit(1), Operator(","), Operator("..."), RightBrace()]
+                    )
+                )
+            ),
             Record({"x": Int(1), "...": Spread()}),
         )
 
     def test_parse_record_spread_beginning_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of record match")):
-            parse([LeftBrace(), Operator("..."), Operator(","), Name("x"), Operator("="), IntLit(1), RightBrace()])
+            parse(
+                Peekable(
+                    iter(
+                        [LeftBrace(), Operator("..."), Operator(","), Name("x"), Operator("="), IntLit(1), RightBrace()]
+                    )
+                )
+            )
 
     def test_parse_record_spread_middle_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, re.escape("spread must come at end of record match")):
             parse(
-                [
-                    LeftBrace(),
-                    Name("x"),
-                    Operator("="),
-                    IntLit(1),
-                    Operator(","),
-                    Operator("..."),
-                    Operator(","),
-                    Name("y"),
-                    Operator("="),
-                    IntLit(2),
-                    RightBrace(),
-                ]
+                Peekable(
+                    iter(
+                        [
+                            LeftBrace(),
+                            Name("x"),
+                            Operator("="),
+                            IntLit(1),
+                            Operator(","),
+                            Operator("..."),
+                            Operator(","),
+                            Name("y"),
+                            Operator("="),
+                            IntLit(2),
+                            RightBrace(),
+                        ]
+                    )
+                )
             )
 
     def test_parse_record_with_only_comma_raises_parse_error(self) -> None:
         with self.assertRaises(UnexpectedTokenError) as parse_error:
-            parse([LeftBrace(), Operator(","), RightBrace()])
+            parse(Peekable(iter([LeftBrace(), Operator(","), RightBrace()])))
 
         self.assertEqual(parse_error.exception.unexpected_token, Operator(","))
 
     def test_parse_record_with_two_commas_raises_parse_error(self) -> None:
         with self.assertRaises(UnexpectedTokenError) as parse_error:
-            parse([LeftBrace(), Operator(","), Operator(","), RightBrace()])
+            parse(Peekable(iter([LeftBrace(), Operator(","), Operator(","), RightBrace()])))
 
         self.assertEqual(parse_error.exception.unexpected_token, Operator(","))
 
     def test_parse_record_with_trailing_comma_raises_parse_error(self) -> None:
         with self.assertRaises(UnexpectedTokenError) as parse_error:
-            parse([LeftBrace(), Name("x"), Operator("="), IntLit(1), Operator(","), RightBrace()])
+            parse(Peekable(iter([LeftBrace(), Name("x"), Operator("="), IntLit(1), Operator(","), RightBrace()])))
 
         self.assertEqual(parse_error.exception.unexpected_token, RightBrace())
 
     def test_parse_variant_returns_variant(self) -> None:
-        self.assertEqual(parse([Hash(), Name("abc"), IntLit(1)]), Variant("abc", Int(1)))
+        self.assertEqual(parse(Peekable(iter([Hash(), Name("abc"), IntLit(1)]))), Variant("abc", Int(1)))
 
     def test_parse_variant_non_name_raises_parse_error(self) -> None:
         with self.assertRaises(UnexpectedTokenError) as parse_error:
-            parse([Hash(), IntLit(1)])
+            parse(Peekable(iter([Hash(), IntLit(1)])))
 
         self.assertEqual(parse_error.exception.unexpected_token, IntLit(1))
 
     def test_parse_variant_eof_raises_unexpected_eof_error(self) -> None:
         with self.assertRaises(UnexpectedEOFError):
-            parse([Hash()])
+            parse(Peekable(iter([Hash()])))
 
     def test_match_with_variant(self) -> None:
         ast = parse(tokenize("| #true () -> 123"))

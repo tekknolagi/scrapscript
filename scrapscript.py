@@ -1604,169 +1604,171 @@ class ScrapMonad:
 
 class TokenizerTests(unittest.TestCase):
     def test_tokenize_digit(self) -> None:
-        self.assertEqual(tokenize("1"), [IntLit(1)])
+        self.assertEqual(list(tokenize("1")), [IntLit(1)])
 
     def test_tokenize_multiple_digits(self) -> None:
-        self.assertEqual(tokenize("123"), [IntLit(123)])
+        self.assertEqual(list(tokenize("123")), [IntLit(123)])
 
     def test_tokenize_negative_int(self) -> None:
-        self.assertEqual(tokenize("-123"), [Operator("-"), IntLit(123)])
+        self.assertEqual(list(tokenize("-123")), [Operator("-"), IntLit(123)])
 
     def test_tokenize_float(self) -> None:
-        self.assertEqual(tokenize("3.14"), [FloatLit(3.14)])
+        self.assertEqual(list(tokenize("3.14")), [FloatLit(3.14)])
 
     def test_tokenize_negative_float(self) -> None:
-        self.assertEqual(tokenize("-3.14"), [Operator("-"), FloatLit(3.14)])
+        self.assertEqual(list(tokenize("-3.14")), [Operator("-"), FloatLit(3.14)])
 
     @unittest.skip("TODO: support floats with no integer part")
     def test_tokenize_float_with_no_integer_part(self) -> None:
-        self.assertEqual(tokenize(".14"), [FloatLit(0.14)])
+        self.assertEqual(list(tokenize(".14")), [FloatLit(0.14)])
 
     def test_tokenize_float_with_no_decimal_part(self) -> None:
-        self.assertEqual(tokenize("10."), [FloatLit(10.0)])
+        self.assertEqual(list(tokenize("10.")), [FloatLit(10.0)])
 
     def test_tokenize_float_with_multiple_decimal_points_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, re.escape("unexpected token '.'")):
-            tokenize("1.0.1")
+            list(tokenize("1.0.1"))
 
     def test_tokenize_binop(self) -> None:
-        self.assertEqual(tokenize("1 + 2"), [IntLit(1), Operator("+"), IntLit(2)])
+        self.assertEqual(list(tokenize("1 + 2")), [IntLit(1), Operator("+"), IntLit(2)])
 
     def test_tokenize_binop_no_spaces(self) -> None:
-        self.assertEqual(tokenize("1+2"), [IntLit(1), Operator("+"), IntLit(2)])
+        self.assertEqual(list(tokenize("1+2")), [IntLit(1), Operator("+"), IntLit(2)])
 
     def test_tokenize_two_oper_chars_returns_two_ops(self) -> None:
-        self.assertEqual(tokenize(",:"), [Operator(","), Operator(":")])
+        self.assertEqual(list(tokenize(",:")), [Operator(","), Operator(":")])
 
     def test_tokenize_binary_sub_no_spaces(self) -> None:
-        self.assertEqual(tokenize("1-2"), [IntLit(1), Operator("-"), IntLit(2)])
+        self.assertEqual(list(tokenize("1-2")), [IntLit(1), Operator("-"), IntLit(2)])
 
     def test_tokenize_binop_var(self) -> None:
         ops = ["+", "-", "*", "/", "^", "%", "==", "/=", "<", ">", "<=", ">=", "&&", "||", "++", ">+", "+<"]
         for op in ops:
             with self.subTest(op=op):
-                self.assertEqual(tokenize(f"a {op} b"), [Name("a"), Operator(op), Name("b")])
-                self.assertEqual(tokenize(f"a{op}b"), [Name("a"), Operator(op), Name("b")])
+                self.assertEqual(list(tokenize(f"a {op} b")), [Name("a"), Operator(op), Name("b")])
+                self.assertEqual(list(tokenize(f"a{op}b")), [Name("a"), Operator(op), Name("b")])
 
     def test_tokenize_var(self) -> None:
-        self.assertEqual(tokenize("abc"), [Name("abc")])
+        self.assertEqual(list(tokenize("abc")), [Name("abc")])
 
     @unittest.skip("TODO: make this fail to tokenize")
     def test_tokenize_var_with_quote(self) -> None:
-        self.assertEqual(tokenize("sha1'abc"), [Name("sha1'abc")])
+        self.assertEqual(list(tokenize("sha1'abc")), [Name("sha1'abc")])
 
     def test_tokenize_dollar_sha1_var(self) -> None:
-        self.assertEqual(tokenize("$sha1'foo"), [Name("$sha1'foo")])
+        self.assertEqual(list(tokenize("$sha1'foo")), [Name("$sha1'foo")])
 
     def test_tokenize_dollar_dollar_var(self) -> None:
-        self.assertEqual(tokenize("$$bills"), [Name("$$bills")])
+        self.assertEqual(list(tokenize("$$bills")), [Name("$$bills")])
 
     def test_tokenize_dot_dot_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, re.escape("unexpected token '..'")):
-            tokenize("..")
+            list(tokenize(".."))
 
     def test_tokenize_spread(self) -> None:
-        self.assertEqual(tokenize("..."), [Operator("...")])
+        self.assertEqual(list(tokenize("...")), [Operator("...")])
 
     def test_ignore_whitespace(self) -> None:
-        self.assertEqual(tokenize("1\n+\t2"), [IntLit(1), Operator("+"), IntLit(2)])
+        self.assertEqual(list(tokenize("1\n+\t2")), [IntLit(1), Operator("+"), IntLit(2)])
 
     def test_ignore_line_comment(self) -> None:
-        self.assertEqual(tokenize("-- 1\n2"), [IntLit(2)])
+        self.assertEqual(list(tokenize("-- 1\n2")), [IntLit(2)])
 
     def test_tokenize_string(self) -> None:
-        self.assertEqual(tokenize('"hello"'), [StringLit("hello")])
+        self.assertEqual(list(tokenize('"hello"')), [StringLit("hello")])
 
     def test_tokenize_string_with_spaces(self) -> None:
-        self.assertEqual(tokenize('"hello world"'), [StringLit("hello world")])
+        self.assertEqual(list(tokenize('"hello world"')), [StringLit("hello world")])
 
     def test_tokenize_string_missing_end_quote_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(UnexpectedEOFError, "while reading string"):
-            tokenize('"hello')
+            list(tokenize('"hello'))
 
     def test_tokenize_with_trailing_whitespace(self) -> None:
-        self.assertEqual(tokenize("- "), [Operator("-")])
-        self.assertEqual(tokenize("-- "), [])
-        self.assertEqual(tokenize("+ "), [Operator("+")])
-        self.assertEqual(tokenize("123 "), [IntLit(123)])
-        self.assertEqual(tokenize("abc "), [Name("abc")])
-        self.assertEqual(tokenize("[ "), [LeftBracket()])
-        self.assertEqual(tokenize("] "), [RightBracket()])
+        self.assertEqual(list(tokenize("- ")), [Operator("-")])
+        self.assertEqual(list(tokenize("-- ")), [])
+        self.assertEqual(list(tokenize("+ ")), [Operator("+")])
+        self.assertEqual(list(tokenize("123 ")), [IntLit(123)])
+        self.assertEqual(list(tokenize("abc ")), [Name("abc")])
+        self.assertEqual(list(tokenize("[ ")), [LeftBracket()])
+        self.assertEqual(list(tokenize("] ")), [RightBracket()])
 
     def test_tokenize_empty_list(self) -> None:
-        self.assertEqual(tokenize("[ ]"), [LeftBracket(), RightBracket()])
+        self.assertEqual(list(tokenize("[ ]")), [LeftBracket(), RightBracket()])
 
     def test_tokenize_empty_list_with_spaces(self) -> None:
-        self.assertEqual(tokenize("[ ]"), [LeftBracket(), RightBracket()])
+        self.assertEqual(list(tokenize("[ ]")), [LeftBracket(), RightBracket()])
 
     def test_tokenize_list_with_items(self) -> None:
-        self.assertEqual(tokenize("[ 1 , 2 ]"), [LeftBracket(), IntLit(1), Operator(","), IntLit(2), RightBracket()])
+        self.assertEqual(
+            list(tokenize("[ 1 , 2 ]")), [LeftBracket(), IntLit(1), Operator(","), IntLit(2), RightBracket()]
+        )
 
     def test_tokenize_list_with_no_spaces(self) -> None:
-        self.assertEqual(tokenize("[1,2]"), [LeftBracket(), IntLit(1), Operator(","), IntLit(2), RightBracket()])
+        self.assertEqual(list(tokenize("[1,2]")), [LeftBracket(), IntLit(1), Operator(","), IntLit(2), RightBracket()])
 
     def test_tokenize_function(self) -> None:
         self.assertEqual(
-            tokenize("a -> b -> a + b"),
+            list(tokenize("a -> b -> a + b")),
             [Name("a"), Operator("->"), Name("b"), Operator("->"), Name("a"), Operator("+"), Name("b")],
         )
 
     def test_tokenize_function_with_no_spaces(self) -> None:
         self.assertEqual(
-            tokenize("a->b->a+b"),
+            list(tokenize("a->b->a+b")),
             [Name("a"), Operator("->"), Name("b"), Operator("->"), Name("a"), Operator("+"), Name("b")],
         )
 
     def test_tokenize_where(self) -> None:
-        self.assertEqual(tokenize("a . b"), [Name("a"), Operator("."), Name("b")])
+        self.assertEqual(list(tokenize("a . b")), [Name("a"), Operator("."), Name("b")])
 
     def test_tokenize_assert(self) -> None:
-        self.assertEqual(tokenize("a ? b"), [Name("a"), Operator("?"), Name("b")])
+        self.assertEqual(list(tokenize("a ? b")), [Name("a"), Operator("?"), Name("b")])
 
     def test_tokenize_hastype(self) -> None:
-        self.assertEqual(tokenize("a : b"), [Name("a"), Operator(":"), Name("b")])
+        self.assertEqual(list(tokenize("a : b")), [Name("a"), Operator(":"), Name("b")])
 
     def test_tokenize_minus_returns_minus(self) -> None:
-        self.assertEqual(tokenize("-"), [Operator("-")])
+        self.assertEqual(list(tokenize("-")), [Operator("-")])
 
     def test_tokenize_tilde_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, "unexpected token '~'"):
-            tokenize("~")
+            list(tokenize("~"))
 
     def test_tokenize_tilde_equals_raises_parse_error(self) -> None:
         with self.assertRaisesRegex(ParseError, "unexpected token '~'"):
-            tokenize("~=")
+            list(tokenize("~="))
 
     def test_tokenize_tilde_tilde_returns_empty_bytes(self) -> None:
-        self.assertEqual(tokenize("~~"), [BytesLit("", 64)])
+        self.assertEqual(list(tokenize("~~")), [BytesLit("", 64)])
 
     def test_tokenize_bytes_returns_bytes_base64(self) -> None:
-        self.assertEqual(tokenize("~~QUJD"), [BytesLit("QUJD", 64)])
+        self.assertEqual(list(tokenize("~~QUJD")), [BytesLit("QUJD", 64)])
 
     def test_tokenize_bytes_base85(self) -> None:
-        self.assertEqual(tokenize("~~85'K|(_"), [BytesLit("K|(_", 85)])
+        self.assertEqual(list(tokenize("~~85'K|(_")), [BytesLit("K|(_", 85)])
 
     def test_tokenize_bytes_base64(self) -> None:
-        self.assertEqual(tokenize("~~64'QUJD"), [BytesLit("QUJD", 64)])
+        self.assertEqual(list(tokenize("~~64'QUJD")), [BytesLit("QUJD", 64)])
 
     def test_tokenize_bytes_base32(self) -> None:
-        self.assertEqual(tokenize("~~32'IFBEG==="), [BytesLit("IFBEG===", 32)])
+        self.assertEqual(list(tokenize("~~32'IFBEG===")), [BytesLit("IFBEG===", 32)])
 
     def test_tokenize_bytes_base16(self) -> None:
-        self.assertEqual(tokenize("~~16'414243"), [BytesLit("414243", 16)])
+        self.assertEqual(list(tokenize("~~16'414243")), [BytesLit("414243", 16)])
 
     def test_tokenize_hole(self) -> None:
-        self.assertEqual(tokenize("()"), [LeftParen(), RightParen()])
+        self.assertEqual(list(tokenize("()")), [LeftParen(), RightParen()])
 
     def test_tokenize_hole_with_spaces(self) -> None:
-        self.assertEqual(tokenize("( )"), [LeftParen(), RightParen()])
+        self.assertEqual(list(tokenize("( )")), [LeftParen(), RightParen()])
 
     def test_tokenize_parenthetical_expression(self) -> None:
-        self.assertEqual(tokenize("(1+2)"), [LeftParen(), IntLit(1), Operator("+"), IntLit(2), RightParen()])
+        self.assertEqual(list(tokenize("(1+2)")), [LeftParen(), IntLit(1), Operator("+"), IntLit(2), RightParen()])
 
     def test_tokenize_pipe(self) -> None:
         self.assertEqual(
-            tokenize("1 |> f . f = a -> a + 1"),
+            list(tokenize("1 |> f . f = a -> a + 1")),
             [
                 IntLit(1),
                 Operator("|>"),
@@ -1784,7 +1786,7 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_reverse_pipe(self) -> None:
         self.assertEqual(
-            tokenize("f <| 1 . f = a -> a + 1"),
+            list(tokenize("f <| 1 . f = a -> a + 1")),
             [
                 Name("f"),
                 Operator("<|"),
@@ -1802,25 +1804,25 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_record_no_fields(self) -> None:
         self.assertEqual(
-            tokenize("{ }"),
+            list(tokenize("{ }")),
             [LeftBrace(), RightBrace()],
         )
 
     def test_tokenize_record_no_fields_no_spaces(self) -> None:
         self.assertEqual(
-            tokenize("{}"),
+            list(tokenize("{}")),
             [LeftBrace(), RightBrace()],
         )
 
     def test_tokenize_record_one_field(self) -> None:
         self.assertEqual(
-            tokenize("{ a = 4 }"),
+            list(tokenize("{ a = 4 }")),
             [LeftBrace(), Name("a"), Operator("="), IntLit(4), RightBrace()],
         )
 
     def test_tokenize_record_multiple_fields(self) -> None:
         self.assertEqual(
-            tokenize('{ a = 4, b = "z" }'),
+            list(tokenize('{ a = 4, b = "z" }')),
             [
                 LeftBrace(),
                 Name("a"),
@@ -1836,16 +1838,16 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_record_access(self) -> None:
         self.assertEqual(
-            tokenize("r@a"),
+            list(tokenize("r@a")),
             [Name("r"), Operator("@"), Name("a")],
         )
 
     def test_tokenize_right_eval(self) -> None:
-        self.assertEqual(tokenize("a!b"), [Name("a"), Operator("!"), Name("b")])
+        self.assertEqual(list(tokenize("a!b")), [Name("a"), Operator("!"), Name("b")])
 
     def test_tokenize_match(self) -> None:
         self.assertEqual(
-            tokenize("g = | 1 -> 2 | 2 -> 3"),
+            list(tokenize("g = | 1 -> 2 | 2 -> 3")),
             [
                 Name("g"),
                 Operator("="),
@@ -1862,13 +1864,13 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_compose(self) -> None:
         self.assertEqual(
-            tokenize("f >> g"),
+            list(tokenize("f >> g")),
             [Name("f"), Operator(">>"), Name("g")],
         )
 
     def test_tokenize_compose_reverse(self) -> None:
         self.assertEqual(
-            tokenize("f << g"),
+            list(tokenize("f << g")),
             [Name("f"), Operator("<<"), Name("g")],
         )
 
@@ -2082,11 +2084,11 @@ class TokenizerTests(unittest.TestCase):
         self.assertEqual(b.source_extent.end.byteno, 3)
 
     def test_tokenize_list_with_only_spread(self) -> None:
-        self.assertEqual(tokenize("[ ... ]"), [LeftBracket(), Operator("..."), RightBracket()])
+        self.assertEqual(list(tokenize("[ ... ]")), [LeftBracket(), Operator("..."), RightBracket()])
 
     def test_tokenize_list_with_spread(self) -> None:
         self.assertEqual(
-            tokenize("[ 1 , ... ]"),
+            list(tokenize("[ 1 , ... ]")),
             [
                 LeftBracket(),
                 IntLit(1),
@@ -2098,7 +2100,7 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_list_with_spread_no_spaces(self) -> None:
         self.assertEqual(
-            tokenize("[ 1,... ]"),
+            list(tokenize("[ 1,... ]")),
             [
                 LeftBracket(),
                 IntLit(1),
@@ -2110,7 +2112,7 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_list_with_named_spread(self) -> None:
         self.assertEqual(
-            tokenize("[1,...rest]"),
+            list(tokenize("[1,...rest]")),
             [
                 LeftBracket(),
                 IntLit(1),
@@ -2123,7 +2125,7 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_record_with_only_spread(self) -> None:
         self.assertEqual(
-            tokenize("{ ... }"),
+            list(tokenize("{ ... }")),
             [
                 LeftBrace(),
                 Operator("..."),
@@ -2133,7 +2135,7 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_record_with_spread(self) -> None:
         self.assertEqual(
-            tokenize("{ x = 1, ...}"),
+            list(tokenize("{ x = 1, ...}")),
             [
                 LeftBrace(),
                 Name("x"),
@@ -2147,7 +2149,7 @@ class TokenizerTests(unittest.TestCase):
 
     def test_tokenize_record_with_spread_no_spaces(self) -> None:
         self.assertEqual(
-            tokenize("{x=1,...}"),
+            list(tokenize("{x=1,...}")),
             [
                 LeftBrace(),
                 Name("x"),
@@ -2160,10 +2162,10 @@ class TokenizerTests(unittest.TestCase):
         )
 
     def test_tokenize_variant_with_whitespace(self) -> None:
-        self.assertEqual(tokenize("# \n\r\n\t abc"), [Hash(), Name("abc")])
+        self.assertEqual(list(tokenize("# \n\r\n\t abc")), [Hash(), Name("abc")])
 
     def test_tokenize_variant_with_no_space(self) -> None:
-        self.assertEqual(tokenize("#abc"), [Hash(), Name("abc")])
+        self.assertEqual(list(tokenize("#abc")), [Hash(), Name("abc")])
 
 
 class ParserTests(unittest.TestCase):

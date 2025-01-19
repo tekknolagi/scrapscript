@@ -18,7 +18,7 @@ import urllib.request
 from dataclasses import dataclass
 from enum import auto
 from types import ModuleType
-from typing import Any, Callable, Dict, Mapping, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, Mapping, Optional, Set, Tuple, Union
 
 readline: Optional[ModuleType]
 try:

@@ -686,7 +686,7 @@ def parse_binary(tokens: Peekable, p: float) -> "Object":
     return l
 
 
-def parse(tokens: typing.List[Token]) -> "Object":
+def parse(tokens: Peekable) -> "Object":
     return parse_binary(tokens, 0)
 
 

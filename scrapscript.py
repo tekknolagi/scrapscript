@@ -362,6 +362,33 @@ class Peekable:
         return self.cached_element
 
 
+class PeekableTests(unittest.TestCase):
+    def test_can_create_peekable(self) -> None:
+        Peekable(iter([1, 2, 3]))
+
+    def test_can_iterate_over_peekable(self) -> None:
+        sequence = [1, 2, 3]
+        for idx, e in enumerate(Peekable(iter(sequence))):
+            self.assertEqual(sequence[idx], e)
+
+    def test_can_peek_peekable(self) -> None:
+        sequence = [1, 2, 3]
+        p = Peekable(iter(sequence))
+        self.assertEqual(p.peek(), 1)
+        # Ensure we can peek repeatedly
+        self.assertEqual(p.peek(), 1)
+        for idx, e in enumerate(p):
+            self.assertEqual(sequence[idx], e)
+
+    def test_peek_on_empty_peekable_raises_stop_iteration(self) -> None:
+        with self.assertRaises(StopIteration):
+            Peekable(iter([])).peek()
+
+    def test_next_on_empty_peekable_raises_stop_iteration(self) -> None:
+        with self.assertRaises(StopIteration):
+            next(Peekable(iter([])))
+
+
 def tokenize(x: str) -> Peekable:
     lexer = Lexer(x)
     tokens = []

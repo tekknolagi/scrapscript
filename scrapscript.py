@@ -340,12 +340,12 @@ class Lexer:
         return self.make_token(BytesLit, value, int(base) if base else 64)
 
 
-def tokenize(x: str) -> typing.List[Token]:
+def tokenize(x: str) -> Peekable:
     lexer = Lexer(x)
     tokens = []
     while (token := lexer.read_token()) and not isinstance(token, EOF):
         tokens.append(token)
-    return tokens
+    return Peekable(iter(tokens))
 
 
 @dataclass(frozen=True)

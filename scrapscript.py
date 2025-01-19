@@ -2913,7 +2913,7 @@ class MatchTests(unittest.TestCase):
                   | d -> e"""
         tokens = tokenize(text)
         self.assertEqual(
-            tokens,
+            list(tokens),
             [
                 Operator("|"),
                 Name("a"),
@@ -2927,6 +2927,7 @@ class MatchTests(unittest.TestCase):
                 Name("e"),
             ],
         )
+        tokens = tokenize(text)
         ast = parse(tokens)
         self.assertEqual(
             ast, MatchFunction([MatchCase(Var("a"), Apply(Var("b"), Var("c"))), MatchCase(Var("d"), Var("e"))])

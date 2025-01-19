@@ -633,12 +633,14 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
         raise UnexpectedEOFError("unexpected end of input")
 
 
-def parse_binary(tokens: typing.List[Token], p: float) -> "Object":
+def parse_binary(tokens: Peekable, p: float) -> "Object":
     l: Object = parse_unary(tokens, p)
     while True:
-        if not tokens:
+        op: Token
+        try:
+            op = tokens.peek()
+        except StopIteration:
             break
-        op = tokens[0]
         if isinstance(op, (RightParen, RightBracket, RightBrace)):
             break
         if not isinstance(op, Operator):
@@ -652,7 +654,7 @@ def parse_binary(tokens: typing.List[Token], p: float) -> "Object":
         pl, pr = prec.pl, prec.pr
         if pl < p:
             break
-        tokens.pop(0)
+        next(tokens)
         if op == Operator("="):
             if not isinstance(l, Var):
                 raise ParseError(f"expected variable in assignment {l!r}")

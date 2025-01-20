@@ -340,26 +340,27 @@ class Lexer:
         return self.make_token(BytesLit, value, int(base) if base else 64)
 
 
+PEEK_EMPTY = object()
+
+
 class Peekable:
     def __init__(self, iterator: Iterator[Any]) -> None:
-        self.iterator = iter(iterator)
-        # Use a Boolean instead of an Optional[T] in case an element
-        # in the sequence is `None`
-        self.has_cached_element = False
+        self.iterator = iterator
+        self.cache = PEEK_EMPTY
 
     def __iter__(self) -> Iterator[Any]:
         return self
 
     def __next__(self) -> Any:
-        if self.has_cached_element:
-            self.has_cached_element = False
-            return self.cached_element
+        if self.cache is not PEEK_EMPTY:
+            result = self.cache
+            self.cache = PEEK_EMPTY
+            return result
         return next(self.iterator)
 
     def peek(self) -> Any:
-        self.cached_element = self.__next__()
-        self.has_cached_element = True
-        return self.cached_element
+        result = self.cache = next(self)
+        return result
 
 
 class PeekableTests(unittest.TestCase):
@@ -372,7 +373,7 @@ class PeekableTests(unittest.TestCase):
             self.assertEqual(sequence[idx], e)
 
     def test_peek_next(self) -> None:
-        iterator = iter(Peekable([1, 2, 3]))
+        iterator = Peekable(iter([1, 2, 3]))
         self.assertEqual(iterator.peek(), 1)
         self.assertEqual(next(iterator), 1)
         self.assertEqual(iterator.peek(), 2)

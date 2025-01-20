@@ -532,121 +532,118 @@ gensym_reset()
 
 
 def parse_unary(tokens: Peekable, p: float) -> "Object":
-    try:
-        token = next(tokens)
-        l: Object
-        if isinstance(token, IntLit):
-            return Int(token.value)
-        elif isinstance(token, FloatLit):
-            return Float(token.value)
-        elif isinstance(token, Name):
-            # TODO: Handle kebab case vars
-            return Var(token.value)
-        elif isinstance(token, Hash):
-            if isinstance(variant := tokens.peek(), Name):
-                next(tokens)
-                # It needs to be higher than the precedence of the -> operator so that
-                # we can match variants in MatchFunction
-                # It needs to be higher than the precedence of the && operator so that
-                # we can use #true() and #false() in boolean expressions
-                # It needs to be higher than the precedence of juxtaposition so that
-                # f #true() #false() is parsed as f(TRUE)(FALSE)
-                return Variant(variant.value, parse_binary(tokens, PS[""].pr + 1))
+    token = next(tokens)
+    l: Object
+    if isinstance(token, IntLit):
+        return Int(token.value)
+    elif isinstance(token, FloatLit):
+        return Float(token.value)
+    elif isinstance(token, Name):
+        # TODO: Handle kebab case vars
+        return Var(token.value)
+    elif isinstance(token, Hash):
+        if isinstance(variant := tokens.peek(), Name):
+            next(tokens)
+            # It needs to be higher than the precedence of the -> operator so that
+            # we can match variants in MatchFunction
+            # It needs to be higher than the precedence of the && operator so that
+            # we can use #true() and #false() in boolean expressions
+            # It needs to be higher than the precedence of juxtaposition so that
+            # f #true() #false() is parsed as f(TRUE)(FALSE)
+            return Variant(variant.value, parse_binary(tokens, PS[""].pr + 1))
+        else:
+            raise UnexpectedTokenError(variant)
+    elif isinstance(token, BytesLit):
+        base = token.base
+        if base == 85:
+            l = Bytes(base64.b85decode(token.value))
+        elif base == 64:
+            l = Bytes(base64.b64decode(token.value))
+        elif base == 32:
+            l = Bytes(base64.b32decode(token.value))
+        elif base == 16:
+            l = Bytes(base64.b16decode(token.value))
+        else:
+            raise ParseError(f"unexpected base {base!r} in {token!r}")
+        return l
+    elif isinstance(token, StringLit):
+        return String(token.value)
+    elif token == Operator("..."):
+        try:
+            if isinstance(tokens.peek(), Name):
+                return Spread(next(tokens).value)
             else:
-                raise UnexpectedTokenError(variant)
-        elif isinstance(token, BytesLit):
-            base = token.base
-            if base == 85:
-                l = Bytes(base64.b85decode(token.value))
-            elif base == 64:
-                l = Bytes(base64.b64decode(token.value))
-            elif base == 32:
-                l = Bytes(base64.b32decode(token.value))
-            elif base == 16:
-                l = Bytes(base64.b16decode(token.value))
-            else:
-                raise ParseError(f"unexpected base {base!r} in {token!r}")
-            return l
-        elif isinstance(token, StringLit):
-            return String(token.value)
-        elif token == Operator("..."):
-            try:
-                if isinstance(tokens.peek(), Name):
-                    return Spread(next(tokens).value)
-                else:
-                    return Spread()
-            except StopIteration:
                 return Spread()
-        elif token == Operator("|"):
+        except StopIteration:
+            return Spread()
+    elif token == Operator("|"):
+        expr = parse_binary(tokens, PS["|"].pr)  # TODO: make this work for larger arities
+        if not isinstance(expr, Function):
+            raise ParseError(f"expected function in match expression {expr!r}")
+        cases = [MatchCase(expr.arg, expr.body)]
+        while True:
+            try:
+                if tokens.peek() != Operator("|"):
+                    break
+            except StopIteration:
+                break
+            next(tokens)
             expr = parse_binary(tokens, PS["|"].pr)  # TODO: make this work for larger arities
             if not isinstance(expr, Function):
                 raise ParseError(f"expected function in match expression {expr!r}")
-            cases = [MatchCase(expr.arg, expr.body)]
-            while True:
-                try:
-                    if tokens.peek() != Operator("|"):
-                        break
-                except StopIteration:
-                    break
-                next(tokens)
-                expr = parse_binary(tokens, PS["|"].pr)  # TODO: make this work for larger arities
-                if not isinstance(expr, Function):
-                    raise ParseError(f"expected function in match expression {expr!r}")
-                cases.append(MatchCase(expr.arg, expr.body))
-            return MatchFunction(cases)
-        elif isinstance(token, LeftParen):
-            if isinstance(tokens.peek(), RightParen):
-                l = Hole()
-            else:
-                l = parse(tokens)
+            cases.append(MatchCase(expr.arg, expr.body))
+        return MatchFunction(cases)
+    elif isinstance(token, LeftParen):
+        if isinstance(tokens.peek(), RightParen):
+            l = Hole()
+        else:
+            l = parse(tokens)
+        next(tokens)
+        return l
+    elif isinstance(token, LeftBracket):
+        l = List([])
+        token = tokens.peek()
+        if isinstance(token, RightBracket):
             next(tokens)
-            return l
-        elif isinstance(token, LeftBracket):
-            l = List([])
-            token = tokens.peek()
-            if isinstance(token, RightBracket):
-                next(tokens)
-            else:
+        else:
+            l.items.append(parse_binary(tokens, 2))
+            while not isinstance(next(tokens), RightBracket):
+                if isinstance(l.items[-1], Spread):
+                    raise ParseError("spread must come at end of list match")
+                # TODO: Implement .. operator
                 l.items.append(parse_binary(tokens, 2))
-                while not isinstance(next(tokens), RightBracket):
-                    if isinstance(l.items[-1], Spread):
-                        raise ParseError("spread must come at end of list match")
-                    # TODO: Implement .. operator
-                    l.items.append(parse_binary(tokens, 2))
-            return l
-        elif isinstance(token, LeftBrace):
-            l = Record({})
-            token = tokens.peek()
-            if isinstance(token, RightBrace):
-                next(tokens)
-            else:
+        return l
+    elif isinstance(token, LeftBrace):
+        l = Record({})
+        token = tokens.peek()
+        if isinstance(token, RightBrace):
+            next(tokens)
+        else:
+            assign = parse_assign(tokens, 2)
+            l.data[assign.name.name] = assign.value
+            while not isinstance(next(tokens), RightBrace):
+                if isinstance(assign.value, Spread):
+                    raise ParseError("spread must come at end of record match")
+                # TODO: Implement .. operator
                 assign = parse_assign(tokens, 2)
                 l.data[assign.name.name] = assign.value
-                while not isinstance(next(tokens), RightBrace):
-                    if isinstance(assign.value, Spread):
-                        raise ParseError("spread must come at end of record match")
-                    # TODO: Implement .. operator
-                    assign = parse_assign(tokens, 2)
-                    l.data[assign.name.name] = assign.value
-            return l
-        elif token == Operator("-"):
-            # Unary minus
-            # Precedence was chosen to be higher than binary ops so that -a op
-            # b is (-a) op b and not -(a op b).
-            # Precedence was chosen to be higher than function application so that
-            # -a b is (-a) b and not -(a b).
-            r = parse_binary(tokens, HIGHEST_PREC + 1)
-            if isinstance(r, Int):
-                assert r.value >= 0, "Tokens should never have negative values"
-                return Int(-r.value)
-            if isinstance(r, Float):
-                assert r.value >= 0, "Tokens should never have negative values"
-                return Float(-r.value)
-            return Binop(BinopKind.SUB, Int(0), r)
-        else:
-            raise UnexpectedTokenError(token)
-    except StopIteration:
-        raise UnexpectedEOFError("unexpected end of input")
+        return l
+    elif token == Operator("-"):
+        # Unary minus
+        # Precedence was chosen to be higher than binary ops so that -a op
+        # b is (-a) op b and not -(a op b).
+        # Precedence was chosen to be higher than function application so that
+        # -a b is (-a) b and not -(a b).
+        r = parse_binary(tokens, HIGHEST_PREC + 1)
+        if isinstance(r, Int):
+            assert r.value >= 0, "Tokens should never have negative values"
+            return Int(-r.value)
+        if isinstance(r, Float):
+            assert r.value >= 0, "Tokens should never have negative values"
+            return Float(-r.value)
+        return Binop(BinopKind.SUB, Int(0), r)
+    else:
+        raise UnexpectedTokenError(token)
 
 
 def parse_binary(tokens: Peekable, p: float) -> "Object":
@@ -703,7 +700,10 @@ def parse_binary(tokens: Peekable, p: float) -> "Object":
 
 
 def parse(tokens: Peekable) -> "Object":
-    return parse_binary(tokens, 0)
+    try:
+        return parse_binary(tokens, 0)
+    except StopIteration:
+        raise UnexpectedEOFError("unexpected end of input")
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -2740,6 +2740,11 @@ class ParserTests(unittest.TestCase):
 
     def test_parse_variant_returns_variant(self) -> None:
         self.assertEqual(parse(Peekable(iter([Hash(), Name("abc"), IntLit(1)]))), Variant("abc", Int(1)))
+
+    def test_parse_hash_raises_unexpected_eof_error(self) -> None:
+        tokens = Peekable(iter([Hash()]))
+        with self.assertRaises(UnexpectedEOFError):
+            parse(tokens)
 
     def test_parse_variant_non_name_raises_parse_error(self) -> None:
         with self.assertRaises(UnexpectedTokenError) as parse_error:

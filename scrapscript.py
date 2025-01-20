@@ -542,8 +542,7 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
         # TODO: Handle kebab case vars
         return Var(token.value)
     elif isinstance(token, Hash):
-        if isinstance(variant := tokens.peek(), Name):
-            next(tokens)
+        if isinstance(variant := next(tokens), Name):
             # It needs to be higher than the precedence of the -> operator so that
             # we can match variants in MatchFunction
             # It needs to be higher than the precedence of the && operator so that

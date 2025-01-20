@@ -342,7 +342,7 @@ class Lexer:
 
 class Peekable:
     def __init__(self, iterator: Iterator[Any]) -> None:
-        self.iterator = iterator
+        self.iterator = iter(iterator)
         # Use a Boolean instead of an Optional[T] in case an element
         # in the sequence is `None`
         self.has_cached_element = False
@@ -371,6 +371,19 @@ class PeekableTests(unittest.TestCase):
         for idx, e in enumerate(Peekable(iter(sequence))):
             self.assertEqual(sequence[idx], e)
 
+    def test_peek_next(self) -> None:
+        iterator = iter(Peekable([1, 2, 3]))
+        self.assertEqual(iterator.peek(), 1)
+        self.assertEqual(next(iterator), 1)
+        self.assertEqual(iterator.peek(), 2)
+        self.assertEqual(next(iterator), 2)
+        self.assertEqual(iterator.peek(), 3)
+        self.assertEqual(next(iterator), 3)
+        with self.assertRaises(StopIteration):
+            iterator.peek()
+        with self.assertRaises(StopIteration):
+            next(iterator)
+
     def test_can_peek_peekable(self) -> None:
         sequence = [1, 2, 3]
         p = Peekable(iter(sequence))
@@ -381,12 +394,14 @@ class PeekableTests(unittest.TestCase):
             self.assertEqual(sequence[idx], e)
 
     def test_peek_on_empty_peekable_raises_stop_iteration(self) -> None:
+        empty = Peekable(iter([]))
         with self.assertRaises(StopIteration):
-            Peekable(iter([])).peek()
+            empty.peek()
 
     def test_next_on_empty_peekable_raises_stop_iteration(self) -> None:
+        empty = Peekable(iter([]))
         with self.assertRaises(StopIteration):
-            next(Peekable(iter([])))
+            next(empty)
 
 
 def tokenize(x: str) -> Peekable:

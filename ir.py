@@ -125,6 +125,14 @@ class Control(Instr):
     pass
 
 
+@dataclasses.dataclass(eq=False)
+class NewClosure(Instr):
+    fn: IRFunction
+
+    def to_string(self, gvn: InstrId) -> str:
+        return super().to_string(gvn) + f", {self.fn.name()}"
+
+
 Env = Dict[str, Instr]
 
 
@@ -195,22 +203,32 @@ class CFG:
 
 
 @dataclasses.dataclass(eq=False)
-class IRFunction(Instr):
+class IRFunction:
+    id: int
     params: list[str]
     cfg: CFG = dataclasses.field(init=False, default_factory=CFG)
 
+    def name(self) -> str:
+        return f"fn{self.id}"
+
     def to_string(self, gvn: InstrId) -> str:
-        result = f"fn {gvn[self]} {{\n"
+        result = f"{self.name()} {{\n"
         result += self.cfg.to_string(self, gvn)
         return result + "}"
 
 
 class Compiler:
-    def __init__(self, entry: IRFunction) -> None:
+    def __init__(self) -> None:
+        self.fns: list[IRFunction] = []
+        entry = self.new_function([])
         self.gensym_counter: int = 0
         self.fn: IRFunction = entry
         self.block: Block = entry.cfg.entry
-        self.fns: list[IRFunction] = [entry]
+
+    def new_function(self, params: list[str]) -> IRFunction:
+        result = IRFunction(len(self.fns), params)
+        self.fns.append(result)
+        return result
 
     def gensym(self, stem: str = "tmp") -> str:
         self.gensym_counter += 1
@@ -237,6 +255,9 @@ class Compiler:
             return {}
         raise NotImplementedError(f"pattern {type(pattern)} {pattern}")
 
+    def compile_body(self, env: Env, exp: Object) -> None:
+        self.emit(Return(self.compile(env, exp)))
+
     def compile(self, env: Env, exp: Object) -> Instr:
         if isinstance(exp, Int):
             return self.emit(Const(exp))
@@ -249,7 +270,7 @@ class Compiler:
                 return self.emit(IntLess(left, right))
         if isinstance(exp, MatchFunction):
             param = self.gensym("arg")
-            fn = IRFunction([param])
+            fn = self.new_function([param])
             prev_fn = self.push_fn(fn)
             self.block = fn.cfg.entry
             #
@@ -267,11 +288,10 @@ class Compiler:
                 body_block = self.fn.cfg.new_block()
                 env_updates = self.compile_match_pattern(funcenv, funcenv[param], case.pattern, body_block, fallthrough)
                 self.block = body_block
-                case_result = self.compile({**funcenv, **env_updates}, case.body)
-                self.emit(Return(case_result))
+                self.compile_body({**funcenv, **env_updates}, case.body)
             #
             self.restore_fn(prev_fn)
-            return fn
+            return self.emit(NewClosure(fn))
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 
 
@@ -280,34 +300,104 @@ class IRTests(unittest.TestCase):
         return parse(tokenize(source))
 
     def test_int(self) -> None:
-        compiler = Compiler(IRFunction([]))
-        result = compiler.compile({}, Int(1))
-        self.assertEqual(result, Const(Int(1)))
+        compiler = Compiler()
+        compiler.compile_body({}, Int(1))
+        self.assertEqual(
+            compiler.fn.to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = Const<1>
+    Return v0
+  }
+}""",
+        )
 
     def test_add_int(self) -> None:
-        compiler = Compiler(IRFunction([]))
-        result = compiler.compile({}, self._parse("1 + 2"))
-        self.assertEqual(result, IntAdd(Const(Int(1)), Const(Int(2))))
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("1 + 2"))
+        self.assertEqual(
+            compiler.fn.to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = Const<1>
+    v1 = Const<2>
+    v2 = IntAdd v0, v1
+    Return v2
+  }
+}""",
+        )
 
     def test_less_int(self) -> None:
-        compiler = Compiler(IRFunction([]))
-        result = compiler.compile({}, self._parse("1 < 2"))
-        self.assertEqual(result, IntLess(Const(Int(1)), Const(Int(2))))
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("1 < 2"))
+        self.assertEqual(
+            compiler.fn.to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = Const<1>
+    v1 = Const<2>
+    v2 = IntLess v0, v1
+    Return v2
+  }
+}""",
+        )
 
-    # def test_match_no_cases(self) -> None:
-    #     compiler = Compiler()
-    #     result = compiler.compile({}, MatchFunction([]))
-    #     self.assertEqual(result, IntLess(Const(Int(1)), Const(Int(2))))
+    def test_match_no_cases(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, MatchFunction([]))
+        self.assertEqual(
+            compiler.fns[0].to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = NewClosure, fn1
+    Return v0
+  }
+}""",
+        )
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; arg_0>
+    Jump bb1
+  }
+  bb1 {
+    v1 = MatchFail
+  }
+}""",
+        )
 
     def test_match_one_case(self) -> None:
-        compiler = Compiler(IRFunction([]))
-        result = compiler.compile({}, self._parse("| 1 -> 2 + 3"))
-        self.assertIsInstance(result, IRFunction)
-        gvn = InstrId()
-        self.assertEqual(result.to_string(gvn), "")
-        # self.assertEqual(result.cfg.entry.instrs, [
-        #     Param(0, "arg_0")
-        # ])
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("| 1 -> 2 + 3"))
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; arg_0>
+    Jump bb2
+  }
+  bb1 {
+    v1 = MatchFail
+  }
+  bb2 {
+    v2 = IsNumEqualWord v0, 1
+    CondBranch v2, bb3, bb1
+  }
+  bb3 {
+    v3 = Const<2>
+    v4 = Const<3>
+    v5 = IntAdd v3, v4
+    Return v5
+  }
+}""",
+        )
 
 
 if __name__ == "__main__":

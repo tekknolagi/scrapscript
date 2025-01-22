@@ -36,39 +36,79 @@ from scrapscript import (
     tokenize,
 )
 
-@dataclasses.dataclass
-class Instr:
-    pass
 
 @dataclasses.dataclass
+class InstrId:
+    data: dict[Instr, int] = dataclasses.field(default_factory=dict)
+
+    def __getitem__(self, instr: Instr) -> int:
+        id = self.data.get(instr)
+        if id is not None:
+            return id
+        id = len(self.data)
+        self.data[instr] = id
+        return id
+
+
+@dataclasses.dataclass(eq=False)
+class Instr:
+    def __hash__(self) -> int:
+        return id(self)
+
+    def __eq__(self, other: object) -> bool:
+        return self is other
+
+    def to_string(self, gvn: InstrId) -> str:
+        return type(self).__name__
+
+
+@dataclasses.dataclass(eq=False)
 class Const(Instr):
     value: Object
 
-@dataclasses.dataclass
+    def to_string(self, gvn: InstrId) -> str:
+        return f"{type(self).__name__}<{self.value}>"
+
+
+@dataclasses.dataclass(eq=False)
 class Param(Instr):
     idx: int
     name: str
 
-@dataclasses.dataclass
+    def to_string(self, gvn: InstrId) -> str:
+        return f"{type(self).__name__}<{self.idx}; {self.name}>"
+
+
+@dataclasses.dataclass(eq=False)
 class MatchFail(Instr):
     pass
 
-@dataclasses.dataclass
+
+@dataclasses.dataclass(eq=False)
 class HasOperands(Instr):
     operands: list[Instr] = dataclasses.field(init=False, default_factory=list)
 
     def __init__(self, *operands: Instr) -> None:
         self.operands = list(operands)
 
-@dataclasses.dataclass(init=False)
+    def to_string(self, gvn: InstrId) -> str:
+        stem = f"{type(self).__name__}"
+        if not self.operands:
+            return stem
+        return stem + " " + ", ".join(f"v{gvn[op]}" for op in self.operands)
+
+
+@dataclasses.dataclass(init=False, eq=False)
 class IntAdd(HasOperands):
     pass
 
-@dataclasses.dataclass(init=False)
+
+@dataclasses.dataclass(init=False, eq=False)
 class IntLess(HasOperands):
     pass
 
-@dataclasses.dataclass(init=False)
+
+@dataclasses.dataclass(init=False, eq=False)
 class IsNumEqualWord(HasOperands):
     expected: int
 
@@ -76,13 +116,19 @@ class IsNumEqualWord(HasOperands):
         self.operands = [value]
         self.expected = expected
 
-@dataclasses.dataclass
+    def to_string(self, gvn: InstrId) -> str:
+        return super().to_string(gvn) + f", {self.expected}"
+
+
+@dataclasses.dataclass(eq=False)
 class Control(Instr):
     pass
 
+
 Env = Dict[str, Instr]
 
-@dataclasses.dataclass
+
+@dataclasses.dataclass(eq=False)
 class Block:
     id: int
     instrs: list[Instr] = dataclasses.field(init=False, default_factory=list)
@@ -90,15 +136,24 @@ class Block:
     def append(self, instr: Instr) -> None:
         self.instrs.append(instr)
 
-@dataclasses.dataclass
+    def name(self) -> str:
+        return f"bb{self.id}"
+
+
+@dataclasses.dataclass(eq=False)
 class Jump(Control):
     target: Block
 
-@dataclasses.dataclass(init=False)
+    def to_string(self, gvn: InstrId) -> str:
+        return super().to_string(gvn) + f" {self.target.name()}"
+
+
+@dataclasses.dataclass(init=False, eq=False)
 class Return(HasOperands, Control):
     pass
 
-@dataclasses.dataclass(init=False)
+
+@dataclasses.dataclass(init=False, eq=False)
 class CondBranch(Control, HasOperands):
     conseq: Block
     alt: Block
@@ -107,6 +162,10 @@ class CondBranch(Control, HasOperands):
         self.conseq = conseq
         self.alt = alt
         self.operands = [cond]
+
+    def to_string(self, gvn: InstrId) -> str:
+        return super().to_string(gvn) + f", {self.conseq.name()}, {self.alt.name()}"
+
 
 @dataclasses.dataclass
 class CFG:
@@ -122,36 +181,48 @@ class CFG:
         self.blocks.append(result)
         return result
 
-@dataclasses.dataclass
-class Function(Instr):
+    def to_string(self, fn: IRFunction, gvn: InstrId) -> str:
+        result = ""
+        for block in self.blocks:
+            result += f"  {block.name()} {{\n"
+            for instr in block.instrs:
+                if isinstance(instr, Control):
+                    result += f"    {instr.to_string(gvn)}\n"
+                else:
+                    result += f"    v{gvn[instr]} = {instr.to_string(gvn)}\n"
+            result += "  }\n"
+        return result
+
+
+@dataclasses.dataclass(eq=False)
+class IRFunction(Instr):
     params: list[str]
     cfg: CFG = dataclasses.field(init=False, default_factory=CFG)
 
-    # def initial_env(self) -> Env:
-    #     result = {}
-    #     for idx, name in enumerate(self.params):
-    #         instr = Param(idx, name)
-    #         result[name] = self.cfg.emit(Param(idx, name))
-    #     return result
+    def to_string(self, gvn: InstrId) -> str:
+        result = f"fn {gvn[self]} {{\n"
+        result += self.cfg.to_string(self, gvn)
+        return result + "}"
+
 
 class Compiler:
-    def __init__(self, entry: Function) -> None:
+    def __init__(self, entry: IRFunction) -> None:
         self.gensym_counter: int = 0
-        self.fn: Function = entry
+        self.fn: IRFunction = entry
         self.block: Block = entry.cfg.entry
-        self.fns: list[Function] = [entry]
+        self.fns: list[IRFunction] = [entry]
 
     def gensym(self, stem: str = "tmp") -> str:
         self.gensym_counter += 1
         return f"{stem}_{self.gensym_counter-1}"
 
-    def push_fn(self, fn: Function) -> Function:
+    def push_fn(self, fn: IRFunction) -> IRFunction:
         self.fns.append(fn)
         prev_fn = self.fn
         self.restore_fn(fn)
         return prev_fn
 
-    def restore_fn(self, fn: Function) -> None:
+    def restore_fn(self, fn: IRFunction) -> None:
         self.fn = fn
         self.block = fn.cfg.entry
 
@@ -173,12 +244,12 @@ class Compiler:
             left = self.compile(env, exp.left)
             right = self.compile(env, exp.right)
             if exp.op == BinopKind.ADD:
-                return IntAdd(left, right)
+                return self.emit(IntAdd(left, right))
             if exp.op == BinopKind.LESS:
-                return IntLess(left, right)
+                return self.emit(IntLess(left, right))
         if isinstance(exp, MatchFunction):
             param = self.gensym("arg")
-            fn = Function([param])
+            fn = IRFunction([param])
             prev_fn = self.push_fn(fn)
             self.block = fn.cfg.entry
             #
@@ -192,7 +263,7 @@ class Compiler:
             self.emit(Jump(case_blocks[0]))
             for i, case in enumerate(exp.cases):
                 self.block = case_blocks[i]
-                fallthrough = case_blocks[i+1]
+                fallthrough = case_blocks[i + 1]
                 body_block = self.fn.cfg.new_block()
                 env_updates = self.compile_match_pattern(funcenv, funcenv[param], case.pattern, body_block, fallthrough)
                 self.block = body_block
@@ -209,17 +280,17 @@ class IRTests(unittest.TestCase):
         return parse(tokenize(source))
 
     def test_int(self) -> None:
-        compiler = Compiler(Function([]))
+        compiler = Compiler(IRFunction([]))
         result = compiler.compile({}, Int(1))
         self.assertEqual(result, Const(Int(1)))
 
     def test_add_int(self) -> None:
-        compiler = Compiler(Function([]))
+        compiler = Compiler(IRFunction([]))
         result = compiler.compile({}, self._parse("1 + 2"))
         self.assertEqual(result, IntAdd(Const(Int(1)), Const(Int(2))))
 
     def test_less_int(self) -> None:
-        compiler = Compiler(Function([]))
+        compiler = Compiler(IRFunction([]))
         result = compiler.compile({}, self._parse("1 < 2"))
         self.assertEqual(result, IntLess(Const(Int(1)), Const(Int(2))))
 
@@ -229,12 +300,15 @@ class IRTests(unittest.TestCase):
     #     self.assertEqual(result, IntLess(Const(Int(1)), Const(Int(2))))
 
     def test_match_one_case(self) -> None:
-        compiler = Compiler(Function([]))
-        result = compiler.compile({}, self._parse("| 1 -> 2"))
-        self.assertIsInstance(result, Function)
-        self.assertEqual(result.cfg.entry.instrs, [
-            Param(0, "arg_0")
-        ])
+        compiler = Compiler(IRFunction([]))
+        result = compiler.compile({}, self._parse("| 1 -> 2 + 3"))
+        self.assertIsInstance(result, IRFunction)
+        gvn = InstrId()
+        self.assertEqual(result.to_string(gvn), "")
+        # self.assertEqual(result.cfg.entry.instrs, [
+        #     Param(0, "arg_0")
+        # ])
+
 
 if __name__ == "__main__":
     __import__("sys").modules["unittest.util"]._MAX_LENGTH = 999999999

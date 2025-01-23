@@ -104,6 +104,11 @@ class IntAdd(HasOperands):
 
 
 @dataclasses.dataclass(init=False, eq=False)
+class IntSub(HasOperands):
+    pass
+
+
+@dataclasses.dataclass(init=False, eq=False)
 class IntLess(HasOperands):
     pass
 
@@ -335,6 +340,8 @@ class Compiler:
             right = self.compile(env, exp.right)
             if exp.op == BinopKind.ADD:
                 return self.emit(IntAdd(left, right))
+            if exp.op == BinopKind.SUB:
+                return self.emit(IntSub(left, right))
             if exp.op == BinopKind.LESS:
                 return self.emit(IntLess(left, right))
         if isinstance(exp, Where):
@@ -440,6 +447,22 @@ fn0 {
     v0 = Const<1>
     v1 = Const<2>
     v2 = IntAdd v0, v1
+    Return v2
+  }
+}""",
+        )
+
+    def test_sub_int(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("1 - 2"))
+        self.assertEqual(
+            compiler.fn.to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = Const<1>
+    v1 = Const<2>
+    v2 = IntSub v0, v1
     Return v2
   }
 }""",

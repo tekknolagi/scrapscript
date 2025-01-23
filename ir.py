@@ -253,6 +253,9 @@ class Compiler:
             cond = self.emit(IsNumEqualWord(param, pattern.value))
             self.emit(CondBranch(cond, success, fallthrough))
             return {}
+        if isinstance(pattern, Var):
+            self.emit(Jump(success))
+            return {pattern.name: param}
         raise NotImplementedError(f"pattern {type(pattern)} {pattern}")
 
     def compile_body(self, env: Env, exp: Object) -> None:
@@ -261,6 +264,8 @@ class Compiler:
     def compile(self, env: Env, exp: Object) -> Instr:
         if isinstance(exp, Int):
             return self.emit(Const(exp))
+        if isinstance(exp, Var):
+            return env[exp.name]
         if isinstance(exp, Binop):
             left = self.compile(env, exp.left)
             right = self.compile(env, exp.right)
@@ -428,6 +433,31 @@ fn1 {
   bb5 {
     v5 = Const<4>
     Return v5
+  }
+}""",
+        )
+
+    def test_match_var(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("| a -> a + 1"))
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; arg_0>
+    Jump bb2
+  }
+  bb1 {
+    v1 = MatchFail
+  }
+  bb2 {
+    Jump bb3
+  }
+  bb3 {
+    v2 = Const<1>
+    v3 = IntAdd v0, v2
+    Return v3
   }
 }""",
         )

@@ -399,6 +399,39 @@ fn1 {
 }""",
         )
 
+    def test_match_two_cases(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("| 1 -> 2 | 3 -> 4"))
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; arg_0>
+    Jump bb2
+  }
+  bb1 {
+    v1 = MatchFail
+  }
+  bb2 {
+    v2 = IsNumEqualWord v0, 1
+    CondBranch v2, bb4, bb3
+  }
+  bb3 {
+    v3 = IsNumEqualWord v0, 3
+    CondBranch v3, bb5, bb1
+  }
+  bb4 {
+    v4 = Const<2>
+    Return v4
+  }
+  bb5 {
+    v5 = Const<4>
+    Return v5
+  }
+}""",
+        )
+
 
 if __name__ == "__main__":
     __import__("sys").modules["unittest.util"]._MAX_LENGTH = 999999999

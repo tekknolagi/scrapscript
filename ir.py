@@ -262,7 +262,7 @@ class Compiler:
         self.emit(Return(self.compile(env, exp)))
 
     def compile(self, env: Env, exp: Object) -> Instr:
-        if isinstance(exp, Int):
+        if isinstance(exp, (Int, String)):
             return self.emit(Const(exp))
         if isinstance(exp, Var):
             return env[exp.name]
@@ -332,6 +332,20 @@ class IRTests(unittest.TestCase):
 fn0 {
   bb0 {
     v0 = Const<1>
+    Return v0
+  }
+}""",
+        )
+
+    def test_str(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, String("hello"))
+        self.assertEqual(
+            compiler.fn.to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = Const<"hello">
     Return v0
   }
 }""",

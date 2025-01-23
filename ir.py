@@ -297,6 +297,20 @@ class Compiler:
             #
             self.restore_fn(prev_fn)
             return self.emit(NewClosure(fn))
+        if isinstance(exp, Function):
+            assert isinstance(exp.arg, Var)
+            param = exp.arg.name
+            fn = self.new_function([param])
+            prev_fn = self.push_fn(fn)
+            self.block = fn.cfg.entry
+            #
+            funcenv = {}
+            for idx, name in enumerate(fn.params):
+                funcenv[name] = self.emit(Param(idx, name))
+            self.compile_body(funcenv, exp.body)
+            #
+            self.restore_fn(prev_fn)
+            return self.emit(NewClosure(fn))
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 
 
@@ -349,6 +363,28 @@ fn0 {
   }
 }""",
         )
+
+    def test_fun_id(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("a -> a"))
+        self.assertEqual(
+            compiler.fns[0].to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = NewClosure fn1
+    Return v0
+  }
+}""")
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; a>
+    Return v0
+  }
+}""")
 
     def test_match_no_cases(self) -> None:
         compiler = Compiler()

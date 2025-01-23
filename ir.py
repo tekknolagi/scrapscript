@@ -164,6 +164,11 @@ class ListRest(HasOperands):
     pass
 
 
+@dataclasses.dataclass(init=False, eq=False)
+class Call(HasOperands):
+    pass
+
+
 @dataclasses.dataclass(eq=False)
 class Control(Instr):
     pass
@@ -362,6 +367,10 @@ class Compiler:
             name, value_exp, body_exp = exp.binding.name.name, exp.binding.value, exp.body
             value = self.compile(env, value_exp)
             return self.compile({**env, name: value}, body_exp)
+        if isinstance(exp, Apply):
+            fn = self.compile(env, exp.func)
+            arg = self.compile(env, exp.arg)
+            return self.emit(Call(fn, arg))
         if isinstance(exp, MatchFunction):
             param = self.gensym("arg")
             clo = "$clo"
@@ -858,6 +867,21 @@ fn1 {
   }
 }""",
         )
+
+    def test_apply_fn(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("f 1 . f  = x -> x + 1"))
+        self.assertEqual(
+            compiler.fns[0].to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = NewClosure<fn1>
+    v1 = Const<1>
+    v2 = Call v0, v1
+    Return v2
+  }
+}""")
 
 
 if __name__ == "__main__":

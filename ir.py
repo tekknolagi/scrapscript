@@ -121,16 +121,37 @@ class IsNumEqualWord(HasOperands):
 
 
 @dataclasses.dataclass(eq=False)
+class ClosureRef(HasOperands):
+    idx: int
+    name: str
+
+    def __init__(self, closure: Instr, idx: int, name: str) -> None:
+        self.operands = [closure]
+        self.idx = idx
+        self.name = name
+
+    def to_string(self, gvn: InstrId) -> str:
+        return f"{type(self).__name__}<{self.idx}; {self.name}> v{gvn[self.operands[0]]}"
+
+
+@dataclasses.dataclass(eq=False)
 class Control(Instr):
     pass
 
 
 @dataclasses.dataclass(eq=False)
-class NewClosure(Instr):
+class NewClosure(HasOperands):
     fn: IRFunction
 
+    def __init__(self, fn: IRFunction, bound: list[Instr]) -> None:
+        self.fn = fn
+        self.operands = bound.copy()
+
     def to_string(self, gvn: InstrId) -> str:
-        return super().to_string(gvn) + f" {self.fn.name()}"
+        stem = f"{type(self).__name__}<{self.fn.name()}>"
+        if not self.operands:
+            return stem
+        return f"{stem} " + ", ".join(f"v{gvn[op]}" for op in self.operands)
 
 
 Env = Dict[str, Instr]
@@ -235,7 +256,6 @@ class Compiler:
         return f"{stem}_{self.gensym_counter-1}"
 
     def push_fn(self, fn: IRFunction) -> IRFunction:
-        self.fns.append(fn)
         prev_fn = self.fn
         self.restore_fn(fn)
         return prev_fn
@@ -280,13 +300,19 @@ class Compiler:
             return self.compile({**env, name: value}, body_exp)
         if isinstance(exp, MatchFunction):
             param = self.gensym("arg")
-            fn = self.new_function([param])
+            clo = "$clo"
+            fn = self.new_function([clo, param])
             prev_fn = self.push_fn(fn)
             self.block = fn.cfg.entry
             #
             funcenv = {}
             for idx, name in enumerate(fn.params):
                 funcenv[name] = self.emit(Param(idx, name))
+            closure = funcenv[clo]
+            freevars = sorted(free_in(exp))
+            for idx, name in enumerate(freevars):
+                funcenv[name] = self.emit(ClosureRef(closure, idx, name))
+            #
             no_match = self.fn.cfg.new_block()
             no_match.append(MatchFail())
             case_blocks = [self.fn.cfg.new_block() for case in exp.cases]
@@ -301,21 +327,29 @@ class Compiler:
                 self.compile_body({**funcenv, **env_updates}, case.body)
             #
             self.restore_fn(prev_fn)
-            return self.emit(NewClosure(fn))
+            bound = [env[name] for name in freevars]
+            return self.emit(NewClosure(fn, bound))
         if isinstance(exp, Function):
             assert isinstance(exp.arg, Var)
             param = exp.arg.name
-            fn = self.new_function([param])
+            clo = "$clo"
+            fn = self.new_function([clo, param])
             prev_fn = self.push_fn(fn)
             self.block = fn.cfg.entry
             #
             funcenv = {}
             for idx, name in enumerate(fn.params):
                 funcenv[name] = self.emit(Param(idx, name))
+            closure = funcenv[clo]
+            freevars = sorted(free_in(exp))
+            for idx, name in enumerate(freevars):
+                funcenv[name] = self.emit(ClosureRef(closure, idx, name))
+            #
             self.compile_body(funcenv, exp.body)
             #
             self.restore_fn(prev_fn)
-            return self.emit(NewClosure(fn))
+            bound = [env[name] for name in freevars]
+            return self.emit(NewClosure(fn, bound))
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 
 
@@ -405,7 +439,7 @@ fn0 {
             """\
 fn0 {
   bb0 {
-    v0 = NewClosure fn1
+    v0 = NewClosure<fn1>
     Return v0
   }
 }""",
@@ -415,8 +449,49 @@ fn0 {
             """\
 fn1 {
   bb0 {
-    v0 = Param<0; a>
+    v0 = Param<0; $clo>
+    v1 = Param<1; a>
+    Return v1
+  }
+}""",
+        )
+
+    def test_fun_closure(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("a -> b -> a + b"))
+        self.assertEqual(len(compiler.fns), 3)
+        self.assertEqual(
+            compiler.fns[0].to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = NewClosure<fn1>
     Return v0
+  }
+}""",
+        )
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; a>
+    v2 = NewClosure<fn2> v1
+    Return v2
+  }
+}""",
+        )
+        self.assertEqual(
+            compiler.fns[2].to_string(InstrId()),
+            """\
+fn2 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; b>
+    v2 = ClosureRef<0; a> v0
+    v3 = IntAdd v2, v1
+    Return v3
   }
 }""",
         )
@@ -429,7 +504,7 @@ fn1 {
             """\
 fn0 {
   bb0 {
-    v0 = NewClosure fn1
+    v0 = NewClosure<fn1>
     Return v0
   }
 }""",
@@ -439,11 +514,12 @@ fn0 {
             """\
 fn1 {
   bb0 {
-    v0 = Param<0; arg_0>
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
     Jump bb1
   }
   bb1 {
-    v1 = MatchFail
+    v2 = MatchFail
   }
 }""",
         )
@@ -456,21 +532,22 @@ fn1 {
             """\
 fn1 {
   bb0 {
-    v0 = Param<0; arg_0>
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
     Jump bb2
   }
   bb1 {
-    v1 = MatchFail
+    v2 = MatchFail
   }
   bb2 {
-    v2 = IsNumEqualWord v0, 1
-    CondBranch v2, bb3, bb1
+    v3 = IsNumEqualWord v1, 1
+    CondBranch v3, bb3, bb1
   }
   bb3 {
-    v3 = Const<2>
-    v4 = Const<3>
-    v5 = IntAdd v3, v4
-    Return v5
+    v4 = Const<2>
+    v5 = Const<3>
+    v6 = IntAdd v4, v5
+    Return v6
   }
 }""",
         )
@@ -483,27 +560,28 @@ fn1 {
             """\
 fn1 {
   bb0 {
-    v0 = Param<0; arg_0>
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
     Jump bb2
   }
   bb1 {
-    v1 = MatchFail
+    v2 = MatchFail
   }
   bb2 {
-    v2 = IsNumEqualWord v0, 1
-    CondBranch v2, bb4, bb3
+    v3 = IsNumEqualWord v1, 1
+    CondBranch v3, bb4, bb3
   }
   bb3 {
-    v3 = IsNumEqualWord v0, 3
-    CondBranch v3, bb5, bb1
+    v4 = IsNumEqualWord v1, 3
+    CondBranch v4, bb5, bb1
   }
   bb4 {
-    v4 = Const<2>
-    Return v4
+    v5 = Const<2>
+    Return v5
   }
   bb5 {
-    v5 = Const<4>
-    Return v5
+    v6 = Const<4>
+    Return v6
   }
 }""",
         )
@@ -516,19 +594,20 @@ fn1 {
             """\
 fn1 {
   bb0 {
-    v0 = Param<0; arg_0>
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
     Jump bb2
   }
   bb1 {
-    v1 = MatchFail
+    v2 = MatchFail
   }
   bb2 {
     Jump bb3
   }
   bb3 {
-    v2 = Const<1>
-    v3 = IntAdd v0, v2
-    Return v3
+    v3 = Const<1>
+    v4 = IntAdd v1, v3
+    Return v4
   }
 }""",
         )

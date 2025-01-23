@@ -883,6 +883,21 @@ fn0 {
   }
 }""")
 
+    def test_apply_anonymous_function(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("((x -> x + 1) 1)"))
+        self.assertEqual(
+            compiler.fns[0].to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = NewClosure<fn1>
+    v1 = Const<1>
+    v2 = Call v0, v1
+    Return v2
+  }
+}""")
+
 
 if __name__ == "__main__":
     __import__("sys").modules["unittest.util"]._MAX_LENGTH = 999999999

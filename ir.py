@@ -529,6 +529,23 @@ fn0 {
 }""",
         )
 
+    def test_non_const_list(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("a -> [a]"))
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; a>
+    v2 = Const<[]>
+    v3 = ListCons v1, v2
+    Return v3
+  }
+}""",
+        )
+
     def test_let(self) -> None:
         compiler = Compiler()
         compiler.compile_body({}, self._parse("a . a = 1"))

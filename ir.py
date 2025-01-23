@@ -130,7 +130,7 @@ class NewClosure(Instr):
     fn: IRFunction
 
     def to_string(self, gvn: InstrId) -> str:
-        return super().to_string(gvn) + f", {self.fn.name()}"
+        return super().to_string(gvn) + f" {self.fn.name()}"
 
 
 Env = Dict[str, Instr]
@@ -358,7 +358,7 @@ fn0 {
             """\
 fn0 {
   bb0 {
-    v0 = NewClosure, fn1
+    v0 = NewClosure fn1
     Return v0
   }
 }""",

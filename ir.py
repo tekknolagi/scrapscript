@@ -109,6 +109,11 @@ class IntSub(HasOperands):
 
 
 @dataclasses.dataclass(init=False, eq=False)
+class IntMul(HasOperands):
+    pass
+
+
+@dataclasses.dataclass(init=False, eq=False)
 class IntLess(HasOperands):
     pass
 
@@ -352,6 +357,8 @@ class Compiler:
                 return self.emit(IntAdd(left, right))
             if exp.op == BinopKind.SUB:
                 return self.emit(IntSub(left, right))
+            if exp.op == BinopKind.MUL:
+                return self.emit(IntMul(left, right))
             if exp.op == BinopKind.LESS:
                 return self.emit(IntLess(left, right))
         if isinstance(exp, List):

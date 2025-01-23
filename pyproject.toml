@@ -52,3 +52,7 @@ line-length = 120
 
 [tool.ruff.lint]
 ignore = ["E741"]
+
+[project]
+name = "scrapscript"
+version = "0.1.1"

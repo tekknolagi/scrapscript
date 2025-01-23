@@ -134,6 +134,26 @@ class ClosureRef(HasOperands):
         return f"{type(self).__name__}<{self.idx}; {self.name}> v{gvn[self.operands[0]]}"
 
 
+@dataclasses.dataclass(init=False, eq=False)
+class IsList(HasOperands):
+    pass
+
+
+@dataclasses.dataclass(init=False, eq=False)
+class IsEmptyList(HasOperands):
+    pass
+
+
+@dataclasses.dataclass(init=False, eq=False)
+class ListFirst(HasOperands):
+    pass
+
+
+@dataclasses.dataclass(init=False, eq=False)
+class ListRest(HasOperands):
+    pass
+
+
 @dataclasses.dataclass(eq=False)
 class Control(Instr):
     pass
@@ -276,6 +296,30 @@ class Compiler:
         if isinstance(pattern, Var):
             self.emit(Jump(success))
             return {pattern.name: param}
+        if isinstance(pattern, List):
+            is_list = self.emit(IsList(param))
+            is_list_block = self.fn.cfg.new_block()
+            self.emit(CondBranch(is_list, is_list_block, fallthrough))
+            self.block = is_list_block
+            updates = {}
+            the_list = param
+            for i, pattern_item in enumerate(pattern.items):
+                assert not isinstance(pattern_item, Spread)
+                # Not enough elements
+                is_empty = self.emit(IsEmptyList(the_list))
+                is_nonempty_block = self.fn.cfg.new_block()
+                self.emit(CondBranch(is_empty, fallthrough, is_nonempty_block))
+                self.block = is_nonempty_block
+                list_item = self.emit(ListFirst(the_list))
+                pattern_success = self.fn.cfg.new_block()
+                # Recursive pattern match
+                updates.update(self.compile_match_pattern(env, list_item, pattern_item, pattern_success, fallthrough))
+                self.block = pattern_success
+                the_list = self.emit(ListRest(the_list))
+            # Too many elements
+            is_empty = self.emit(IsEmptyList(the_list))
+            self.emit(CondBranch(is_empty, success, fallthrough))
+            return updates
         raise NotImplementedError(f"pattern {type(pattern)} {pattern}")
 
     def compile_body(self, env: Env, exp: Object) -> None:
@@ -608,6 +652,124 @@ fn1 {
     v3 = Const<1>
     v4 = IntAdd v1, v3
     Return v4
+  }
+}""",
+        )
+
+    def test_match_empty_list(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("| [] -> 1"))
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
+    Jump bb2
+  }
+  bb1 {
+    v2 = MatchFail
+  }
+  bb2 {
+    v3 = IsList v1
+    CondBranch v3, bb4, bb1
+  }
+  bb3 {
+    v4 = Const<1>
+    Return v4
+  }
+  bb4 {
+    v5 = IsEmptyList v1
+    CondBranch v5, bb3, bb1
+  }
+}""",
+        )
+
+    def test_match_one_item_list(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("| [a] -> a + 1"))
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
+    Jump bb2
+  }
+  bb1 {
+    v2 = MatchFail
+  }
+  bb2 {
+    v3 = IsList v1
+    CondBranch v3, bb4, bb1
+  }
+  bb3 {
+    v4 = Const<1>
+    v5 = IntAdd v6, v4
+    Return v5
+  }
+  bb4 {
+    v7 = IsEmptyList v1
+    CondBranch v7, bb1, bb5
+  }
+  bb5 {
+    v6 = ListFirst v1
+    Jump bb6
+  }
+  bb6 {
+    v8 = ListRest v1
+    v9 = IsEmptyList v8
+    CondBranch v9, bb3, bb1
+  }
+}""",
+        )
+
+    def test_match_two_item_list(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("| [a, b] -> a + b"))
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
+    Jump bb2
+  }
+  bb1 {
+    v2 = MatchFail
+  }
+  bb2 {
+    v3 = IsList v1
+    CondBranch v3, bb4, bb1
+  }
+  bb3 {
+    v4 = IntAdd v5, v6
+    Return v4
+  }
+  bb4 {
+    v7 = IsEmptyList v1
+    CondBranch v7, bb1, bb5
+  }
+  bb5 {
+    v5 = ListFirst v1
+    Jump bb6
+  }
+  bb6 {
+    v8 = ListRest v1
+    v9 = IsEmptyList v8
+    CondBranch v9, bb1, bb7
+  }
+  bb7 {
+    v6 = ListFirst v8
+    Jump bb8
+  }
+  bb8 {
+    v10 = ListRest v8
+    v11 = IsEmptyList v10
+    CondBranch v11, bb3, bb1
   }
 }""",
         )

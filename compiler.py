@@ -220,21 +220,19 @@ class Compiler:
             self._emit(f"if (!is_list({arg})) {{ goto {fallthrough}; }}")
             updates = {}
             the_list = arg
-            use_spread = False
             for i, pattern_item in enumerate(pattern.items):
                 if isinstance(pattern_item, Spread):
-                    use_spread = True
                     if pattern_item.name:
                         updates[pattern_item.name] = the_list
-                    break
+                    return updates
                 # Not enough elements
                 self._emit(f"if (is_empty_list({the_list})) {{ goto {fallthrough}; }}")
                 list_item = self._mktemp(f"list_first({the_list})")
+                # Recursive pattern match
                 updates.update(self.try_match(env, list_item, pattern_item, fallthrough))
                 the_list = self._mktemp(f"list_rest({the_list})")
-            if not use_spread:
-                # Too many elements
-                self._emit(f"if (!is_empty_list({the_list})) {{ goto {fallthrough}; }}")
+            # Too many elements
+            self._emit(f"if (!is_empty_list({the_list})) {{ goto {fallthrough}; }}")
             return updates
         if isinstance(pattern, Record):
             self._emit(f"if (!is_record({arg})) {{ goto {fallthrough}; }}")

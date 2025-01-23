@@ -345,6 +345,52 @@ class Compiler:
     def compile_body(self, env: Env, exp: Object) -> None:
         self.emit(Return(self.compile(env, exp)))
 
+    def compile_function(self, env: Env, exp: Function | MatchFunction, func_name: Optional[str]) -> Instr:
+        if isinstance(exp, Function):
+            assert isinstance(exp.arg, Var)
+            param = exp.arg.name
+        else:
+            param = self.gensym("arg")
+        clo = "$clo"
+        fn = self.new_function([clo, param])
+        freevars = free_in(exp)
+        if func_name is not None and func_name in freevars:
+            # Functions can refer to themselves; we close the loop below in the
+            # funcenv
+            freevars.remove(func_name)
+        freevars = sorted(freevars)
+        bound = [env[name] for name in freevars]
+        result = self.emit(NewClosure(fn, bound))
+        prev_fn = self.push_fn(fn)
+        self.block = fn.cfg.entry
+        #
+        funcenv = {}
+        for idx, name in enumerate(fn.params):
+            funcenv[name] = self.emit(Param(idx, name))
+        closure = funcenv[clo]
+        if func_name is not None:
+            funcenv[func_name] = closure
+        for idx, name in enumerate(freevars):
+            funcenv[name] = self.emit(ClosureRef(closure, idx, name))
+        #
+        if isinstance(exp, Function):
+            self.compile_body(funcenv, exp.body)
+        else:
+            no_match = self.fn.cfg.new_block()
+            no_match.append(MatchFail())
+            case_blocks = [self.fn.cfg.new_block() for case in exp.cases]
+            case_blocks.append(no_match)
+            self.emit(Jump(case_blocks[0]))
+            for i, case in enumerate(exp.cases):
+                self.block = case_blocks[i]
+                fallthrough = case_blocks[i + 1]
+                body_block = self.fn.cfg.new_block()
+                env_updates = self.compile_match_pattern(funcenv, funcenv[param], case.pattern, body_block, fallthrough)
+                self.block = body_block
+                self.compile_body({**funcenv, **env_updates}, case.body)
+        self.restore_fn(prev_fn)
+        return result
+
     def compile(self, env: Env, exp: Object) -> Instr:
         if isinstance(exp, (Int, String)):
             return self.emit(Const(exp))
@@ -372,64 +418,18 @@ class Compiler:
         if isinstance(exp, Where):
             assert isinstance(exp.binding, Assign)
             name, value_exp, body_exp = exp.binding.name.name, exp.binding.value, exp.body
-            value = self.compile(env, value_exp)
+            if isinstance(value_exp, (Function, MatchFunction)):
+                value = self.compile_function(env, value_exp, func_name=name)
+            else:
+                value = self.compile(env, value_exp)
             return self.compile({**env, name: value}, body_exp)
         if isinstance(exp, Apply):
             fn = self.compile(env, exp.func)
             arg = self.compile(env, exp.arg)
             return self.emit(Call(fn, arg))
-        if isinstance(exp, MatchFunction):
-            param = self.gensym("arg")
-            clo = "$clo"
-            fn = self.new_function([clo, param])
-            prev_fn = self.push_fn(fn)
-            self.block = fn.cfg.entry
-            #
-            funcenv = {}
-            for idx, name in enumerate(fn.params):
-                funcenv[name] = self.emit(Param(idx, name))
-            closure = funcenv[clo]
-            freevars = sorted(free_in(exp))
-            for idx, name in enumerate(freevars):
-                funcenv[name] = self.emit(ClosureRef(closure, idx, name))
-            #
-            no_match = self.fn.cfg.new_block()
-            no_match.append(MatchFail())
-            case_blocks = [self.fn.cfg.new_block() for case in exp.cases]
-            case_blocks.append(no_match)
-            self.emit(Jump(case_blocks[0]))
-            for i, case in enumerate(exp.cases):
-                self.block = case_blocks[i]
-                fallthrough = case_blocks[i + 1]
-                body_block = self.fn.cfg.new_block()
-                env_updates = self.compile_match_pattern(funcenv, funcenv[param], case.pattern, body_block, fallthrough)
-                self.block = body_block
-                self.compile_body({**funcenv, **env_updates}, case.body)
-            #
-            self.restore_fn(prev_fn)
-            bound = [env[name] for name in freevars]
-            return self.emit(NewClosure(fn, bound))
-        if isinstance(exp, Function):
-            assert isinstance(exp.arg, Var)
-            param = exp.arg.name
-            clo = "$clo"
-            fn = self.new_function([clo, param])
-            prev_fn = self.push_fn(fn)
-            self.block = fn.cfg.entry
-            #
-            funcenv = {}
-            for idx, name in enumerate(fn.params):
-                funcenv[name] = self.emit(Param(idx, name))
-            closure = funcenv[clo]
-            freevars = sorted(free_in(exp))
-            for idx, name in enumerate(freevars):
-                funcenv[name] = self.emit(ClosureRef(closure, idx, name))
-            #
-            self.compile_body(funcenv, exp.body)
-            #
-            self.restore_fn(prev_fn)
-            bound = [env[name] for name in freevars]
-            return self.emit(NewClosure(fn, bound))
+        if isinstance(exp, (Function, MatchFunction)):
+            # Anonymous function
+            return self.compile_function(env, exp, func_name=None)
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 
 
@@ -888,7 +888,56 @@ fn0 {
     v2 = Call v0, v1
     Return v2
   }
-}""")
+}""",
+        )
+
+    def test_recursive_call(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("fact 5 . fact = | 0 -> 1 | n -> n * fact (n - 1)"))
+        self.assertEqual(
+            compiler.fns[0].to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = NewClosure<fn1>
+    v1 = Const<5>
+    v2 = Call v0, v1
+    Return v2
+  }
+}""",
+        )
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
+    Jump bb2
+  }
+  bb1 {
+    v2 = MatchFail
+  }
+  bb2 {
+    v3 = IsNumEqualWord v1, 0
+    CondBranch v3, bb4, bb3
+  }
+  bb3 {
+    Jump bb5
+  }
+  bb4 {
+    v4 = Const<1>
+    Return v4
+  }
+  bb5 {
+    v5 = Const<1>
+    v6 = IntSub v1, v5
+    v7 = Call v0, v6
+    v8 = IntMul v1, v7
+    Return v8
+  }
+}""",
+        )
 
     def test_apply_anonymous_function(self) -> None:
         compiler = Compiler()
@@ -903,7 +952,8 @@ fn0 {
     v2 = Call v0, v1
     Return v2
   }
-}""")
+}""",
+        )
 
 
 if __name__ == "__main__":

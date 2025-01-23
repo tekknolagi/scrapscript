@@ -150,6 +150,11 @@ class IsEmptyList(HasOperands):
 
 
 @dataclasses.dataclass(init=False, eq=False)
+class ListCons(HasOperands):
+    pass
+
+
+@dataclasses.dataclass(init=False, eq=False)
 class ListFirst(HasOperands):
     pass
 
@@ -344,6 +349,14 @@ class Compiler:
                 return self.emit(IntSub(left, right))
             if exp.op == BinopKind.LESS:
                 return self.emit(IntLess(left, right))
+        if isinstance(exp, List):
+            result = self.emit(Const(List([])))
+            if not exp.items:
+                return result
+            for elt_exp in reversed(exp.items):
+                elt = self.compile(env, elt_exp)
+                result = self.emit(ListCons(elt, result))
+            return result
         if isinstance(exp, Where):
             assert isinstance(exp.binding, Assign)
             name, value_exp, body_exp = exp.binding.name.name, exp.binding.value, exp.body
@@ -480,6 +493,38 @@ fn0 {
     v1 = Const<2>
     v2 = IntLess v0, v1
     Return v2
+  }
+}""",
+        )
+
+    def test_empty_list(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("[]"))
+        self.assertEqual(
+            compiler.fn.to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = Const<[]>
+    Return v0
+  }
+}""",
+        )
+
+    def test_const_list(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("[1, 2]"))
+        self.assertEqual(
+            compiler.fn.to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = Const<[]>
+    v1 = Const<2>
+    v2 = ListCons v1, v0
+    v3 = Const<1>
+    v4 = ListCons v3, v2
+    Return v4
   }
 }""",
         )

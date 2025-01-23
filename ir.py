@@ -273,6 +273,11 @@ class Compiler:
                 return self.emit(IntAdd(left, right))
             if exp.op == BinopKind.LESS:
                 return self.emit(IntLess(left, right))
+        if isinstance(exp, Where):
+            assert isinstance(exp.binding, Assign)
+            name, value_exp, body_exp = exp.binding.name.name, exp.binding.value, exp.body
+            value = self.compile(env, value_exp)
+            return self.compile({**env, name: value}, body_exp)
         if isinstance(exp, MatchFunction):
             param = self.gensym("arg")
             fn = self.new_function([param])
@@ -364,6 +369,20 @@ fn0 {
 }""",
         )
 
+    def test_let(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("a . a = 1"))
+        self.assertEqual(
+            compiler.fn.to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = Const<1>
+    Return v0
+  }
+}""",
+        )
+
     def test_fun_id(self) -> None:
         compiler = Compiler()
         compiler.compile_body({}, self._parse("a -> a"))
@@ -375,7 +394,8 @@ fn0 {
     v0 = NewClosure fn1
     Return v0
   }
-}""")
+}""",
+        )
         self.assertEqual(
             compiler.fns[1].to_string(InstrId()),
             """\
@@ -384,7 +404,8 @@ fn1 {
     v0 = Param<0; a>
     Return v0
   }
-}""")
+}""",
+        )
 
     def test_match_no_cases(self) -> None:
         compiler = Compiler()

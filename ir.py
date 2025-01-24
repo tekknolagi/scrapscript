@@ -297,12 +297,13 @@ class Compiler:
 
     def push_fn(self, fn: IRFunction) -> IRFunction:
         prev_fn = self.fn
-        self.restore_fn(fn)
-        return prev_fn
+        prev_block = self.block
+        self.restore_fn(fn, fn.cfg.entry)
+        return prev_fn, prev_block
 
-    def restore_fn(self, fn: IRFunction) -> None:
+    def restore_fn(self, fn: IRFunction, block: Block) -> None:
         self.fn = fn
-        self.block = fn.cfg.entry
+        self.block = block
 
     def emit(self, instr: Instr) -> Instr:
         self.block.append(instr)
@@ -359,7 +360,7 @@ class Compiler:
             # funcenv
             freevars.remove(func_name)
         freevars = sorted(freevars)
-        prev_fn = self.push_fn(fn)
+        prev_fn, prev_block = self.push_fn(fn)
         #
         funcenv = {}
         for idx, name in enumerate(fn.params):
@@ -385,7 +386,7 @@ class Compiler:
                 env_updates = self.compile_match_pattern(funcenv, funcenv[param], case.pattern, body_block, fallthrough)
                 self.block = body_block
                 self.compile_body({**funcenv, **env_updates}, case.body)
-        self.restore_fn(prev_fn)
+        self.restore_fn(prev_fn, prev_block)
         bound = [env[name] for name in freevars]
         result = self.emit(NewClosure(fn, bound))
         return result

@@ -641,6 +641,35 @@ fn2 {
 }""",
         )
 
+    def test_fun_const_closure(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("(a -> a + b) . b = 1"))
+        self.assertEqual(len(compiler.fns), 2)
+        self.assertEqual(
+            compiler.fns[0].to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = Const<1>
+    v1 = NewClosure<fn1> v0
+    Return v1
+  }
+}""",
+        )
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; a>
+    v2 = ClosureRef<0; b> v0
+    v3 = IntAdd v1, v2
+    Return v3
+  }
+}""",
+        )
+
     def test_match_no_cases(self) -> None:
         compiler = Compiler()
         compiler.compile_body({}, MatchFunction([]))

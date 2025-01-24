@@ -360,7 +360,6 @@ class Compiler:
             freevars.remove(func_name)
         freevars = sorted(freevars)
         prev_fn = self.push_fn(fn)
-        self.block = fn.cfg.entry
         #
         funcenv = {}
         for idx, name in enumerate(fn.params):

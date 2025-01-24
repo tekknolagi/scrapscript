@@ -176,7 +176,8 @@ class Call(HasOperands):
 
 @dataclasses.dataclass(eq=False)
 class Control(Instr):
-    pass
+    def succs(self) -> tuple[Block, ...]:
+        raise NotImplementedError("succs")
 
 
 @dataclasses.dataclass(eq=False)
@@ -222,10 +223,16 @@ class Jump(Control):
     def to_string(self, gvn: InstrId) -> str:
         return super().to_string(gvn) + f" {self.target.name()}"
 
+    def succs(self) -> tuple[Block, ...]:
+        return (self.target,)
+
 
 @dataclasses.dataclass(init=False, eq=False)
 class Return(HasOperands, Control):
     pass
+
+    def succs(self) -> tuple[Block, ...]:
+        return ()
 
 
 @dataclasses.dataclass(init=False, eq=False)
@@ -240,6 +247,9 @@ class CondBranch(Control, HasOperands):
 
     def to_string(self, gvn: InstrId) -> str:
         return super().to_string(gvn) + f", {self.conseq.name()}, {self.alt.name()}"
+
+    def succs(self) -> tuple[Block, ...]:
+        return (self.conseq, self.alt)
 
 
 @dataclasses.dataclass
@@ -277,19 +287,18 @@ class CFG:
     def po_from(self, block: Block, result: list[Block], visited: set[Block]):
         visited.add(block)
         terminator = block.terminator()
-        if isinstance(terminator, Jump):
-            if terminator.target not in visited:
-                self.po_from(terminator.target, result, visited)
-        elif isinstance(terminator, CondBranch):
-            if terminator.conseq not in visited:
-                self.po_from(terminator.conseq, result, visited)
-            if terminator.alt not in visited:
-                self.po_from(terminator.alt, result, visited)
-        elif isinstance(terminator, Return):
-            pass
-        else:
-            raise NotImplementedError(f"unexpected terminator {terminator}")
+        for succ in terminator.succs():
+            if succ not in visited:
+                self.po_from(succ, result, visited)
         result.append(block)
+
+    def preds(self) -> dict[Block, set[Block]]:
+        rpo = self.rpo()
+        result = {block: set() for block in rpo}
+        for block in rpo:
+            for succ in block.terminator().succs():
+                result[succ].add(block)
+        return result
 
 
 @dataclasses.dataclass(eq=False)
@@ -1058,6 +1067,49 @@ class RPOTests(unittest.TestCase):
         left.append(Return(one))
         right.append(Return(one))
         self.assertEqual(fn.cfg.rpo(), [entry, right, left])
+
+
+class PredTests(unittest.TestCase):
+    def test_preds(self) -> None:
+        fn = IRFunction(0, [])
+        entry = fn.cfg.entry
+        one = entry.append(Const(1))
+        bb1 = fn.cfg.new_block()
+        entry.append(Jump(bb1))
+        two = bb1.append(Const(2))
+        bb2 = fn.cfg.new_block()
+        bb3 = fn.cfg.new_block()
+        bb1.append(CondBranch(two, bb2, bb3))
+        bb4 = fn.cfg.new_block()
+        bb2.append(Jump(bb4))
+        bb3.append(Jump(bb4))
+        three = bb4.append(Const(3))
+        bb5 = fn.cfg.new_block()
+        bb6 = fn.cfg.new_block()
+        bb4.append(CondBranch(three, bb5, bb6))
+        bb7 = fn.cfg.new_block()
+        bb5.append(Jump(bb7))
+        bb6.append(Jump(bb7))
+        four = bb7.append(Const(4))
+        exit = fn.cfg.new_block()
+        bb7.append(CondBranch(four, exit, bb4))
+        five = exit.append(Const(5))
+        exit.append(Return(five))
+        preds = fn.cfg.preds()
+        self.assertEqual(
+            preds,
+            {
+                entry: set(),
+                bb1: {entry},
+                bb2: {bb1},
+                bb3: {bb1},
+                bb4: {bb2, bb3, bb7},
+                bb5: {bb4},
+                bb6: {bb4},
+                bb7: {bb5, bb6},
+                exit: {bb7},
+            },
+        )
 
 
 class DominatorTests(unittest.TestCase):

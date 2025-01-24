@@ -433,6 +433,23 @@ class Compiler:
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 
 
+def compute_doms(preds: dict[str, set[str]]) -> dict[str, set[str]]:
+    entry = [block for block, block_preds in preds.items() if not block_preds][0]
+    other_blocks = set(preds.keys()) - {entry}
+    result = {entry: {entry}}
+    for block in other_blocks:
+        result[block] = set(preds.keys())
+    change = True
+    while change:
+        change = False
+        for block in other_blocks:
+            tmp = {block} | set.intersection(*(result[pred] for pred in preds[block]))
+            if tmp != result[block]:
+                result[block] = tmp
+                change = True
+    return result
+
+
 class IRTests(unittest.TestCase):
     def _parse(self, source: str) -> Object:
         return parse(tokenize(source))
@@ -982,6 +999,38 @@ fn0 {
     Return v2
   }
 }""",
+        )
+
+
+class DominatorTests(unittest.TestCase):
+    def test_dom(self) -> None:
+        entry = "entry"
+        blocks = ["entry", *(f"bb{n+1}" for n in range(7)), "exit"]
+        preds = {
+            blocks[0]: set(),
+            blocks[1]: {entry},
+            blocks[2]: {blocks[1]},
+            blocks[3]: {blocks[1]},
+            blocks[4]: {blocks[2], blocks[3], blocks[7]},
+            blocks[5]: {blocks[4]},
+            blocks[6]: {blocks[4]},
+            blocks[7]: {blocks[5], blocks[6]},
+            blocks[-1]: {blocks[7]},
+        }
+        doms = compute_doms(preds)
+        self.assertEqual(
+            doms,
+            {
+                "entry": {"entry"},
+                "bb1": {"bb1", "entry"},
+                "bb2": {"bb1", "entry", "bb2"},
+                "bb3": {"bb3", "bb1", "entry"},
+                "bb4": {"bb4", "bb1", "entry"},
+                "bb5": {"bb4", "bb1", "bb5", "entry"},
+                "bb6": {"bb4", "bb1", "bb6", "entry"},
+                "bb7": {"bb4", "bb1", "entry", "bb7"},
+                "exit": {"bb4", "bb1", "entry", "exit", "bb7"},
+            },
         )
 
 

@@ -359,8 +359,6 @@ class Compiler:
             # funcenv
             freevars.remove(func_name)
         freevars = sorted(freevars)
-        bound = [env[name] for name in freevars]
-        result = self.emit(NewClosure(fn, bound))
         prev_fn = self.push_fn(fn)
         self.block = fn.cfg.entry
         #
@@ -389,6 +387,8 @@ class Compiler:
                 self.block = body_block
                 self.compile_body({**funcenv, **env_updates}, case.body)
         self.restore_fn(prev_fn)
+        bound = [env[name] for name in freevars]
+        result = self.emit(NewClosure(fn, bound))
         return result
 
     def compile(self, env: Env, exp: Object) -> Instr:

@@ -202,11 +202,17 @@ class Block:
     id: int
     instrs: list[Instr] = dataclasses.field(init=False, default_factory=list)
 
-    def append(self, instr: Instr) -> None:
+    def append(self, instr: Instr) -> Instr:
         self.instrs.append(instr)
+        return instr
 
     def name(self) -> str:
         return f"bb{self.id}"
+
+    def terminator(self) -> Control:
+        result = self.instrs[-1]
+        assert isinstance(result, Control)
+        return result
 
 
 @dataclasses.dataclass(eq=False)
@@ -261,6 +267,29 @@ class CFG:
                     result += f"    v{gvn[instr]} = {instr.to_string(gvn)}\n"
             result += "  }\n"
         return result
+
+    def rpo(self) -> list[Block]:
+        result = []
+        self.po_from(self.entry, result, set())
+        result.reverse()
+        return result
+
+    def po_from(self, block: Block, result: list[Block], visited: set[Block]):
+        visited.add(block)
+        terminator = block.terminator()
+        if isinstance(terminator, Jump):
+            if terminator.target not in visited:
+                self.po_from(terminator.target, result, visited)
+        elif isinstance(terminator, CondBranch):
+            if terminator.conseq not in visited:
+                self.po_from(terminator.conseq, result, visited)
+            if terminator.alt not in visited:
+                self.po_from(terminator.alt, result, visited)
+        elif isinstance(terminator, Return):
+            pass
+        else:
+            raise NotImplementedError(f"unexpected terminator {terminator}")
+        result.append(block)
 
 
 @dataclasses.dataclass(eq=False)
@@ -1000,6 +1029,35 @@ fn0 {
   }
 }""",
         )
+
+
+class RPOTests(unittest.TestCase):
+    def test_one_block(self) -> None:
+        fn = IRFunction(0, [])
+        entry = fn.cfg.entry
+        one = entry.append(Const(1))
+        entry.append(Return(one))
+        self.assertEqual(fn.cfg.rpo(), [entry])
+
+    def test_jump(self) -> None:
+        fn = IRFunction(0, [])
+        entry = fn.cfg.entry
+        one = entry.append(Const(1))
+        exit = fn.cfg.new_block()
+        entry.append(Jump(exit))
+        exit.append(Return(one))
+        self.assertEqual(fn.cfg.rpo(), [entry, exit])
+
+    def test_cond_branch(self) -> None:
+        fn = IRFunction(0, [])
+        entry = fn.cfg.entry
+        one = entry.append(Const(1))
+        left = fn.cfg.new_block()
+        right = fn.cfg.new_block()
+        entry.append(CondBranch(one, left, right))
+        left.append(Return(one))
+        right.append(Return(one))
+        self.assertEqual(fn.cfg.rpo(), [entry, right, left])
 
 
 class DominatorTests(unittest.TestCase):

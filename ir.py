@@ -300,6 +300,23 @@ class CFG:
                 result[succ].add(block)
         return result
 
+    def doms(self) -> dict[Block, set[Block]]:
+        preds = self.preds()
+        entry = [block for block, block_preds in preds.items() if not block_preds][0]
+        other_blocks = set(preds.keys()) - {entry}
+        result = {entry: {entry}}
+        for block in other_blocks:
+            result[block] = set(preds.keys())
+        change = True
+        while change:
+            change = False
+            for block in other_blocks:
+                tmp = {block} | set.intersection(*(result[pred] for pred in preds[block]))
+                if tmp != result[block]:
+                    result[block] = tmp
+                    change = True
+        return result
+
 
 @dataclasses.dataclass(eq=False)
 class IRFunction:
@@ -469,23 +486,6 @@ class Compiler:
             # Anonymous function
             return self.compile_function(env, exp, func_name=None)
         raise NotImplementedError(f"exp {type(exp)} {exp}")
-
-
-def compute_doms(preds: dict[str, set[str]]) -> dict[str, set[str]]:
-    entry = [block for block, block_preds in preds.items() if not block_preds][0]
-    other_blocks = set(preds.keys()) - {entry}
-    result = {entry: {entry}}
-    for block in other_blocks:
-        result[block] = set(preds.keys())
-    change = True
-    while change:
-        change = False
-        for block in other_blocks:
-            tmp = {block} | set.intersection(*(result[pred] for pred in preds[block]))
-            if tmp != result[block]:
-                result[block] = tmp
-                change = True
-    return result
 
 
 class IRTests(unittest.TestCase):
@@ -1114,32 +1114,43 @@ class PredTests(unittest.TestCase):
 
 class DominatorTests(unittest.TestCase):
     def test_dom(self) -> None:
-        entry = "entry"
-        blocks = ["entry", *(f"bb{n+1}" for n in range(7)), "exit"]
-        preds = {
-            blocks[0]: set(),
-            blocks[1]: {entry},
-            blocks[2]: {blocks[1]},
-            blocks[3]: {blocks[1]},
-            blocks[4]: {blocks[2], blocks[3], blocks[7]},
-            blocks[5]: {blocks[4]},
-            blocks[6]: {blocks[4]},
-            blocks[7]: {blocks[5], blocks[6]},
-            blocks[-1]: {blocks[7]},
-        }
-        doms = compute_doms(preds)
+        fn = IRFunction(0, [])
+        entry = fn.cfg.entry
+        one = entry.append(Const(1))
+        bb1 = fn.cfg.new_block()
+        entry.append(Jump(bb1))
+        two = bb1.append(Const(2))
+        bb2 = fn.cfg.new_block()
+        bb3 = fn.cfg.new_block()
+        bb1.append(CondBranch(two, bb2, bb3))
+        bb4 = fn.cfg.new_block()
+        bb2.append(Jump(bb4))
+        bb3.append(Jump(bb4))
+        three = bb4.append(Const(3))
+        bb5 = fn.cfg.new_block()
+        bb6 = fn.cfg.new_block()
+        bb4.append(CondBranch(three, bb5, bb6))
+        bb7 = fn.cfg.new_block()
+        bb5.append(Jump(bb7))
+        bb6.append(Jump(bb7))
+        four = bb7.append(Const(4))
+        exit = fn.cfg.new_block()
+        bb7.append(CondBranch(four, exit, bb4))
+        five = exit.append(Const(5))
+        exit.append(Return(five))
+        doms = fn.cfg.doms()
         self.assertEqual(
             doms,
             {
-                "entry": {"entry"},
-                "bb1": {"bb1", "entry"},
-                "bb2": {"bb1", "entry", "bb2"},
-                "bb3": {"bb3", "bb1", "entry"},
-                "bb4": {"bb4", "bb1", "entry"},
-                "bb5": {"bb4", "bb1", "bb5", "entry"},
-                "bb6": {"bb4", "bb1", "bb6", "entry"},
-                "bb7": {"bb4", "bb1", "entry", "bb7"},
-                "exit": {"bb4", "bb1", "entry", "exit", "bb7"},
+                entry: {entry},
+                bb1: {bb1, entry},
+                bb2: {bb1, entry, bb2},
+                bb3: {bb3, bb1, entry},
+                bb4: {bb4, bb1, entry},
+                bb5: {bb4, bb1, bb5, entry},
+                bb6: {bb4, bb1, bb6, entry},
+                bb7: {bb4, bb1, entry, bb7},
+                exit: {bb4, bb1, entry, exit, bb7},
             },
         )
 

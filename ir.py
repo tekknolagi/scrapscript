@@ -49,6 +49,9 @@ class InstrId:
         self.data[instr] = id
         return id
 
+    def name(self, instr: Instr) -> str:
+        return f"v{self[instr]}"
+
 
 @dataclasses.dataclass(eq=False)
 class Instr:
@@ -361,6 +364,36 @@ class IRFunction:
         result += self.cfg.to_string(self, gvn)
         return result + "}"
 
+    def to_c(self) -> str:
+        gvn = InstrId()
+        return self._to_c(self.cfg.entry, gvn, self.cfg.doms())
+
+    def _instr_to_c(self, instr: Instr, gvn: InstrId, doms: dict[Block, set[Block]]) -> str:
+        if isinstance(instr, Const):
+            if isinstance(instr.value, Int):
+                return f"new_int({instr.value.value})"
+        if isinstance(instr, IntAdd):
+            operands = ", ".join(gvn.name(op) for op in instr.operands)
+            return f"int_add({operands})"
+        if isinstance(instr, Param):
+            return f"param{instr.idx}"
+        if isinstance(instr, NewClosure):
+            operands = ", ".join([f"fn{instr.fn.id}", *(gvn.name(op) for op in instr.operands)])
+            return f"new_closure({operands})"
+        raise NotImplementedError(type(instr))
+
+    def _to_c(self, block: Block, gvn: InstrId, doms: dict[Block, set[Block]]) -> str:
+        result = f"Object *fn{self.id}() {{\n"
+        for instr in block.instrs:
+            if isinstance(instr, Control): break
+            rhs = self._instr_to_c(instr, gvn, doms)
+            result += f"Object *{gvn.name(instr)} = {rhs};\n"
+        assert isinstance(instr, Control)
+        if isinstance(instr, Return):
+            result += f"return {gvn.name(instr.operands[0])};\n"
+        result += "}"
+        return result
+
 
 class Compiler:
     def __init__(self) -> None:
@@ -516,6 +549,9 @@ class Compiler:
             # Anonymous function
             return self.compile_function(env, exp, func_name=None)
         raise NotImplementedError(f"exp {type(exp)} {exp}")
+
+    def to_c(self) -> str:
+        return "\n".join(fn.to_c() for fn in self.fns)
 
 
 @dataclasses.dataclass

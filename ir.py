@@ -488,6 +488,91 @@ class Compiler:
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 
 
+@dataclasses.dataclass
+class ConstantLattice:
+    pass
+
+
+@dataclasses.dataclass
+class CBottom(ConstantLattice):
+    pass
+
+
+@dataclasses.dataclass
+class CTop(ConstantLattice):
+    pass
+
+
+@dataclasses.dataclass
+class CInt(ConstantLattice):
+    value: Optional[int] = None
+
+    def has_value(self) -> bool:
+        return self.value is not None
+
+
+def union(self: ConstantLattice, other: ConstantLattice) -> ConstantLattice:
+    if isinstance(self, CBottom):
+        return other
+    if isinstance(self, CTop):
+        return self
+    if isinstance(self, CInt) and isinstance(other, CInt):
+        return self if self.value == other.value else CInt()
+    return CBottom()
+
+
+@dataclasses.dataclass
+class SCCP:
+    fn: IRFunction
+    instr_type: dict[Instr, ConstantLattice] = dataclasses.field(init=False, default_factory=dict)
+    block_executable: set[Block] = dataclasses.field(init=False, default_factory=set)
+    instr_uses: dict[Instr, set[Instr]] = dataclasses.field(init=False, default_factory=dict)
+
+    def type_of(self, instr: Instr) -> ConstantLattice:
+        result = self.instr_type.get(instr)
+        if result is not None:
+            return result
+        result = self.instr_type[instr] = CBottom()
+        return result
+
+    def run(self) -> dict[Instr, ConstantLattice]:
+        block_worklist: list[Block] = [self.fn.cfg.entry]
+        instr_worklist: list[Instr] = []
+
+        while block_worklist or instr_worklist:
+            if instr_worklist and (instr := instr_worklist.pop(0)):
+                if isinstance(instr, HasOperands):
+                    for operand in instr.operands:
+                        if operand not in self.instr_uses:
+                            self.instr_uses[operand] = set()
+                        self.instr_uses[operand].add(instr)
+                new_type: ConstantLattice = CBottom()
+                if isinstance(instr, Const):
+                    if isinstance(instr.value, Int):
+                        new_type = CInt(instr.value.value)
+                elif isinstance(instr, Return):
+                    pass
+                elif isinstance(instr, IntAdd):
+                    match (self.type_of(instr.operands[0]), self.type_of(instr.operands[1])):
+                        case (CInt(int(l)), CInt(int(r))):
+                            new_type = CInt(l + r)
+                        case (CInt(_), CInt(_)):
+                            new_type = CInt()
+                else:
+                    raise NotImplementedError(f"SCCP {instr}")
+                old_type = self.type_of(instr)
+                if union(old_type, new_type) != old_type:
+                    self.instr_type[instr] = new_type
+                    for use in self.instr_uses.get(instr, set()):
+                        instr_worklist.append(use)
+            if block_worklist and (block := block_worklist.pop(0)):
+                if block not in self.block_executable:
+                    self.block_executable.add(block)
+                    instr_worklist.extend(block.instrs)
+
+        return self.instr_type
+
+
 class IRTests(unittest.TestCase):
     def _parse(self, source: str) -> Object:
         return parse(tokenize(source))
@@ -1151,6 +1236,35 @@ class DominatorTests(unittest.TestCase):
                 bb6: {bb4, bb1, bb6, entry},
                 bb7: {bb4, bb1, entry, bb7},
                 exit: {bb4, bb1, entry, exit, bb7},
+            },
+        )
+
+
+class SCCPTests(unittest.TestCase):
+    def _parse(self, source: str) -> Object:
+        return parse(tokenize(source))
+
+    def test_int(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, Int(1))
+        analysis = SCCP(compiler.fn)
+        result = analysis.run()
+        entry = compiler.fn.cfg.entry
+        self.assertEqual(result, {entry.instrs[0]: CInt(1), entry.instrs[1]: CBottom()})
+
+    def test_int_add(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("1 + 2"))
+        analysis = SCCP(compiler.fn)
+        result = analysis.run()
+        entry = compiler.fn.cfg.entry
+        self.assertEqual(
+            result,
+            {
+                entry.instrs[0]: CInt(1),
+                entry.instrs[1]: CInt(2),
+                entry.instrs[2]: CInt(3),
+                entry.instrs[3]: CBottom(),
             },
         )
 

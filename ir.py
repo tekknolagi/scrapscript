@@ -385,7 +385,8 @@ class IRFunction:
     def _to_c(self, block: Block, gvn: InstrId, doms: dict[Block, set[Block]]) -> str:
         result = f"Object *fn{self.id}() {{\n"
         for instr in block.instrs:
-            if isinstance(instr, Control): break
+            if isinstance(instr, Control):
+                break
             rhs = self._instr_to_c(instr, gvn, doms)
             result += f"Object *{gvn.name(instr)} = {rhs};\n"
         assert isinstance(instr, Control)

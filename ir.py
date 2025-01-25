@@ -614,6 +614,43 @@ class SCCP:
         return self.instr_type
 
 
+@dataclasses.dataclass
+class CleanCFG:
+    fn: IRFunction
+
+    def run(self) -> None:
+        changed = True
+        while changed:
+            changed = False
+            for block in self.fn.cfg.rpo():
+                if not block.instrs:
+                    # Ignore transient empty blocks.
+                    continue
+                # Keep working on the current block until no further changes are made.
+                while self.absorb_dst_block(block):
+                    pass
+            changed = self.remove_unreachable_blocks()
+
+    def absorb_dst_block(self, block: Block) -> bool:
+        terminator = block.terminator()
+        if not isinstance(terminator, Jump):
+            return False
+        target = terminator.target
+        if target == block:
+            return False
+        preds = self.fn.cfg.preds()
+        if len(preds[target]) > 1:
+            return False
+        block.instrs.pop(-1)
+        block.instrs.extend(target.instrs)
+        target.instrs.clear()
+        # No Phi to fix up
+        return True
+
+    def remove_unreachable_blocks(self) -> bool:
+        self.fn.cfg.blocks = self.fn.cfg.rpo()
+
+
 class IRTests(unittest.TestCase):
     def _parse(self, source: str) -> Object:
         return parse(tokenize(source))
@@ -878,6 +915,18 @@ fn1 {
   }
 }""",
         )
+        CleanCFG(compiler.fns[1]).run()
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
+    MatchFail
+  }
+}""",
+        )
 
     def test_match_one_case(self) -> None:
         compiler = Compiler()
@@ -1130,6 +1179,30 @@ fn1 {
     Jump bb5
   }
   bb5 {
+    v3 = Const<1>
+    v4 = IntSub v1, v3
+    v5 = Call v0, v4
+    v6 = IntMul v1, v5
+    Return v6
+  }
+  bb4 {
+    v7 = Const<1>
+    Return v7
+  }
+}""",
+        )
+        CleanCFG(compiler.fns[1]).run()
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
+    v2 = IsNumEqualWord v1, 0
+    CondBranch v2, bb4, bb3
+  }
+  bb3 {
     v3 = Const<1>
     v4 = IntSub v1, v3
     v5 = Call v0, v4

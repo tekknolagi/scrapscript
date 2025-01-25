@@ -133,7 +133,9 @@ class RefineType(HasOperands):
         self.ty = ty
 
     def to_string(self, gvn: InstrId) -> str:
-        return f"{type(self).__name__}<{self.ty.__class__.__name__}> " + ", ".join(f"v{gvn[op]}" for op in self.operands)
+        return f"{type(self).__name__}<{self.ty.__class__.__name__}> " + ", ".join(
+            f"v{gvn[op]}" for op in self.operands
+        )
 
 
 @dataclasses.dataclass(init=False, eq=False)

@@ -279,12 +279,12 @@ class CFG:
         return result
 
     def rpo(self) -> list[Block]:
-        result = []
+        result: list[Block] = []
         self.po_from(self.entry, result, set())
         result.reverse()
         return result
 
-    def po_from(self, block: Block, result: list[Block], visited: set[Block]):
+    def po_from(self, block: Block, result: list[Block], visited: set[Block]) -> None:
         visited.add(block)
         terminator = block.terminator()
         for succ in terminator.succs():
@@ -294,7 +294,7 @@ class CFG:
 
     def preds(self) -> dict[Block, set[Block]]:
         rpo = self.rpo()
-        result = {block: set() for block in rpo}
+        result: dict[Block, set[Block]] = {block: set() for block in rpo}
         for block in rpo:
             for succ in block.terminator().succs():
                 result[succ].add(block)
@@ -350,7 +350,7 @@ class Compiler:
         self.gensym_counter += 1
         return f"{stem}_{self.gensym_counter-1}"
 
-    def push_fn(self, fn: IRFunction) -> IRFunction:
+    def push_fn(self, fn: IRFunction) -> tuple[IRFunction, Block]:
         prev_fn = self.fn
         prev_block = self.block
         self.restore_fn(fn, fn.cfg.entry)
@@ -414,7 +414,7 @@ class Compiler:
             # Functions can refer to themselves; we close the loop below in the
             # funcenv
             freevars.remove(func_name)
-        freevars = sorted(freevars)
+        ordered_freevars = sorted(freevars)
         prev_fn, prev_block = self.push_fn(fn)
         #
         funcenv = {}
@@ -423,7 +423,7 @@ class Compiler:
         closure = funcenv[clo]
         if func_name is not None:
             funcenv[func_name] = closure
-        for idx, name in enumerate(freevars):
+        for idx, name in enumerate(ordered_freevars):
             funcenv[name] = self.emit(ClosureRef(closure, idx, name))
         #
         if isinstance(exp, Function):
@@ -442,7 +442,7 @@ class Compiler:
                 self.block = body_block
                 self.compile_body({**funcenv, **env_updates}, case.body)
         self.restore_fn(prev_fn, prev_block)
-        bound = [env[name] for name in freevars]
+        bound = [env[name] for name in ordered_freevars]
         result = self.emit(NewClosure(fn, bound))
         return result
 
@@ -1044,14 +1044,14 @@ class RPOTests(unittest.TestCase):
     def test_one_block(self) -> None:
         fn = IRFunction(0, [])
         entry = fn.cfg.entry
-        one = entry.append(Const(1))
+        one = entry.append(Const(Int(1)))
         entry.append(Return(one))
         self.assertEqual(fn.cfg.rpo(), [entry])
 
     def test_jump(self) -> None:
         fn = IRFunction(0, [])
         entry = fn.cfg.entry
-        one = entry.append(Const(1))
+        one = entry.append(Const(Int(1)))
         exit = fn.cfg.new_block()
         entry.append(Jump(exit))
         exit.append(Return(one))
@@ -1060,7 +1060,7 @@ class RPOTests(unittest.TestCase):
     def test_cond_branch(self) -> None:
         fn = IRFunction(0, [])
         entry = fn.cfg.entry
-        one = entry.append(Const(1))
+        one = entry.append(Const(Int(1)))
         left = fn.cfg.new_block()
         right = fn.cfg.new_block()
         entry.append(CondBranch(one, left, right))
@@ -1073,27 +1073,27 @@ class PredTests(unittest.TestCase):
     def test_preds(self) -> None:
         fn = IRFunction(0, [])
         entry = fn.cfg.entry
-        one = entry.append(Const(1))
+        one = entry.append(Const(Int(1)))
         bb1 = fn.cfg.new_block()
         entry.append(Jump(bb1))
-        two = bb1.append(Const(2))
+        two = bb1.append(Const(Int(2)))
         bb2 = fn.cfg.new_block()
         bb3 = fn.cfg.new_block()
         bb1.append(CondBranch(two, bb2, bb3))
         bb4 = fn.cfg.new_block()
         bb2.append(Jump(bb4))
         bb3.append(Jump(bb4))
-        three = bb4.append(Const(3))
+        three = bb4.append(Const(Int(3)))
         bb5 = fn.cfg.new_block()
         bb6 = fn.cfg.new_block()
         bb4.append(CondBranch(three, bb5, bb6))
         bb7 = fn.cfg.new_block()
         bb5.append(Jump(bb7))
         bb6.append(Jump(bb7))
-        four = bb7.append(Const(4))
+        four = bb7.append(Const(Int(4)))
         exit = fn.cfg.new_block()
         bb7.append(CondBranch(four, exit, bb4))
-        five = exit.append(Const(5))
+        five = exit.append(Const(Int(5)))
         exit.append(Return(five))
         preds = fn.cfg.preds()
         self.assertEqual(
@@ -1116,27 +1116,27 @@ class DominatorTests(unittest.TestCase):
     def test_dom(self) -> None:
         fn = IRFunction(0, [])
         entry = fn.cfg.entry
-        one = entry.append(Const(1))
+        one = entry.append(Const(Int(1)))
         bb1 = fn.cfg.new_block()
         entry.append(Jump(bb1))
-        two = bb1.append(Const(2))
+        two = bb1.append(Const(Int(2)))
         bb2 = fn.cfg.new_block()
         bb3 = fn.cfg.new_block()
         bb1.append(CondBranch(two, bb2, bb3))
         bb4 = fn.cfg.new_block()
         bb2.append(Jump(bb4))
         bb3.append(Jump(bb4))
-        three = bb4.append(Const(3))
+        three = bb4.append(Const(Int(3)))
         bb5 = fn.cfg.new_block()
         bb6 = fn.cfg.new_block()
         bb4.append(CondBranch(three, bb5, bb6))
         bb7 = fn.cfg.new_block()
         bb5.append(Jump(bb7))
         bb6.append(Jump(bb7))
-        four = bb7.append(Const(4))
+        four = bb7.append(Const(Int(4)))
         exit = fn.cfg.new_block()
         bb7.append(CondBranch(four, exit, bb4))
-        five = exit.append(Const(5))
+        five = exit.append(Const(Int(5)))
         exit.append(Return(five))
         doms = fn.cfg.doms()
         self.assertEqual(

@@ -52,6 +52,19 @@ class InstrId:
 
 @dataclasses.dataclass(eq=False)
 class Instr:
+    forwarded: Optional[Instr] = dataclasses.field(init=False, default=None)
+
+    def find(self) -> Instr:
+        result = self
+        while True:
+            it = result.forwarded
+            if it is None:
+                return result
+            result = it
+
+    def make_equal_to(self, other: Instr) -> None:
+        self.find().forwarded = other
+
     def __hash__(self) -> int:
         return id(self)
 

@@ -119,6 +119,16 @@ class IntLess(HasOperands):
 
 
 @dataclasses.dataclass(init=False, eq=False)
+class RefineType(HasOperands):
+    def __init__(self, value: Instr, ty: ConstantLattice) -> None:
+        self.operands = [value]
+        self.ty = ty
+
+    def to_string(self, gvn: InstrId) -> str:
+        return f"{type(self).__name__}<{self.ty.__class__.__name__}> " + ", ".join(f"v{gvn[op]}" for op in self.operands)
+
+
+@dataclasses.dataclass(init=False, eq=False)
 class IsNumEqualWord(HasOperands):
     expected: int
 
@@ -378,6 +388,7 @@ class Compiler:
             self.emit(CondBranch(is_list, is_list_block, fallthrough))
             self.block = is_list_block
             updates = {}
+            # the_list = self.emit(RefineType(param, CList()))
             the_list = param
             for i, pattern_item in enumerate(pattern.items):
                 assert not isinstance(pattern_item, Spread)

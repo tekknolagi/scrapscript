@@ -544,6 +544,11 @@ class CInt(ConstantLattice):
         return self.value is not None
 
 
+@dataclasses.dataclass
+class CClo(ConstantLattice):
+    value: Optional[IRFunction] = None
+
+
 def union(self: ConstantLattice, other: ConstantLattice) -> ConstantLattice:
     if isinstance(self, CBottom):
         return other
@@ -599,6 +604,10 @@ class SCCP:
                 elif isinstance(instr, ListCons):
                     if isinstance(self.type_of(instr.operands[1]), CList):
                         new_type = CList()
+                elif isinstance(instr, NewClosure):
+                    new_type = CClo(instr.fn)
+                elif isinstance(instr, Call):
+                    new_type = CTop()
                 else:
                     raise NotImplementedError(f"SCCP {instr}")
                 old_type = self.type_of(instr)
@@ -1269,6 +1278,10 @@ fn0 {
   }
 }""",
         )
+        analysis = SCCP(compiler.fns[0])
+        analysis.run()
+        entry = compiler.fns[0].cfg.entry
+        self.assertEqual(analysis.instr_type[entry.instrs[0]], CClo(compiler.fns[1]))
 
 
 class RPOTests(unittest.TestCase):

@@ -137,7 +137,7 @@ class RefineType(HasOperands):
 
 
 @dataclasses.dataclass(init=False, eq=False)
-class IsNumEqualWord(HasOperands):
+class IsIntEqualWord(HasOperands):
     expected: int
 
     def __init__(self, value: Instr, expected: int) -> None:
@@ -393,7 +393,7 @@ class Compiler:
 
     def compile_match_pattern(self, env: Env, param: Instr, pattern: Object, success: Block, fallthrough: Block) -> Env:
         if isinstance(pattern, Int):
-            cond = self.emit(IsNumEqualWord(param, pattern.value))
+            cond = self.emit(IsIntEqualWord(param, pattern.value))
             self.emit(CondBranch(cond, success, fallthrough))
             return {}
         if isinstance(pattern, Var):
@@ -943,7 +943,7 @@ fn1 {
     Jump bb2
   }
   bb2 {
-    v2 = IsNumEqualWord v1, 1
+    v2 = IsIntEqualWord v1, 1
     CondBranch v2, bb3, bb1
   }
   bb1 {
@@ -971,11 +971,11 @@ fn1 {
     Jump bb2
   }
   bb2 {
-    v2 = IsNumEqualWord v1, 1
+    v2 = IsIntEqualWord v1, 1
     CondBranch v2, bb4, bb3
   }
   bb3 {
-    v3 = IsNumEqualWord v1, 3
+    v3 = IsIntEqualWord v1, 3
     CondBranch v3, bb5, bb1
   }
   bb1 {
@@ -1210,7 +1210,7 @@ fn1 {
     Jump bb2
   }
   bb2 {
-    v2 = IsNumEqualWord v1, 0
+    v2 = IsIntEqualWord v1, 0
     CondBranch v2, bb4, bb3
   }
   bb3 {
@@ -1237,7 +1237,7 @@ fn1 {
   bb0 {
     v0 = Param<0; $clo>
     v1 = Param<1; arg_0>
-    v2 = IsNumEqualWord v1, 0
+    v2 = IsIntEqualWord v1, 0
     CondBranch v2, bb4, bb3
   }
   bb3 {

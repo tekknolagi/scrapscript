@@ -504,6 +504,11 @@ class CTop(ConstantLattice):
 
 
 @dataclasses.dataclass
+class CList(ConstantLattice):
+    pass
+
+
+@dataclasses.dataclass
 class CInt(ConstantLattice):
     value: Optional[int] = None
 
@@ -514,6 +519,8 @@ class CInt(ConstantLattice):
 def union(self: ConstantLattice, other: ConstantLattice) -> ConstantLattice:
     if isinstance(self, CBottom):
         return other
+    if isinstance(other, Bottom):
+        return self
     if isinstance(self, CTop):
         return self
     if isinstance(self, CInt) and isinstance(other, CInt):
@@ -548,8 +555,11 @@ class SCCP:
                         self.instr_uses[operand].add(instr)
                 new_type: ConstantLattice = CBottom()
                 if isinstance(instr, Const):
-                    if isinstance(instr.value, Int):
-                        new_type = CInt(instr.value.value)
+                    value = instr.value
+                    if isinstance(value, Int):
+                        new_type = CInt(value.value)
+                    if isinstance(value, List):
+                        new_type = CList()
                 elif isinstance(instr, Return):
                     pass
                 elif isinstance(instr, IntAdd):
@@ -558,6 +568,9 @@ class SCCP:
                             new_type = CInt(l + r)
                         case (CInt(_), CInt(_)):
                             new_type = CInt()
+                elif isinstance(instr, ListCons):
+                    if isinstance(self.type_of(instr.operands[1]), CList):
+                        new_type = CList()
                 else:
                     raise NotImplementedError(f"SCCP {instr}")
                 old_type = self.type_of(instr)
@@ -1254,7 +1267,7 @@ class SCCPTests(unittest.TestCase):
 
     def test_int_add(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("1 + 2"))
+        compiler.compile_body({}, self._parse("1 + 2 + 3"))
         analysis = SCCP(compiler.fn)
         result = analysis.run()
         entry = compiler.fn.cfg.entry
@@ -1264,9 +1277,31 @@ class SCCPTests(unittest.TestCase):
                 entry.instrs[0]: CInt(1),
                 entry.instrs[1]: CInt(2),
                 entry.instrs[2]: CInt(3),
-                entry.instrs[3]: CBottom(),
+                entry.instrs[3]: CInt(5),
+                entry.instrs[4]: CInt(6),
+                entry.instrs[5]: CBottom(),
             },
         )
+
+    def test_empty_list(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("[]"))
+        analysis = SCCP(compiler.fn)
+        analysis.run()
+        return_instr = compiler.fn.cfg.entry.instrs[-1]
+        self.assertIsInstance(return_instr, Return)
+        returned = return_instr.operands[0]
+        self.assertEqual(analysis.instr_type[returned], CList())
+
+    def test_const_list(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, self._parse("[1, 2]"))
+        analysis = SCCP(compiler.fn)
+        analysis.run()
+        return_instr = compiler.fn.cfg.entry.instrs[-1]
+        self.assertIsInstance(return_instr, Return)
+        returned = return_instr.operands[0]
+        self.assertEqual(analysis.instr_type[returned], CList())
 
 
 if __name__ == "__main__":

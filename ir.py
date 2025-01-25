@@ -519,7 +519,7 @@ class CInt(ConstantLattice):
 def union(self: ConstantLattice, other: ConstantLattice) -> ConstantLattice:
     if isinstance(self, CBottom):
         return other
-    if isinstance(other, Bottom):
+    if isinstance(other, CBottom):
         return self
     if isinstance(self, CTop):
         return self
@@ -1290,6 +1290,7 @@ class SCCPTests(unittest.TestCase):
         analysis.run()
         return_instr = compiler.fn.cfg.entry.instrs[-1]
         self.assertIsInstance(return_instr, Return)
+        assert isinstance(return_instr, Return)
         returned = return_instr.operands[0]
         self.assertEqual(analysis.instr_type[returned], CList())
 
@@ -1300,6 +1301,7 @@ class SCCPTests(unittest.TestCase):
         analysis.run()
         return_instr = compiler.fn.cfg.entry.instrs[-1]
         self.assertIsInstance(return_instr, Return)
+        assert isinstance(return_instr, Return)
         returned = return_instr.operands[0]
         self.assertEqual(analysis.instr_type[returned], CList())
 

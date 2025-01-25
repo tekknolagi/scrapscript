@@ -648,7 +648,9 @@ class CleanCFG:
         return True
 
     def remove_unreachable_blocks(self) -> bool:
+        num_blocks = len(self.fn.cfg.blocks)
         self.fn.cfg.blocks = self.fn.cfg.rpo()
+        return len(self.fn.cfg.blocks) != num_blocks
 
 
 class IRTests(unittest.TestCase):

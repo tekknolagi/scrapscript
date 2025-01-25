@@ -280,19 +280,22 @@ class CondBranch(Control, HasOperands):
 class CFG:
     blocks: list[Block] = dataclasses.field(init=False, default_factory=list)
     entry: Block = dataclasses.field(init=False)
+    next_block_id: int = 0
 
     def __init__(self) -> None:
         self.blocks = []
+        self.next_block_id = 0
         self.entry = self.new_block()
 
     def new_block(self) -> Block:
-        result = Block(len(self.blocks))
+        result = Block(self.next_block_id)
+        self.next_block_id += 1
         self.blocks.append(result)
         return result
 
     def to_string(self, fn: IRFunction, gvn: InstrId) -> str:
         result = ""
-        for block in self.blocks:
+        for block in self.rpo():
             result += f"  {block.name()} {{\n"
             for instr in block.instrs:
                 if isinstance(instr, Control):
@@ -888,12 +891,12 @@ fn1 {
     v1 = Param<1; arg_0>
     Jump bb2
   }
-  bb1 {
-    MatchFail
-  }
   bb2 {
     v2 = IsNumEqualWord v1, 1
     CondBranch v2, bb3, bb1
+  }
+  bb1 {
+    MatchFail
   }
   bb3 {
     v3 = Const<2>
@@ -916,9 +919,6 @@ fn1 {
     v1 = Param<1; arg_0>
     Jump bb2
   }
-  bb1 {
-    MatchFail
-  }
   bb2 {
     v2 = IsNumEqualWord v1, 1
     CondBranch v2, bb4, bb3
@@ -927,12 +927,15 @@ fn1 {
     v3 = IsNumEqualWord v1, 3
     CondBranch v3, bb5, bb1
   }
-  bb4 {
-    v4 = Const<2>
-    Return v4
+  bb1 {
+    MatchFail
   }
   bb5 {
-    v5 = Const<4>
+    v4 = Const<4>
+    Return v4
+  }
+  bb4 {
+    v5 = Const<2>
     Return v5
   }
 }""",
@@ -949,9 +952,6 @@ fn1 {
     v0 = Param<0; $clo>
     v1 = Param<1; arg_0>
     Jump bb2
-  }
-  bb1 {
-    MatchFail
   }
   bb2 {
     Jump bb3
@@ -976,20 +976,20 @@ fn1 {
     v1 = Param<1; arg_0>
     Jump bb2
   }
-  bb1 {
-    MatchFail
-  }
   bb2 {
     v2 = IsList v1
     CondBranch v2, bb4, bb1
   }
-  bb3 {
-    v3 = Const<1>
-    Return v3
-  }
   bb4 {
-    v4 = IsEmptyList v1
-    CondBranch v4, bb3, bb1
+    v3 = IsEmptyList v1
+    CondBranch v3, bb3, bb1
+  }
+  bb1 {
+    MatchFail
+  }
+  bb3 {
+    v4 = Const<1>
+    Return v4
   }
 }""",
         )
@@ -1006,30 +1006,30 @@ fn1 {
     v1 = Param<1; arg_0>
     Jump bb2
   }
-  bb1 {
-    MatchFail
-  }
   bb2 {
     v2 = IsList v1
     CondBranch v2, bb4, bb1
   }
-  bb3 {
-    v3 = Const<1>
-    v4 = IntAdd v5, v3
-    Return v4
-  }
   bb4 {
-    v6 = IsEmptyList v1
-    CondBranch v6, bb1, bb5
+    v3 = IsEmptyList v1
+    CondBranch v3, bb1, bb5
   }
   bb5 {
-    v5 = ListFirst v1
+    v4 = ListFirst v1
     Jump bb6
   }
   bb6 {
-    v7 = ListRest v1
-    v8 = IsEmptyList v7
-    CondBranch v8, bb3, bb1
+    v5 = ListRest v1
+    v6 = IsEmptyList v5
+    CondBranch v6, bb3, bb1
+  }
+  bb3 {
+    v7 = Const<1>
+    v8 = IntAdd v4, v7
+    Return v8
+  }
+  bb1 {
+    MatchFail
   }
 }""",
         )
@@ -1046,38 +1046,38 @@ fn1 {
     v1 = Param<1; arg_0>
     Jump bb2
   }
-  bb1 {
-    MatchFail
-  }
   bb2 {
     v2 = IsList v1
     CondBranch v2, bb4, bb1
   }
-  bb3 {
-    v3 = IntAdd v4, v5
-    Return v3
-  }
   bb4 {
-    v6 = IsEmptyList v1
-    CondBranch v6, bb1, bb5
+    v3 = IsEmptyList v1
+    CondBranch v3, bb1, bb5
   }
   bb5 {
     v4 = ListFirst v1
     Jump bb6
   }
   bb6 {
-    v7 = ListRest v1
-    v8 = IsEmptyList v7
-    CondBranch v8, bb1, bb7
+    v5 = ListRest v1
+    v6 = IsEmptyList v5
+    CondBranch v6, bb1, bb7
   }
   bb7 {
-    v5 = ListFirst v7
+    v7 = ListFirst v5
     Jump bb8
   }
   bb8 {
-    v9 = ListRest v7
-    v10 = IsEmptyList v9
-    CondBranch v10, bb3, bb1
+    v8 = ListRest v5
+    v9 = IsEmptyList v8
+    CondBranch v9, bb3, bb1
+  }
+  bb3 {
+    v10 = IntAdd v4, v7
+    Return v10
+  }
+  bb1 {
+    MatchFail
   }
 }""",
         )
@@ -1122,9 +1122,6 @@ fn1 {
     v1 = Param<1; arg_0>
     Jump bb2
   }
-  bb1 {
-    MatchFail
-  }
   bb2 {
     v2 = IsNumEqualWord v1, 0
     CondBranch v2, bb4, bb3
@@ -1132,15 +1129,15 @@ fn1 {
   bb3 {
     Jump bb5
   }
-  bb4 {
-    v3 = Const<1>
-    Return v3
-  }
   bb5 {
-    v4 = Const<1>
-    v5 = IntSub v1, v4
-    v6 = Call v0, v5
-    v7 = IntMul v1, v6
+    v3 = Const<1>
+    v4 = IntSub v1, v3
+    v5 = Call v0, v4
+    v6 = IntMul v1, v5
+    Return v6
+  }
+  bb4 {
+    v7 = Const<1>
     Return v7
   }
 }""",

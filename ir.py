@@ -106,7 +106,7 @@ class HasOperands(Instr):
         stem = f"{type(self).__name__}"
         if not self.operands:
             return stem
-        return stem + " " + ", ".join(f"v{gvn[op]}" for op in self.operands)
+        return stem + " " + ", ".join(f"{gvn.name(op)}" for op in self.operands)
 
 
 @dataclasses.dataclass(init=False, eq=False)
@@ -137,7 +137,7 @@ class RefineType(HasOperands):
 
     def to_string(self, gvn: InstrId) -> str:
         return f"{type(self).__name__}<{self.ty.__class__.__name__}> " + ", ".join(
-            f"v{gvn[op]}" for op in self.operands
+            f"{gvn.name(op)}" for op in self.operands
         )
 
 
@@ -164,7 +164,7 @@ class ClosureRef(HasOperands):
         self.name = name
 
     def to_string(self, gvn: InstrId) -> str:
-        return f"{type(self).__name__}<{self.idx}; {self.name}> v{gvn[self.operands[0]]}"
+        return f"{type(self).__name__}<{self.idx}; {self.name}> {gvn.name(self.operands[0])}"
 
 
 @dataclasses.dataclass(init=False, eq=False)
@@ -221,7 +221,7 @@ class NewClosure(HasOperands):
         stem = f"{type(self).__name__}<{self.fn.name()}>"
         if not self.operands:
             return stem
-        return f"{stem} " + ", ".join(f"v{gvn[op]}" for op in self.operands)
+        return f"{stem} " + ", ".join(f"{gvn.name(op)}" for op in self.operands)
 
 
 Env = Dict[str, Instr]
@@ -306,7 +306,7 @@ class CFG:
                 if isinstance(instr, Control):
                     result += f"    {instr.to_string(gvn)}\n"
                 else:
-                    result += f"    v{gvn[instr]} = {instr.to_string(gvn)}\n"
+                    result += f"    {gvn.name(instr)} = {instr.to_string(gvn)}\n"
             result += "  }\n"
         return result
 

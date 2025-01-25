@@ -1132,6 +1132,42 @@ fn1 {
   }
 }""",
         )
+        CleanCFG(compiler.fns[1]).run()
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
+    v2 = IsList v1
+    CondBranch v2, bb4, bb1
+  }
+  bb4 {
+    v3 = IsEmptyList v1
+    CondBranch v3, bb1, bb5
+  }
+  bb5 {
+    v4 = ListFirst v1
+    v5 = ListRest v1
+    v6 = IsEmptyList v5
+    CondBranch v6, bb1, bb7
+  }
+  bb7 {
+    v7 = ListFirst v5
+    v8 = ListRest v5
+    v9 = IsEmptyList v8
+    CondBranch v9, bb3, bb1
+  }
+  bb3 {
+    v10 = IntAdd v4, v7
+    Return v10
+  }
+  bb1 {
+    MatchFail
+  }
+}""",
+        )
 
     def test_apply_fn(self) -> None:
         compiler = Compiler()

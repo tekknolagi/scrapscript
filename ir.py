@@ -230,6 +230,21 @@ class NewRecord(Instr):
     num_fields: int
 
 
+@dataclasses.dataclass(eq=False)
+class RecordSet(HasOperands):
+    idx: int
+    name: str
+
+    def __init__(self, rec: Instr, idx: int, name: str, value: Instr) -> None:
+        self.operands = [rec, value]
+        self.idx = idx
+        self.name = name
+
+    def to_string(self, gvn: InstrId) -> str:
+        stem = f"{type(self).__name__}<{self.idx}; {self.name}> "
+        return stem + ", ".join(f"{gvn.name(op)}" for op in self.operands)
+
+
 Env = Dict[str, Instr]
 
 
@@ -418,6 +433,8 @@ class IRFunction:
             return _decl("bool", f"{op(0)} == mksmallint({instr.expected})")
         if isinstance(instr, NewRecord):
             return _handle(f"mkrecord(heap, {instr.num_fields})")
+        if isinstance(instr, RecordSet):
+            return f"record_set({op(0)}, {instr.idx}, (struct record_field){{.key={instr.name}, .value={op(1)}}});\n"
         raise NotImplementedError(type(instr))
 
     def _to_c(self, f: io.StringIO, block: Block, gvn: InstrId, doms: dict[Block, set[Block]]) -> None:
@@ -453,6 +470,7 @@ class Compiler:
         self.gensym_counter: int = 0
         self.fn: IRFunction = entry
         self.block: Block = entry.cfg.entry
+        self.record_keys: Dict[str, int] = {}
 
     def new_function(self, params: list[str]) -> IRFunction:
         result = IRFunction(len(self.fns), params)
@@ -607,12 +625,32 @@ class Compiler:
             result = self.emit(NewRecord(num_fields))
             for idx, (key, value_exp) in enumerate(exp.data.items()):
                 value = self.compile(env, value_exp)
-                self.emit(RecordSet(result, idx, key, value))
+                self.emit(RecordSet(result, idx, self.record_key(key), value))
             return result
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 
+    def record_key(self, key: str) -> str:
+        if key not in self.record_keys:
+            self.record_keys[key] = len(self.record_keys)
+        return f"Record_{key}"
+
     def to_c(self) -> str:
-        return "\n".join(fn.to_c() for fn in self.fns)
+        with io.StringIO() as f:
+            if self.record_keys:
+                print("const char* record_keys[] = {", file=f)
+                for key in self.record_keys:
+                    print(f'"{key}",', file=f)
+                print("};", file=f)
+                print("enum {", file=f)
+                for key, idx in self.record_keys.items():
+                    print(f"Record_{key} = {idx},", file=f)
+                print("};", file=f)
+            else:
+                # Pacify the C compiler
+                print("const char* record_keys[] = { NULL };", file=f)
+            for fn in self.fns:
+                print(fn.to_c(), file=f)
+            return f.getvalue()
 
 
 @dataclasses.dataclass
@@ -732,6 +770,8 @@ class SCCP:
                 elif isinstance(instr, ClosureRef):
                     new_type = CTop()
                 elif isinstance(instr, NewRecord):
+                    new_type = CTop()
+                elif isinstance(instr, RecordSet):
                     new_type = CTop()
                 elif isinstance(instr, IsIntEqualWord):
                     match self.type_of(instr.operands[0]):
@@ -1429,6 +1469,40 @@ fn0 {
 }""",
         )
 
+    def test_record_with_one_field(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, _parse("{a=1}"))
+        self.assertEqual(
+            compiler.fns[0].to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = NewRecord
+    v1 = Const<1>
+    v2 = RecordSet<0; Record_a> v0, v1
+    Return v0
+  }
+}""",
+        )
+
+    def test_record_with_two_fields(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, _parse("{a=1, b=2}"))
+        self.assertEqual(
+            compiler.fns[0].to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = NewRecord
+    v1 = Const<1>
+    v2 = RecordSet<0; Record_a> v0, v1
+    v3 = Const<2>
+    v4 = RecordSet<1; Record_b> v0, v3
+    Return v0
+  }
+}""",
+        )
+
 
 class RPOTests(unittest.TestCase):
     def test_one_block(self) -> None:
@@ -1690,9 +1764,6 @@ def compile_to_c(source: str) -> str:
 const char* variant_names[] = {{
   "UNDEF",
 }};
-const char* record_keys[] = {{
-  "UNDEF",
-}};
 int main() {{
   struct space space = make_space(MEMORY_SIZE);
   init_heap(heap, space);
@@ -1761,6 +1832,12 @@ class CompilerEndToEndTests(unittest.TestCase):
 
     def test_empty_record(self) -> None:
         self.assertEqual(_run("{}"), "{}\n")
+
+    def test_record_with_one_field(self) -> None:
+        self.assertEqual(_run("{a=1}"), "{a = 1}\n")
+
+    def test_record_with_two_fields(self) -> None:
+        self.assertEqual(_run("{a=1, b=2}"), "{a = 1, b = 2}\n")
 
 
 if __name__ == "__main__":

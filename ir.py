@@ -304,6 +304,7 @@ class CFG:
         for block in self.rpo():
             result += f"  {block.name()} {{\n"
             for instr in block.instrs:
+                instr = instr.find()
                 if isinstance(instr, Control):
                     result += f"    {instr.to_string(gvn)}\n"
                 else:
@@ -775,11 +776,11 @@ class CleanCFG:
         self.fn.cfg.blocks = self.fn.cfg.rpo()
         return len(self.fn.cfg.blocks) != num_blocks
 
+def _parse(source: str) -> Object:
+    return parse(tokenize(source))
+
 
 class IRTests(unittest.TestCase):
-    def _parse(self, source: str) -> Object:
-        return parse(tokenize(source))
-
     def test_int(self) -> None:
         compiler = Compiler()
         compiler.compile_body({}, Int(1))
@@ -810,7 +811,7 @@ fn0 {
 
     def test_add_int(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("1 + 2"))
+        compiler.compile_body({}, _parse("1 + 2"))
         self.assertEqual(
             compiler.fn.to_string(InstrId()),
             """\
@@ -826,7 +827,7 @@ fn0 {
 
     def test_sub_int(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("1 - 2"))
+        compiler.compile_body({}, _parse("1 - 2"))
         self.assertEqual(
             compiler.fn.to_string(InstrId()),
             """\
@@ -842,7 +843,7 @@ fn0 {
 
     def test_less_int(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("1 < 2"))
+        compiler.compile_body({}, _parse("1 < 2"))
         self.assertEqual(
             compiler.fn.to_string(InstrId()),
             """\
@@ -858,7 +859,7 @@ fn0 {
 
     def test_empty_list(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("[]"))
+        compiler.compile_body({}, _parse("[]"))
         self.assertEqual(
             compiler.fn.to_string(InstrId()),
             """\
@@ -872,7 +873,7 @@ fn0 {
 
     def test_const_list(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("[1, 2]"))
+        compiler.compile_body({}, _parse("[1, 2]"))
         self.assertEqual(
             compiler.fn.to_string(InstrId()),
             """\
@@ -890,7 +891,7 @@ fn0 {
 
     def test_non_const_list(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("a -> [a]"))
+        compiler.compile_body({}, _parse("a -> [a]"))
         self.assertEqual(
             compiler.fns[1].to_string(InstrId()),
             """\
@@ -907,7 +908,7 @@ fn1 {
 
     def test_let(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("a . a = 1"))
+        compiler.compile_body({}, _parse("a . a = 1"))
         self.assertEqual(
             compiler.fn.to_string(InstrId()),
             """\
@@ -921,7 +922,7 @@ fn0 {
 
     def test_fun_id(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("a -> a"))
+        compiler.compile_body({}, _parse("a -> a"))
         self.assertEqual(
             compiler.fns[0].to_string(InstrId()),
             """\
@@ -946,7 +947,7 @@ fn1 {
 
     def test_fun_closure(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("a -> b -> a + b"))
+        compiler.compile_body({}, _parse("a -> b -> a + b"))
         self.assertEqual(len(compiler.fns), 3)
         self.assertEqual(
             compiler.fns[0].to_string(InstrId()),
@@ -986,7 +987,7 @@ fn2 {
 
     def test_fun_const_closure(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("(a -> a + b) . b = 1"))
+        compiler.compile_body({}, _parse("(a -> a + b) . b = 1"))
         self.assertEqual(len(compiler.fns), 2)
         self.assertEqual(
             compiler.fns[0].to_string(InstrId()),
@@ -1055,7 +1056,7 @@ fn1 {
 
     def test_match_one_case(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("| 1 -> 2 + 3"))
+        compiler.compile_body({}, _parse("| 1 -> 2 + 3"))
         self.assertEqual(
             compiler.fns[1].to_string(InstrId()),
             """\
@@ -1083,7 +1084,7 @@ fn1 {
 
     def test_match_two_cases(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("| 1 -> 2 | 3 -> 4"))
+        compiler.compile_body({}, _parse("| 1 -> 2 | 3 -> 4"))
         self.assertEqual(
             compiler.fns[1].to_string(InstrId()),
             """\
@@ -1117,7 +1118,7 @@ fn1 {
 
     def test_match_var(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("| a -> a + 1"))
+        compiler.compile_body({}, _parse("| a -> a + 1"))
         self.assertEqual(
             compiler.fns[1].to_string(InstrId()),
             """\
@@ -1140,7 +1141,7 @@ fn1 {
 
     def test_match_empty_list(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("| [] -> 1"))
+        compiler.compile_body({}, _parse("| [] -> 1"))
         self.assertEqual(
             compiler.fns[1].to_string(InstrId()),
             """\
@@ -1170,7 +1171,7 @@ fn1 {
 
     def test_match_one_item_list(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("| [a] -> a + 1"))
+        compiler.compile_body({}, _parse("| [a] -> a + 1"))
         self.assertEqual(
             compiler.fns[1].to_string(InstrId()),
             """\
@@ -1210,7 +1211,7 @@ fn1 {
 
     def test_match_two_item_list(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("| [a, b] -> a + b"))
+        compiler.compile_body({}, _parse("| [a, b] -> a + b"))
         self.assertEqual(
             compiler.fns[1].to_string(InstrId()),
             """\
@@ -1294,7 +1295,7 @@ fn1 {
 
     def test_apply_fn(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("f 1 . f  = x -> x + 1"))
+        compiler.compile_body({}, _parse("f 1 . f  = x -> x + 1"))
         self.assertEqual(
             compiler.fns[0].to_string(InstrId()),
             """\
@@ -1310,7 +1311,7 @@ fn0 {
 
     def test_recursive_call(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("fact 5 . fact = | 0 -> 1 | n -> n * fact (n - 1)"))
+        compiler.compile_body({}, _parse("fact 5 . fact = | 0 -> 1 | n -> n * fact (n - 1)"))
         self.assertEqual(
             compiler.fns[0].to_string(InstrId()),
             """\
@@ -1379,7 +1380,7 @@ fn1 {
 
     def test_apply_anonymous_function(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("((x -> x + 1) 1)"))
+        compiler.compile_body({}, _parse("((x -> x + 1) 1)"))
         self.assertEqual(
             compiler.fns[0].to_string(InstrId()),
             """\
@@ -1514,9 +1515,6 @@ class DominatorTests(unittest.TestCase):
 
 
 class SCCPTests(unittest.TestCase):
-    def _parse(self, source: str) -> Object:
-        return parse(tokenize(source))
-
     def test_int(self) -> None:
         compiler = Compiler()
         compiler.compile_body({}, Int(1))
@@ -1527,7 +1525,7 @@ class SCCPTests(unittest.TestCase):
 
     def test_int_add(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("1 + 2 + 3"))
+        compiler.compile_body({}, _parse("1 + 2 + 3"))
         analysis = SCCP(compiler.fn)
         result = analysis.run()
         entry = compiler.fn.cfg.entry
@@ -1545,7 +1543,7 @@ class SCCPTests(unittest.TestCase):
 
     def test_empty_list(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("[]"))
+        compiler.compile_body({}, _parse("[]"))
         analysis = SCCP(compiler.fn)
         analysis.run()
         return_instr = compiler.fn.cfg.entry.instrs[-1]
@@ -1556,7 +1554,7 @@ class SCCPTests(unittest.TestCase):
 
     def test_const_list(self) -> None:
         compiler = Compiler()
-        compiler.compile_body({}, self._parse("[1, 2]"))
+        compiler.compile_body({}, _parse("[1, 2]"))
         analysis = SCCP(compiler.fn)
         analysis.run()
         return_instr = compiler.fn.cfg.entry.instrs[-1]
@@ -1574,6 +1572,27 @@ def opt(fn: IRFunction) -> None:
             match instr_type[instr]:
                 case CInt(int(i)):
                     instr.make_equal_to(Const(Int(i)))
+
+
+class OptTests(unittest.TestCase):
+    def test_int_add(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, _parse("1 + 2 + 3"))
+        opt(compiler.fn)
+        self.assertEqual(
+            compiler.fn.to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = Const<1>
+    v1 = Const<2>
+    v2 = Const<3>
+    v3 = Const<5>
+    v4 = Const<6>
+    Return v4
+  }
+}""",
+        )
 
 
 def compile_to_c(source: str) -> str:

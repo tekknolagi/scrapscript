@@ -414,7 +414,9 @@ class IRFunction:
             f.write(f"goto {instr.target.name()};\n")
             self._to_c(f, instr.target, gvn, doms)
         elif isinstance(instr, CondBranch):
-            f.write(f"if ({gvn.name(instr.operands[0])}) {{ goto {instr.conseq.name()}; }} else {{ goto {instr.alt.name()}; }}\n")
+            f.write(
+                f"if ({gvn.name(instr.operands[0])}) {{ goto {instr.conseq.name()}; }} else {{ goto {instr.alt.name()}; }}\n"
+            )
             self._to_c(f, instr.conseq, gvn, doms)
             self._to_c(f, instr.alt, gvn, doms)
         elif isinstance(instr, MatchFail):

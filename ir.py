@@ -365,42 +365,60 @@ class IRFunction:
         return result + "}"
 
     def to_c(self) -> str:
-        gvn = InstrId()
-        params = ", ".join(f"struct object *{param}" for param in self.params)
-        result = f"struct object *fn{self.id}({params}) {{\n"
-        result += "HANDLES();\n"
-        for param in self.params:
-            result += f"GC_PROTECT({param});\n"
-        result += self._to_c(self.cfg.entry, gvn, self.cfg.doms())
-        return result + "}"
+        with io.StringIO() as f:
+            params = ", ".join(f"struct object *{param}" for param in self.params)
+            f.write(f"struct object *fn{self.id}({params}) {{\n")
+            f.write("HANDLES();\n")
+            for param in self.params:
+                f.write(f"GC_PROTECT({param});\n")
+            self._to_c(f, self.cfg.entry, InstrId(), self.cfg.doms())
+            f.write("}")
+            return f.getvalue()
+        return
 
     def _instr_to_c(self, instr: Instr, gvn: InstrId, doms: dict[Block, set[Block]]) -> str:
+        def _handle(rhs: str) -> str:
+            return f"GC_HANDLE(struct object *, {gvn.name(instr)}, {rhs});\n"
+
+        def _decl(ty: str, rhs: str) -> str:
+            return f"{ty} {gvn.name(instr)} = {rhs};\n"
+
         if isinstance(instr, Const):
             if isinstance(instr.value, Int):
-                return f"mksmallint({instr.value.value})"
+                return _handle(f"mksmallint({instr.value.value})")
         if isinstance(instr, IntAdd):
             operands = ", ".join(gvn.name(op) for op in instr.operands)
-            return f"num_add({operands})"
+            return _handle(f"num_add({operands})")
         if isinstance(instr, Param):
-            return self.params[instr.idx]
+            return _handle(self.params[instr.idx])
         if isinstance(instr, NewClosure):
             operands = ", ".join([f"fn{instr.fn.id}", *(gvn.name(op) for op in instr.operands)])
-            return f"mkclosure(heap, {operands})"
+            return _handle(f"mkclosure(heap, {operands})")
+        if isinstance(instr, IsIntEqualWord):
+            return _decl("bool", f"{gvn.name(instr.operands[0])} == mksmallint({instr.expected})")
         raise NotImplementedError(type(instr))
 
-    def _to_c(self, block: Block, gvn: InstrId, doms: dict[Block, set[Block]]) -> str:
-        result = ""
+    def _to_c(self, f: io.StringIO, block: Block, gvn: InstrId, doms: dict[Block, set[Block]]) -> None:
+        f.write(f"{block.name()}:;\n")
         for instr in block.instrs:
             if isinstance(instr, Control):
                 break
-            rhs = self._instr_to_c(instr, gvn, doms)
-            result += f"GC_HANDLE(struct object *, {gvn.name(instr)}, {rhs});\n"
+            f.write(self._instr_to_c(instr, gvn, doms))
         assert isinstance(instr, Control)
         if isinstance(instr, Return):
-            result += f"return {gvn.name(instr.operands[0])};\n"
+            f.write(f"return {gvn.name(instr.operands[0])};\n")
+        elif isinstance(instr, Jump):
+            f.write(f"goto {instr.target.name()};\n")
+            self._to_c(f, instr.target, gvn, doms)
+        elif isinstance(instr, CondBranch):
+            f.write(f"if ({gvn.name(instr.operands[0])}) {{ goto {instr.conseq.name()}; }} else {{ goto {instr.alt.name()}; }}\n")
+            self._to_c(f, instr.conseq, gvn, doms)
+            self._to_c(f, instr.alt, gvn, doms)
+        elif isinstance(instr, MatchFail):
+            f.write("""fprintf(stderr, "no matching cases\\n");\n""")
+            f.write("abort();\n")
         else:
             raise NotImplementedError(instr)
-        return result
 
 
 class Compiler:

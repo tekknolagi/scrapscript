@@ -1648,6 +1648,15 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_call_match_int(self) -> None:
         self.assertEqual(_run("(| 1 -> 2) 1"), "2\n")
 
+    def test_var(self) -> None:
+        self.assertEqual(_run("a . a = 1"), "1\n")
+
+    def test_function(self) -> None:
+        self.assertEqual(_run("f 1 . f = x -> x + 1"), "2\n")
+
+    def test_match_int_fallthrough(self) -> None:
+        self.assertEqual(_run("f 3 . f = | 1 -> 2 | 3 -> 4"), "4\n")
+
 
 if __name__ == "__main__":
     __import__("sys").modules["unittest.util"]._MAX_LENGTH = 999999999

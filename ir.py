@@ -1529,10 +1529,8 @@ class SCCPTests(unittest.TestCase):
         self.assertEqual(analysis.instr_type[returned], CList())
 
 
-def compile_to_binary(source: str, memory: int, debug: bool) -> str:
-    import shlex
+def compile_to_c(source: str) -> str:
     import subprocess
-    import sysconfig
     import tempfile
 
     program = parse(tokenize(source))
@@ -1608,17 +1606,26 @@ int main() {{
 """,
             file=c_file,
         )
+    return c_file.name
+
+
+def compile_to_binary(c_name: str) -> str:
+    import subprocess
+    import tempfile
+
     cc = os.environ.get("CC", "tcc")
     with tempfile.NamedTemporaryFile(mode="w", suffix=".out", delete=False) as out_file:
-        subprocess.run([cc, "-o", out_file.name, c_file.name], check=True)
+        subprocess.run([cc, "-o", out_file.name, c_name], check=True)
     return out_file.name
 
 
 def _run(code: str) -> str:
     import subprocess
+    import tempfile
 
-    binary = compile_to_binary(code, memory=4096, debug=True)
-    result = subprocess.run([binary], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+    c_name = compile_to_c(code)
+    binary_name = compile_to_binary(c_name)
+    result = subprocess.run([binary_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
     return result.stdout
 
 

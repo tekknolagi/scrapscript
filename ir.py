@@ -1585,6 +1585,9 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_int(self) -> None:
         self.assertEqual(self._run("1"), "1\n")
 
+    def test_int(self) -> None:
+        self.assertEqual(self._run("1 + 2"), "3\n")
+
 
 if __name__ == "__main__":
     __import__("sys").modules["unittest.util"]._MAX_LENGTH = 999999999

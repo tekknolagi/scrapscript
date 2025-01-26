@@ -245,6 +245,19 @@ class RecordSet(HasOperands):
         return stem + ", ".join(f"{gvn.name(op)}" for op in self.operands)
 
 
+@dataclasses.dataclass(eq=False)
+class RecordGet(HasOperands):
+    name: str
+
+    def __init__(self, rec: Instr, name: str) -> None:
+        self.operands = [rec]
+        self.name = name
+
+    def to_string(self, gvn: InstrId) -> str:
+        stem = f"{type(self).__name__}<{self.name}> "
+        return stem + ", ".join(f"{gvn.name(op)}" for op in self.operands)
+
+
 Env = Dict[str, Instr]
 
 
@@ -300,6 +313,16 @@ class CondBranch(Control, HasOperands):
 
     def succs(self) -> tuple[Block, ...]:
         return (self.conseq, self.alt)
+
+
+@dataclasses.dataclass(init=False, eq=False)
+class Guard(HasOperands):
+    pass
+
+
+@dataclasses.dataclass(init=False, eq=False)
+class GuardNonNull(Guard):
+    pass
 
 
 @dataclasses.dataclass
@@ -435,6 +458,10 @@ class IRFunction:
             return _handle(f"mkrecord(heap, {instr.num_fields})")
         if isinstance(instr, RecordSet):
             return f"record_set({op(0)}, {instr.idx}, (struct record_field){{.key={instr.name}, .value={op(1)}}});\n"
+        if isinstance(instr, RecordGet):
+            return _handle(f"record_get({op(0)}, {instr.name})")
+        if isinstance(instr, GuardNonNull):
+            return f"if ({op(0)} == NULL) {{ abort(); }}\n" + _handle(op(0))
         raise NotImplementedError(type(instr))
 
     def _to_c(self, f: io.StringIO, block: Block, gvn: InstrId, doms: dict[Block, set[Block]]) -> None:
@@ -627,6 +654,13 @@ class Compiler:
                 value = self.compile(env, value_exp)
                 self.emit(RecordSet(result, idx, self.record_key(key), value))
             return result
+        if isinstance(exp, Access):
+            assert isinstance(exp.at, Var), f"List access not supported"
+            record = self.compile(env, exp.obj)
+            key_idx = self.record_key(exp.at.name)
+            # TODO(max): Guard that it's a Record
+            value = self.emit(RecordGet(record, key_idx))
+            return self.emit(GuardNonNull(value))
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 
     def record_key(self, key: str) -> str:
@@ -772,6 +806,10 @@ class SCCP:
                 elif isinstance(instr, NewRecord):
                     new_type = CTop()
                 elif isinstance(instr, RecordSet):
+                    new_type = CTop()
+                elif isinstance(instr, RecordGet):
+                    new_type = CTop()
+                elif isinstance(instr, GuardNonNull):
                     new_type = CTop()
                 elif isinstance(instr, IsIntEqualWord):
                     match self.type_of(instr.operands[0]):
@@ -1838,6 +1876,15 @@ class CompilerEndToEndTests(unittest.TestCase):
 
     def test_record_with_two_fields(self) -> None:
         self.assertEqual(_run("{a=1, b=2}"), "{a = 1, b = 2}\n")
+
+    def test_record_builder(self) -> None:
+        self.assertEqual(_run("f 1 2 . f = x -> y -> {a = x, b = y}"), "{a = 1, b = 2}\n")
+
+    def test_record_access(self) -> None:
+        self.assertEqual(_run("rec@a . rec = {a = 1, b = 2}"), "1\n")
+
+    def test_record_builder_access(self) -> None:
+        self.assertEqual(_run("(f 1 2)@a . f = x -> y -> {a = x, b = y}"), "1\n")
 
 
 if __name__ == "__main__":

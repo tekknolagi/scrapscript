@@ -193,7 +193,7 @@ class ListRest(HasOperands):
 
 
 @dataclasses.dataclass(init=False, eq=False)
-class Call(HasOperands):
+class ClosureCall(HasOperands):
     pass
 
 
@@ -404,7 +404,7 @@ class IRFunction:
             return result
         if isinstance(instr, IsIntEqualWord):
             return _decl("bool", f"{gvn.name(instr.operands[0])} == mksmallint({instr.expected})")
-        if isinstance(instr, Call):
+        if isinstance(instr, ClosureCall):
             return _handle(f"closure_call({op(0)}, {op(1)})")
         raise NotImplementedError(type(instr))
 
@@ -583,7 +583,7 @@ class Compiler:
         if isinstance(exp, Apply):
             fn = self.compile(env, exp.func)
             arg = self.compile(env, exp.arg)
-            return self.emit(Call(fn, arg))
+            return self.emit(ClosureCall(fn, arg))
         if isinstance(exp, (Function, MatchFunction)):
             # Anonymous function
             return self.compile_function(env, exp, func_name=None)
@@ -683,7 +683,7 @@ class SCCP:
                         new_type = CList()
                 elif isinstance(instr, NewClosure):
                     new_type = CClo(instr.fn)
-                elif isinstance(instr, Call):
+                elif isinstance(instr, ClosureCall):
                     new_type = CTop()
                 else:
                     raise NotImplementedError(f"SCCP {instr}")
@@ -1265,7 +1265,7 @@ fn0 {
   bb0 {
     v0 = NewClosure<fn1>
     v1 = Const<1>
-    v2 = Call v0, v1
+    v2 = ClosureCall v0, v1
     Return v2
   }
 }""",
@@ -1281,7 +1281,7 @@ fn0 {
   bb0 {
     v0 = NewClosure<fn1>
     v1 = Const<5>
-    v2 = Call v0, v1
+    v2 = ClosureCall v0, v1
     Return v2
   }
 }""",
@@ -1305,7 +1305,7 @@ fn1 {
   bb5 {
     v3 = Const<1>
     v4 = IntSub v1, v3
-    v5 = Call v0, v4
+    v5 = ClosureCall v0, v4
     v6 = IntMul v1, v5
     Return v6
   }
@@ -1329,7 +1329,7 @@ fn1 {
   bb3 {
     v3 = Const<1>
     v4 = IntSub v1, v3
-    v5 = Call v0, v4
+    v5 = ClosureCall v0, v4
     v6 = IntMul v1, v5
     Return v6
   }
@@ -1350,7 +1350,7 @@ fn0 {
   bb0 {
     v0 = NewClosure<fn1>
     v1 = Const<1>
-    v2 = Call v0, v1
+    v2 = ClosureCall v0, v1
     Return v2
   }
 }""",

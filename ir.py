@@ -403,10 +403,12 @@ class IRFunction:
             for idx, opnd in enumerate(instr.operands):
                 result += f"closure_set({gvn.name(instr)}, {idx}, {gvn.name(opnd)});\n"
             return result
-        if isinstance(instr, IsIntEqualWord):
-            return _decl("bool", f"{op(0)} == mksmallint({instr.expected})")
+        if isinstance(instr, ClosureRef):
+            return _handle(f"closure_get({op(0)}, {instr.idx})")
         if isinstance(instr, ClosureCall):
             return _handle(f"closure_call({op(0)}, {op(1)})")
+        if isinstance(instr, IsIntEqualWord):
+            return _decl("bool", f"{op(0)} == mksmallint({instr.expected})")
         raise NotImplementedError(type(instr))
 
     def _to_c(self, f: io.StringIO, block: Block, gvn: InstrId, doms: dict[Block, set[Block]]) -> None:
@@ -1639,6 +1641,9 @@ class CompilerEndToEndTests(unittest.TestCase):
 
     def test_fun_id(self) -> None:
         self.assertEqual(_run("a -> a"), "<closure>\n")
+
+    def test_closed_vars(self) -> None:
+        self.assertEqual(_run("((a -> a + b) 3) . b = 4"), "7\n")
 
     def test_call_fun_id(self) -> None:
         self.assertEqual(_run("(a -> a) 3"), "3\n")

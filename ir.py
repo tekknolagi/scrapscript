@@ -436,8 +436,11 @@ class IRFunction:
             return gvn.name(instr.operands[idx])
 
         if isinstance(instr, Const):
-            if isinstance(instr.value, Int):
-                return _handle(f"mksmallint({instr.value.value})")
+            value = instr.value
+            if isinstance(value, Int):
+                return _handle(f"mksmallint({value.value})")
+            if isinstance(value, Hole):
+                return _decl("struct object*", "hole()")
         if isinstance(instr, IntAdd):
             operands = ", ".join(gvn.name(op) for op in instr.operands)
             return _handle(f"num_add({operands})")
@@ -606,7 +609,7 @@ class Compiler:
         return result
 
     def compile(self, env: Env, exp: Object) -> Instr:
-        if isinstance(exp, (Int, String)):
+        if isinstance(exp, (Int, String, Hole)):
             return self.emit(Const(exp))
         if isinstance(exp, Var):
             return env[exp.name]
@@ -1561,6 +1564,20 @@ fn0 {
 }""",
         )
 
+    def test_hole(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, _parse("()"))
+        self.assertEqual(
+            compiler.fns[0].to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = Const<()>
+    Return v0
+  }
+}""",
+        )
+
 
 class RPOTests(unittest.TestCase):
     def test_one_block(self) -> None:
@@ -1905,6 +1922,9 @@ class CompilerEndToEndTests(unittest.TestCase):
 
     def test_record_builder_access(self) -> None:
         self.assertEqual(_run("(f 1 2)@a . f = x -> y -> {a = x, b = y}"), "1\n")
+
+    def test_hole(self) -> None:
+        self.assertEqual(_run("()"), "()\n")
 
 
 if __name__ == "__main__":

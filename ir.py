@@ -1541,6 +1541,26 @@ fn0 {
 }""",
         )
 
+    def test_record_access(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, _parse("{a=1, b=2}@a"))
+        self.assertEqual(
+            compiler.fns[0].to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = NewRecord
+    v1 = Const<1>
+    v2 = RecordSet<0; Record_a> v0, v1
+    v3 = Const<2>
+    v4 = RecordSet<1; Record_b> v0, v3
+    v5 = RecordGet<Record_a> v0
+    v6 = GuardNonNull v5
+    Return v6
+  }
+}""",
+        )
+
 
 class RPOTests(unittest.TestCase):
     def test_one_block(self) -> None:

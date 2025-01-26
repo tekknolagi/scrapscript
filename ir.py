@@ -366,8 +366,7 @@ class IRFunction:
 
     def to_c(self) -> str:
         with io.StringIO() as f:
-            params = ", ".join(f"struct object *{param}" for param in self.params)
-            f.write(f"struct object *fn{self.id}({params}) {{\n")
+            f.write(f"{self.c_decl()} {{\n")
             f.write("HANDLES();\n")
             for param in self.params:
                 f.write(f"GC_PROTECT({param});\n")
@@ -375,6 +374,10 @@ class IRFunction:
             f.write("}")
             return f.getvalue()
         return
+
+    def c_decl(self) -> str:
+        params = ", ".join(f"struct object *{param}" for param in self.params)
+        return f"struct object *fn{self.id}({params})\n"
 
     def _instr_to_c(self, instr: Instr, gvn: InstrId, doms: dict[Block, set[Block]]) -> str:
         def _handle(rhs: str) -> str:
@@ -1569,6 +1572,8 @@ def compile_to_binary(source: str, memory: int, debug: bool) -> str:
         with open(os.path.join(dirname, "runtime.c"), "r") as runtime:
             c_file.write(runtime.read())
         c_file.write("\n")
+        for fn in compiler.fns:
+            c_file.write(fn.c_decl() + ";\n")
         c_file.write(c_code)
         c_file.write("\n")
         # The platform is in the same directory as this file

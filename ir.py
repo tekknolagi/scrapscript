@@ -628,6 +628,11 @@ class CInt(ConstantLattice):
 
 
 @dataclasses.dataclass
+class CBool(ConstantLattice):
+    value: Optional[bool] = None
+
+
+@dataclasses.dataclass
 class CClo(ConstantLattice):
     value: Optional[IRFunction] = None
 
@@ -641,6 +646,8 @@ def union(self: ConstantLattice, other: ConstantLattice) -> ConstantLattice:
         return self
     if isinstance(self, CInt) and isinstance(other, CInt):
         return self if self.value == other.value else CInt()
+    if isinstance(self, CBool) and isinstance(other, CBool):
+        return self if self.value == other.value else CBool()
     return CBottom()
 
 
@@ -678,6 +685,19 @@ class SCCP:
                         new_type = CList()
                 elif isinstance(instr, Return):
                     pass
+                elif isinstance(instr, MatchFail):
+                    pass
+                elif isinstance(instr, CondBranch):
+                    match self.type_of(instr.operands[0]):
+                        case CBool(True):
+                            block_worklist.append(instr.conseq)
+                        case CBool(False):
+                            block_worklist.append(instr.alt)
+                        case CBottom():
+                            pass
+                        case _:
+                            block_worklist.append(instr.conseq)
+                            block_worklist.append(instr.alt)
                 elif isinstance(instr, IntAdd):
                     match (self.type_of(instr.operands[0]), self.type_of(instr.operands[1])):
                         case (CInt(int(l)), CInt(int(r))):
@@ -691,6 +711,16 @@ class SCCP:
                     new_type = CClo(instr.fn)
                 elif isinstance(instr, ClosureCall):
                     new_type = CTop()
+                elif isinstance(instr, Param):
+                    new_type = CTop()
+                elif isinstance(instr, ClosureRef):
+                    new_type = CTop()
+                elif isinstance(instr, IsIntEqualWord):
+                    match self.type_of(instr.operands[0]):
+                        case CInt(int(i)) if i == instr.expected:
+                            new_type = CBool(True)
+                        case _:
+                            new_type = CBool()
                 else:
                     raise NotImplementedError(f"SCCP {instr}")
                 old_type = self.type_of(instr)
@@ -1535,6 +1565,11 @@ class SCCPTests(unittest.TestCase):
         self.assertEqual(analysis.instr_type[returned], CList())
 
 
+def opt(fn: IRFunction) -> None:
+    CleanCFG(fn).run()
+    SCCP(fn).run()
+
+
 def compile_to_c(source: str) -> str:
     import subprocess
     import tempfile
@@ -1542,6 +1577,8 @@ def compile_to_c(source: str) -> str:
     program = parse(tokenize(source))
     compiler = Compiler()
     compiler.compile_body({}, program)
+    for fn in compiler.fns:
+        opt(fn)
     c_code = compiler.to_c()
     dirname = os.path.dirname(__file__)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as c_file:

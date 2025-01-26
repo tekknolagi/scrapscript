@@ -384,11 +384,12 @@ class IRFunction:
 
     def _to_c(self, block: Block, gvn: InstrId, doms: dict[Block, set[Block]]) -> str:
         result = f"struct object *fn{self.id}() {{\n"
+        result += "HANDLES();\n"
         for instr in block.instrs:
             if isinstance(instr, Control):
                 break
             rhs = self._instr_to_c(instr, gvn, doms)
-            result += f"struct object *{gvn.name(instr)} = {rhs};\n"
+            result += f"GC_HANDLE(struct object *, {gvn.name(instr)}, {rhs});\n"
         assert isinstance(instr, Control)
         if isinstance(instr, Return):
             result += f"return {gvn.name(instr.operands[0])};\n"
@@ -1585,7 +1586,7 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_int(self) -> None:
         self.assertEqual(self._run("1"), "1\n")
 
-    def test_int(self) -> None:
+    def test_int_add(self) -> None:
         self.assertEqual(self._run("1 + 2"), "3\n")
 
 

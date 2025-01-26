@@ -424,6 +424,7 @@ class IRFunction:
         elif isinstance(instr, MatchFail):
             f.write("""fprintf(stderr, "no matching cases\\n");\n""")
             f.write("abort();\n")
+            f.write("return NULL;\n")  # Pacify the C compiler
         else:
             raise NotImplementedError(instr)
 

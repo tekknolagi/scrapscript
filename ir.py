@@ -1614,28 +1614,29 @@ int main() {{
     return out_file.name
 
 
+def _run(code: str) -> str:
+    import subprocess
+
+    binary = compile_to_binary(code, memory=4096, debug=True)
+    result = subprocess.run([binary], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+    return result.stdout
+
+
 class CompilerEndToEndTests(unittest.TestCase):
-    def _run(self, code: str) -> str:
-        import subprocess
-
-        binary = compile_to_binary(code, memory=4096, debug=True)
-        result = subprocess.run([binary], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-        return result.stdout
-
     def test_int(self) -> None:
-        self.assertEqual(self._run("1"), "1\n")
+        self.assertEqual(_run("1"), "1\n")
 
     def test_int_add(self) -> None:
-        self.assertEqual(self._run("1 + 2"), "3\n")
+        self.assertEqual(_run("1 + 2"), "3\n")
 
     def test_fun_id(self) -> None:
-        self.assertEqual(self._run("a -> a"), "<closure>\n")
+        self.assertEqual(_run("a -> a"), "<closure>\n")
 
     def test_match_int(self) -> None:
-        self.assertEqual(self._run("| 1 -> 2"), "<closure>\n")
+        self.assertEqual(_run("| 1 -> 2"), "<closure>\n")
 
     def test_call_match_int(self) -> None:
-        self.assertEqual(self._run("(| 1 -> 2) 1"), "2\n")
+        self.assertEqual(_run("(| 1 -> 2) 1"), "2\n")
 
 
 if __name__ == "__main__":

@@ -225,6 +225,11 @@ class NewClosure(HasOperands):
         return f"{stem} " + ", ".join(f"{gvn.name(op)}" for op in self.operands)
 
 
+@dataclasses.dataclass(eq=False)
+class NewRecord(Instr):
+    num_fields: int
+
+
 Env = Dict[str, Instr]
 
 
@@ -411,6 +416,8 @@ class IRFunction:
             return _handle(f"closure_call({op(0)}, {op(1)})")
         if isinstance(instr, IsIntEqualWord):
             return _decl("bool", f"{op(0)} == mksmallint({instr.expected})")
+        if isinstance(instr, NewRecord):
+            return _handle(f"mkrecord(heap, {instr.num_fields})")
         raise NotImplementedError(type(instr))
 
     def _to_c(self, f: io.StringIO, block: Block, gvn: InstrId, doms: dict[Block, set[Block]]) -> None:
@@ -595,6 +602,13 @@ class Compiler:
         if isinstance(exp, (Function, MatchFunction)):
             # Anonymous function
             return self.compile_function(env, exp, func_name=None)
+        if isinstance(exp, Record):
+            num_fields = len(exp.data)
+            result = self.emit(NewRecord(num_fields))
+            for idx, (key, value_exp) in enumerate(exp.data.items()):
+                value = self.compile(env, value_exp)
+                self.emit(RecordSet(result, idx, key, value))
+            return result
         raise NotImplementedError(f"exp {type(exp)} {exp}")
 
     def to_c(self) -> str:
@@ -717,6 +731,8 @@ class SCCP:
                     new_type = CTop()
                 elif isinstance(instr, ClosureRef):
                     new_type = CTop()
+                elif isinstance(instr, NewRecord):
+                    new_type = CTop()
                 elif isinstance(instr, IsIntEqualWord):
                     match self.type_of(instr.operands[0]):
                         case CInt(int(i)) if i == instr.expected:
@@ -775,6 +791,7 @@ class CleanCFG:
         num_blocks = len(self.fn.cfg.blocks)
         self.fn.cfg.blocks = self.fn.cfg.rpo()
         return len(self.fn.cfg.blocks) != num_blocks
+
 
 def _parse(source: str) -> Object:
     return parse(tokenize(source))
@@ -1398,6 +1415,20 @@ fn0 {
         entry = compiler.fns[0].cfg.entry
         self.assertEqual(analysis.instr_type[entry.instrs[0]], CClo(compiler.fns[1]))
 
+    def test_empty_record(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, _parse("{}"))
+        self.assertEqual(
+            compiler.fns[0].to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = NewRecord
+    Return v0
+  }
+}""",
+        )
+
 
 class RPOTests(unittest.TestCase):
     def test_one_block(self) -> None:
@@ -1727,6 +1758,9 @@ class CompilerEndToEndTests(unittest.TestCase):
 
     def test_match_int_fallthrough(self) -> None:
         self.assertEqual(_run("f 3 . f = | 1 -> 2 | 3 -> 4"), "4\n")
+
+    def test_empty_record(self) -> None:
+        self.assertEqual(_run("{}"), "{}\n")
 
 
 if __name__ == "__main__":

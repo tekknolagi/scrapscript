@@ -371,24 +371,24 @@ class IRFunction:
     def _instr_to_c(self, instr: Instr, gvn: InstrId, doms: dict[Block, set[Block]]) -> str:
         if isinstance(instr, Const):
             if isinstance(instr.value, Int):
-                return f"new_int({instr.value.value})"
+                return f"mksmallint({instr.value.value})"
         if isinstance(instr, IntAdd):
             operands = ", ".join(gvn.name(op) for op in instr.operands)
-            return f"int_add({operands})"
+            return f"num_add({operands})"
         if isinstance(instr, Param):
             return f"param{instr.idx}"
         if isinstance(instr, NewClosure):
             operands = ", ".join([f"fn{instr.fn.id}", *(gvn.name(op) for op in instr.operands)])
-            return f"new_closure({operands})"
+            return f"mkclosure(heap, {operands})"
         raise NotImplementedError(type(instr))
 
     def _to_c(self, block: Block, gvn: InstrId, doms: dict[Block, set[Block]]) -> str:
-        result = f"Object *fn{self.id}() {{\n"
+        result = f"struct object *fn{self.id}() {{\n"
         for instr in block.instrs:
             if isinstance(instr, Control):
                 break
             rhs = self._instr_to_c(instr, gvn, doms)
-            result += f"Object *{gvn.name(instr)} = {rhs};\n"
+            result += f"struct object *{gvn.name(instr)} = {rhs};\n"
         assert isinstance(instr, Control)
         if isinstance(instr, Return):
             result += f"return {gvn.name(instr.operands[0])};\n"
@@ -399,7 +399,7 @@ class IRFunction:
 class Compiler:
     def __init__(self) -> None:
         self.fns: list[IRFunction] = []
-        entry = self.new_function([])
+        self.entry = entry = self.new_function([])
         self.gensym_counter: int = 0
         self.fn: IRFunction = entry
         self.block: Block = entry.cfg.entry
@@ -1489,6 +1489,101 @@ class SCCPTests(unittest.TestCase):
         assert isinstance(return_instr, Return)
         returned = return_instr.operands[0]
         self.assertEqual(analysis.instr_type[returned], CList())
+
+
+def compile_to_binary(source: str, memory: int, debug: bool) -> str:
+    import shlex
+    import subprocess
+    import sysconfig
+    import tempfile
+
+    program = parse(tokenize(source))
+    compiler = Compiler()
+    compiler.compile_body({}, program)
+    c_code = compiler.to_c()
+    dirname = os.path.dirname(__file__)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as c_file:
+        constants = [
+            ("uword", "kKiB", 1024),
+            ("uword", "kMiB", "kKiB * kKiB"),
+            ("uword", "kGiB", "kKiB * kKiB * kKiB"),
+            ("uword", "kPageSize", "4 * kKiB"),
+            ("uword", "kSmallIntTagBits", 1),
+            ("uword", "kPrimaryTagBits", 3),
+            ("uword", "kObjectAlignmentLog2", 3),  # bits
+            ("uword", "kObjectAlignment", "1ULL << kObjectAlignmentLog2"),
+            ("uword", "kImmediateTagBits", 5),
+            ("uword", "kSmallIntTagMask", "(1ULL << kSmallIntTagBits) - 1"),
+            ("uword", "kPrimaryTagMask", "(1ULL << kPrimaryTagBits) - 1"),
+            ("uword", "kImmediateTagMask", "(1ULL << kImmediateTagBits) - 1"),
+            ("uword", "kWordSize", "sizeof(word)"),
+            ("uword", "kMaxSmallStringLength", "kWordSize - 1"),
+            ("uword", "kBitsPerByte", 8),
+            # Up to the five least significant bits are used to tag the object's layout.
+            # The three low bits make up a primary tag, used to differentiate gc_obj
+            # from immediate objects. All even tags map to SmallInt, which is
+            # optimized by checking only the lowest bit for parity.
+            ("uword", "kSmallIntTag", 0),  # 0b****0
+            ("uword", "kHeapObjectTag", 1),  # 0b**001
+            ("uword", "kEmptyListTag", 5),  # 0b00101
+            ("uword", "kHoleTag", 7),  # 0b00111
+            ("uword", "kSmallStringTag", 13),  # 0b01101
+            ("uword", "kVariantTag", 15),  # 0b01111
+            # TODO(max): Fill in 21
+            # TODO(max): Fill in 23
+            # TODO(max): Fill in 29
+            # TODO(max): Fill in 31
+            ("uword", "kBitsPerPointer", "kBitsPerByte * kWordSize"),
+            ("word", "kSmallIntBits", "kBitsPerPointer - kSmallIntTagBits"),
+            ("word", "kSmallIntMinValue", "-(((word)1) << (kSmallIntBits - 1))"),
+            ("word", "kSmallIntMaxValue", "(((word)1) << (kSmallIntBits - 1)) - 1"),
+        ]
+        for type_, name, value in constants:
+            print(f"#define {name} ({type_})({value})", file=c_file)
+        # The runtime is in the same directory as this file
+        with open(os.path.join(dirname, "runtime.c"), "r") as runtime:
+            c_file.write(runtime.read())
+        c_file.write("\n")
+        c_file.write(c_code)
+        c_file.write("\n")
+        # The platform is in the same directory as this file
+        print(
+            f"""
+
+const char* variant_names[] = {{
+  "UNDEF",
+}};
+const char* record_keys[] = {{
+  "UNDEF",
+}};
+int main() {{
+  struct space space = make_space(MEMORY_SIZE);
+  init_heap(heap, space);
+  HANDLES();
+  GC_HANDLE(struct object*, result, {compiler.entry.name()}());
+  println(result);
+  destroy_space(space);
+  return 0;
+}}
+""",
+            file=c_file,
+        )
+    cc = os.environ.get("CC", "tcc")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".out", delete=False) as out_file:
+        subprocess.run([cc, "-o", out_file.name, c_file.name], check=True)
+    return out_file.name
+
+
+class CompilerEndToEndTests(unittest.TestCase):
+    def _run(self, code: str) -> str:
+        import subprocess
+
+        binary = compile_to_binary(code, memory=4096, debug=True)
+        result = subprocess.run([binary], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        return result.stdout
+
+    def test_int(self) -> None:
+        self.assertEqual(self._run("1"), "1\n")
 
 
 if __name__ == "__main__":

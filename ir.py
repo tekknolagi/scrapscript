@@ -1639,6 +1639,9 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_fun_id(self) -> None:
         self.assertEqual(_run("a -> a"), "<closure>\n")
 
+    def test_call_fun_id(self) -> None:
+        self.assertEqual(_run("(a -> a) 3"), "3\n")
+
     def test_match_int(self) -> None:
         self.assertEqual(_run("| 1 -> 2"), "<closure>\n")
 

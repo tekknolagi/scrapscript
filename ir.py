@@ -586,6 +586,9 @@ class Compiler:
         if isinstance(exp, Apply):
             fn = self.compile(env, exp.func)
             arg = self.compile(env, exp.arg)
+            # TODO(max): Separate out into ClosureFn and DirectCall and then we
+            # can later replace the ClosureFn with known C function pointer in
+            # an optimization pass
             return self.emit(ClosureCall(fn, arg))
         if isinstance(exp, (Function, MatchFunction)):
             # Anonymous function

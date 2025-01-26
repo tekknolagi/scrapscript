@@ -706,6 +706,7 @@ void pop_handles(void* local_handles) {
 #define GC_HANDLE(type, name, val)                                             \
   type name = val;                                                             \
   GC_PROTECT(name)
+#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct object*, name, exp)
 
 void trace_roots(struct gc_heap* heap, VisitFn visit) {
   for (struct object*** h = handle_stack; h != handles; h++) {

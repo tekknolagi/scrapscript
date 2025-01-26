@@ -494,7 +494,6 @@ def compile_to_string(program: Object, debug: bool) -> str:
     dirname = os.path.dirname(__file__)
     with open(os.path.join(dirname, "runtime.c"), "r") as runtime:
         print(runtime.read(), file=f)
-    print("#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct object*, name, exp)", file=f)
     if compiler.record_keys:
         print("const char* record_keys[] = {", file=f)
         for key in compiler.record_keys:

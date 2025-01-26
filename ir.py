@@ -381,7 +381,7 @@ class IRFunction:
 
     def _instr_to_c(self, instr: Instr, gvn: InstrId, doms: dict[Block, set[Block]]) -> str:
         def _handle(rhs: str) -> str:
-            return f"GC_HANDLE(struct object *, {gvn.name(instr)}, {rhs});\n"
+            return f"OBJECT_HANDLE({gvn.name(instr)}, {rhs});\n"
 
         def _decl(ty: str, rhs: str) -> str:
             return f"{ty} {gvn.name(instr)} = {rhs};\n"

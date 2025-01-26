@@ -42,6 +42,7 @@ class InstrId:
     data: dict[Instr, int] = dataclasses.field(default_factory=dict)
 
     def __getitem__(self, instr: Instr) -> int:
+        instr = instr.find()
         id = self.data.get(instr)
         if id is not None:
             return id
@@ -416,7 +417,7 @@ class IRFunction:
         for instr in block.instrs:
             if isinstance(instr, Control):
                 break
-            f.write(self._instr_to_c(instr, gvn, doms))
+            f.write(self._instr_to_c(instr.find(), gvn, doms))
         assert isinstance(instr, Control)
         if isinstance(instr, Return):
             f.write(f"return {gvn.name(instr.operands[0])};\n")
@@ -1567,7 +1568,12 @@ class SCCPTests(unittest.TestCase):
 
 def opt(fn: IRFunction) -> None:
     CleanCFG(fn).run()
-    SCCP(fn).run()
+    instr_type = SCCP(fn).run()
+    for block in fn.cfg.rpo():
+        for instr in block.instrs:
+            match instr_type[instr]:
+                case CInt(int(i)):
+                    instr.make_equal_to(Const(Int(i)))
 
 
 def compile_to_c(source: str) -> str:

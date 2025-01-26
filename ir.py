@@ -395,8 +395,10 @@ class IRFunction:
         if isinstance(instr, Param):
             return _handle(self.params[instr.idx])
         if isinstance(instr, NewClosure):
-            operands = ", ".join([f"fn{instr.fn.id}", *(gvn.name(op) for op in instr.operands)])
-            return _handle(f"mkclosure(heap, {operands})")
+            result = _handle(f"mkclosure(heap, {instr.fn.name()}, {len(instr.operands)})")
+            for idx, op in enumerate(instr.operands):
+                result += f"closure_set({gvn.name(op)}, {idx}, {gvn.name(op)});\n"
+            return result
         if isinstance(instr, IsIntEqualWord):
             return _decl("bool", f"{gvn.name(instr.operands[0])} == mksmallint({instr.expected})")
         raise NotImplementedError(type(instr))
@@ -1619,6 +1621,12 @@ class CompilerEndToEndTests(unittest.TestCase):
 
     def test_int_add(self) -> None:
         self.assertEqual(self._run("1 + 2"), "3\n")
+
+    def test_fun_id(self) -> None:
+        self.assertEqual(self._run("a -> a"), "<closure>\n")
+
+    def test_match_int(self) -> None:
+        self.assertEqual(self._run("| 1 -> 2"), "<closure>\n")
 
 
 if __name__ == "__main__":

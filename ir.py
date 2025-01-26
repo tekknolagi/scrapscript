@@ -366,7 +366,13 @@ class IRFunction:
 
     def to_c(self) -> str:
         gvn = InstrId()
-        return self._to_c(self.cfg.entry, gvn, self.cfg.doms())
+        params = ", ".join(f"struct object *{param}" for param in self.params)
+        result = f"struct object *fn{self.id}({params}) {{\n"
+        result += "HANDLES();\n"
+        for param in self.params:
+            result += f"GC_PROTECT({param});\n"
+        result += self._to_c(self.cfg.entry, gvn, self.cfg.doms())
+        return result + "}"
 
     def _instr_to_c(self, instr: Instr, gvn: InstrId, doms: dict[Block, set[Block]]) -> str:
         if isinstance(instr, Const):
@@ -376,15 +382,14 @@ class IRFunction:
             operands = ", ".join(gvn.name(op) for op in instr.operands)
             return f"num_add({operands})"
         if isinstance(instr, Param):
-            return f"param{instr.idx}"
+            return self.params[instr.idx]
         if isinstance(instr, NewClosure):
             operands = ", ".join([f"fn{instr.fn.id}", *(gvn.name(op) for op in instr.operands)])
             return f"mkclosure(heap, {operands})"
         raise NotImplementedError(type(instr))
 
     def _to_c(self, block: Block, gvn: InstrId, doms: dict[Block, set[Block]]) -> str:
-        result = f"struct object *fn{self.id}() {{\n"
-        result += "HANDLES();\n"
+        result = ""
         for instr in block.instrs:
             if isinstance(instr, Control):
                 break
@@ -393,7 +398,8 @@ class IRFunction:
         assert isinstance(instr, Control)
         if isinstance(instr, Return):
             result += f"return {gvn.name(instr.operands[0])};\n"
-        result += "}"
+        else:
+            raise NotImplementedError(instr)
         return result
 
 

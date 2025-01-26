@@ -387,6 +387,7 @@ class IRFunction:
             return f"{ty} {gvn.name(instr)} = {rhs};\n"
 
         def op(idx: int) -> str:
+            assert isinstance(instr, HasOperands)
             return gvn.name(instr.operands[idx])
 
         if isinstance(instr, Const):
@@ -399,11 +400,11 @@ class IRFunction:
             return _handle(self.params[instr.idx])
         if isinstance(instr, NewClosure):
             result = _handle(f"mkclosure(heap, {instr.fn.name()}, {len(instr.operands)})")
-            for idx, op in enumerate(instr.operands):
-                result += f"closure_set({gvn.name(op)}, {idx}, {gvn.name(op)});\n"
+            for idx, opnd in enumerate(instr.operands):
+                result += f"closure_set({gvn.name(instr)}, {idx}, {gvn.name(opnd)});\n"
             return result
         if isinstance(instr, IsIntEqualWord):
-            return _decl("bool", f"{gvn.name(instr.operands[0])} == mksmallint({instr.expected})")
+            return _decl("bool", f"{op(0)} == mksmallint({instr.expected})")
         if isinstance(instr, ClosureCall):
             return _handle(f"closure_call({op(0)}, {op(1)})")
         raise NotImplementedError(type(instr))

@@ -386,6 +386,9 @@ class IRFunction:
         def _decl(ty: str, rhs: str) -> str:
             return f"{ty} {gvn.name(instr)} = {rhs};\n"
 
+        def op(idx: int) -> str:
+            return gvn.name(instr.operands[idx])
+
         if isinstance(instr, Const):
             if isinstance(instr.value, Int):
                 return _handle(f"mksmallint({instr.value.value})")
@@ -401,6 +404,8 @@ class IRFunction:
             return result
         if isinstance(instr, IsIntEqualWord):
             return _decl("bool", f"{gvn.name(instr.operands[0])} == mksmallint({instr.expected})")
+        if isinstance(instr, Call):
+            return _handle(f"closure_call({op(0)}, {op(1)})")
         raise NotImplementedError(type(instr))
 
     def _to_c(self, f: io.StringIO, block: Block, gvn: InstrId, doms: dict[Block, set[Block]]) -> None:
@@ -1628,6 +1633,9 @@ class CompilerEndToEndTests(unittest.TestCase):
 
     def test_match_int(self) -> None:
         self.assertEqual(self._run("| 1 -> 2"), "<closure>\n")
+
+    def test_call_match_int(self) -> None:
+        self.assertEqual(self._run("(| 1 -> 2) 1"), "2\n")
 
 
 if __name__ == "__main__":

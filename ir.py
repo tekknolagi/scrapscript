@@ -441,6 +441,9 @@ class IRFunction:
                 return _handle(f"mksmallint({value.value})")
             if isinstance(value, Hole):
                 return _decl("struct object*", "hole()")
+            if isinstance(value, String):
+                string_repr = json.dumps(value.value)
+                return _handle(f"mkstring(heap, {string_repr}, {len(value.value)})")
         if isinstance(instr, IntAdd):
             operands = ", ".join(gvn.name(op) for op in instr.operands)
             return _handle(f"num_add({operands})")
@@ -1578,6 +1581,20 @@ fn0 {
 }""",
         )
 
+    def test_string(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, _parse('"hello"'))
+        self.assertEqual(
+            compiler.fns[0].to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = Const<"hello">
+    Return v0
+  }
+}""",
+        )
+
 
 class RPOTests(unittest.TestCase):
     def test_one_block(self) -> None:
@@ -1925,6 +1942,9 @@ class CompilerEndToEndTests(unittest.TestCase):
 
     def test_hole(self) -> None:
         self.assertEqual(_run("()"), "()\n")
+
+    def test_string(self) -> None:
+        self.assertEqual(_run('"hello"'), '"hello"\n')
 
 
 if __name__ == "__main__":

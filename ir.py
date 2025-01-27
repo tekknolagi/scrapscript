@@ -446,6 +446,10 @@ class IRFunction:
             if isinstance(value, String):
                 string_repr = json.dumps(value.value)
                 return _handle(f"mkstring(heap, {string_repr}, {len(value.value)})")
+            if isinstance(value, List):
+                if not value.items:
+                    return _decl("struct object*", "empty_list()")
+            raise NotImplementedError("const", type(value))
         if isinstance(instr, IntAdd):
             operands = ", ".join(gvn.name(op) for op in instr.operands)
             return _handle(f"num_add({operands})")
@@ -470,6 +474,16 @@ class IRFunction:
             return _handle(f"record_get({op(0)}, {instr.name})")
         if isinstance(instr, GuardNonNull):
             return f"if ({op(0)} == NULL) {{ abort(); }}\n" + _handle(op(0))
+        if isinstance(instr, ListCons):
+            return _handle(f"list_cons({op(0)}, {op(1)})")
+        if isinstance(instr, ListFirst):
+            return _handle(f"list_first({op(0)})")
+        if isinstance(instr, ListRest):
+            return _handle(f"list_rest({op(0)})")
+        if isinstance(instr, IsList):
+            return _decl("bool", f"is_list({op(0)})")
+        if isinstance(instr, IsEmptyList):
+            return _decl("bool", f"{op(0)} == empty_list()")
         raise NotImplementedError(type(instr))
 
     def _to_c(self, f: io.StringIO, block: Block, gvn: InstrId) -> None:
@@ -828,6 +842,18 @@ class SCCP:
                             new_type = CBool(True)
                         case _:
                             new_type = CBool()
+                elif isinstance(instr, IsList):
+                    match self.type_of(instr.operands[0]):
+                        case CList(_):
+                            new_type = CBool(True)
+                        case _:
+                            new_type = CBool()
+                elif isinstance(instr, IsEmptyList):
+                    new_type = CBool()
+                elif isinstance(instr, ListFirst):
+                    new_type = CTop()
+                elif isinstance(instr, ListRest):
+                    new_type = CTop()
                 else:
                     raise NotImplementedError(f"SCCP {instr}")
                 old_type = self.type_of(instr)
@@ -1920,6 +1946,10 @@ class CompilerEndToEndTests(unittest.TestCase):
 
     def test_call_match_int(self) -> None:
         self.assertEqual(_run("(| 1 -> 2) 1"), "2\n")
+
+    def test_match_list(self) -> None:
+        self.assertEqual(_run("f [1, 2] . f = | [1, 2] -> 3 | [4, 5] -> 6"), "3\n")
+        self.assertEqual(_run("f [4, 5] . f = | [1, 2] -> 3 | [4, 5] -> 6"), "6\n")
 
     def test_var(self) -> None:
         self.assertEqual(_run("a . a = 1"), "1\n")

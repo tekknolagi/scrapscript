@@ -484,29 +484,26 @@ class IRFunction:
             return _decl("bool", f"is_list({op(0)})")
         if isinstance(instr, IsEmptyList):
             return _decl("bool", f"{op(0)} == empty_list()")
+        if isinstance(instr, Return):
+            return f"return {op(0)};\n"
+        if isinstance(instr, Jump):
+            return f"goto {instr.target.name()};\n"
+        if isinstance(instr, CondBranch):
+            return f"if ({op(0)}) {{ goto {instr.conseq.name()}; }} else {{ goto {instr.alt.name()}; }}\n"
+        if isinstance(instr, MatchFail):
+            return "\n".join(
+                [
+                    """fprintf(stderr, "no matching cases\\n");""",
+                    "abort();",
+                    "return NULL;\n",  # Pacify the C compiler
+                ]
+            )
         raise NotImplementedError(type(instr))
 
     def _to_c(self, f: io.StringIO, block: Block, gvn: InstrId) -> None:
         f.write(f"{block.name()}:;\n")
         for instr in block.instrs:
-            if isinstance(instr, Control):
-                break
             f.write(self._instr_to_c(instr.find(), gvn))
-        assert isinstance(instr, Control)
-        if isinstance(instr, Return):
-            f.write(f"return {gvn.name(instr.operands[0])};\n")
-        elif isinstance(instr, Jump):
-            f.write(f"goto {instr.target.name()};\n")
-        elif isinstance(instr, CondBranch):
-            f.write(
-                f"if ({gvn.name(instr.operands[0])}) {{ goto {instr.conseq.name()}; }} else {{ goto {instr.alt.name()}; }}\n"
-            )
-        elif isinstance(instr, MatchFail):
-            f.write("""fprintf(stderr, "no matching cases\\n");\n""")
-            f.write("abort();\n")
-            f.write("return NULL;\n")  # Pacify the C compiler
-        else:
-            raise NotImplementedError(instr)
 
 
 class Compiler:

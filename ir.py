@@ -841,7 +841,7 @@ class SCCP:
                             new_type = CBool()
                 elif isinstance(instr, IsList):
                     match self.type_of(instr.operands[0]):
-                        case CList(_):
+                        case CList():
                             new_type = CBool(True)
                         case _:
                             new_type = CBool()

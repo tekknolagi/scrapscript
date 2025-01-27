@@ -555,7 +555,11 @@ class Compiler:
             # the_list = self.emit(RefineType(param, CList()))
             the_list = param
             for i, pattern_item in enumerate(pattern.items):
-                assert not isinstance(pattern_item, Spread)
+                if isinstance(pattern_item, Spread):
+                    if pattern_item.name:
+                        updates[pattern_item.name] = the_list
+                    self.emit(Jump(success))
+                    return updates
                 # Not enough elements
                 is_empty = self.emit(IsEmptyList(the_list))
                 is_nonempty_block = self.fn.cfg.new_block()
@@ -1422,6 +1426,68 @@ fn1 {
 }""",
         )
 
+    def test_match_list_spread(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, _parse("| [_, ...xs] -> xs"))
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
+    Jump bb2
+  }
+  bb2 {
+    v2 = IsList v1
+    CondBranch v2, bb4, bb1
+  }
+  bb4 {
+    v3 = IsEmptyList v1
+    CondBranch v3, bb1, bb5
+  }
+  bb5 {
+    v4 = ListFirst v1
+    Jump bb6
+  }
+  bb6 {
+    v5 = ListRest v1
+    Jump bb3
+  }
+  bb3 {
+    Return v5
+  }
+  bb1 {
+    MatchFail
+  }
+}""",
+        )
+        CleanCFG(compiler.fns[1]).run()
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
+    v2 = IsList v1
+    CondBranch v2, bb4, bb1
+  }
+  bb4 {
+    v3 = IsEmptyList v1
+    CondBranch v3, bb1, bb5
+  }
+  bb5 {
+    v4 = ListFirst v1
+    v5 = ListRest v1
+    Return v5
+  }
+  bb1 {
+    MatchFail
+  }
+}""",
+        )
+
     def test_apply_fn(self) -> None:
         compiler = Compiler()
         compiler.compile_body({}, _parse("f 1 . f  = x -> x + 1"))
@@ -1948,6 +2014,9 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_match_list(self) -> None:
         self.assertEqual(_run("f [1, 2] . f = | [1, 2] -> 3 | [4, 5] -> 6"), "3\n")
         self.assertEqual(_run("f [4, 5] . f = | [1, 2] -> 3 | [4, 5] -> 6"), "6\n")
+
+    def test_match_list_spread(self) -> None:
+        self.assertEqual(_run("f [4, 5] . f = | [_, ...xs] -> xs"), "[5]\n")
 
     def test_var(self) -> None:
         self.assertEqual(_run("a . a = 1"), "1\n")

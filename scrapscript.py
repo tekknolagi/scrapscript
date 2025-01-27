@@ -18,7 +18,7 @@ import urllib.request
 from dataclasses import dataclass
 from enum import auto
 from types import ModuleType
-from typing import Any, Callable, Dict, Iterator, Mapping, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, Generator, Iterator, Mapping, Optional, Set, Tuple, Union
 
 readline: Optional[ModuleType]
 try:
@@ -218,6 +218,10 @@ class Lexer:
 
         return result
 
+    def read_tokens(self) -> Generator[Token, None, None]:
+        while (token := self.read_token()) and not isinstance(token, EOF):
+            yield token
+
     def read_token(self) -> Token:
         # Consume all whitespace
         while self.has_input():
@@ -407,10 +411,7 @@ class PeekableTests(unittest.TestCase):
 
 def tokenize(x: str) -> Peekable:
     lexer = Lexer(x)
-    tokens = []
-    while (token := lexer.read_token()) and not isinstance(token, EOF):
-        tokens.append(token)
-    return Peekable(iter(tokens))
+    return Peekable(lexer.read_tokens())
 
 
 @dataclass(frozen=True)

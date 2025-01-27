@@ -300,8 +300,13 @@ class Block:
 
     def terminator(self) -> Control:
         result = self.instrs[-1]
-        assert isinstance(result, Control)
+        assert isinstance(result, Control), f"Expected Control but found {result}"
         return result
+
+    def succs(self) -> tuple[Block, ...]:
+        if not self.instrs:
+            return ()
+        return self.terminator().succs()
 
 
 @dataclasses.dataclass(eq=False)
@@ -388,8 +393,7 @@ class CFG:
 
     def po_from(self, block: Block, result: list[Block], visited: set[Block]) -> None:
         visited.add(block)
-        terminator = block.terminator()
-        for succ in terminator.succs():
+        for succ in block.succs():
             if succ not in visited:
                 self.po_from(succ, result, visited)
         result.append(block)
@@ -398,7 +402,7 @@ class CFG:
         rpo = self.rpo()
         result: dict[Block, set[Block]] = {block: set() for block in rpo}
         for block in rpo:
-            for succ in block.terminator().succs():
+            for succ in block.succs():
                 result[succ].add(block)
         return result
 

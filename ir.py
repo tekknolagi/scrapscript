@@ -8,7 +8,7 @@ import os
 import typing
 import unittest
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 from scrapscript import (
     Access,

@@ -415,7 +415,9 @@ class IRFunction:
             f.write("HANDLES();\n")
             for param in self.params:
                 f.write(f"GC_PROTECT({param});\n")
-            self._to_c(f, self.cfg.entry, InstrId(), self.cfg.doms())
+            gvn = InstrId()
+            for block in self.cfg.rpo():
+                self._to_c(f, block, gvn)
             f.write("}")
             return f.getvalue()
         return
@@ -424,7 +426,7 @@ class IRFunction:
         params = ", ".join(f"struct object *{param}" for param in self.params)
         return f"struct object *fn{self.id}({params})\n"
 
-    def _instr_to_c(self, instr: Instr, gvn: InstrId, doms: dict[Block, set[Block]]) -> str:
+    def _instr_to_c(self, instr: Instr, gvn: InstrId) -> str:
         def _handle(rhs: str) -> str:
             return f"OBJECT_HANDLE({gvn.name(instr)}, {rhs});\n"
 
@@ -470,24 +472,21 @@ class IRFunction:
             return f"if ({op(0)} == NULL) {{ abort(); }}\n" + _handle(op(0))
         raise NotImplementedError(type(instr))
 
-    def _to_c(self, f: io.StringIO, block: Block, gvn: InstrId, doms: dict[Block, set[Block]]) -> None:
+    def _to_c(self, f: io.StringIO, block: Block, gvn: InstrId) -> None:
         f.write(f"{block.name()}:;\n")
         for instr in block.instrs:
             if isinstance(instr, Control):
                 break
-            f.write(self._instr_to_c(instr.find(), gvn, doms))
+            f.write(self._instr_to_c(instr.find(), gvn))
         assert isinstance(instr, Control)
         if isinstance(instr, Return):
             f.write(f"return {gvn.name(instr.operands[0])};\n")
         elif isinstance(instr, Jump):
             f.write(f"goto {instr.target.name()};\n")
-            self._to_c(f, instr.target, gvn, doms)
         elif isinstance(instr, CondBranch):
             f.write(
                 f"if ({gvn.name(instr.operands[0])}) {{ goto {instr.conseq.name()}; }} else {{ goto {instr.alt.name()}; }}\n"
             )
-            self._to_c(f, instr.conseq, gvn, doms)
-            self._to_c(f, instr.alt, gvn, doms)
         elif isinstance(instr, MatchFail):
             f.write("""fprintf(stderr, "no matching cases\\n");\n""")
             f.write("abort();\n")

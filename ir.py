@@ -88,6 +88,15 @@ class Const(Instr):
 
 
 @dataclasses.dataclass(eq=False)
+class CConst(Instr):
+    type: str
+    value: str
+
+    def to_string(self, gvn: InstrId) -> str:
+        return f"{type(self).__name__}<{self.type}; {self.value}>"
+
+
+@dataclasses.dataclass(eq=False)
 class Param(Instr):
     idx: int
     name: str
@@ -127,6 +136,12 @@ class IntMul(HasOperands):
 
 @dataclasses.dataclass(init=False, eq=False)
 class IntLess(HasOperands):
+    pass
+
+
+# TODO(max): Maybe start work on boxing/unboxing in the IR.
+@dataclasses.dataclass(init=False, eq=False)
+class CEqual(HasOperands):
     pass
 
 
@@ -230,6 +245,11 @@ class NewRecord(Instr):
     num_fields: int
 
 
+@dataclasses.dataclass(init=False, eq=False)
+class IsRecord(HasOperands):
+    pass
+
+
 @dataclasses.dataclass(eq=False)
 class RecordSet(HasOperands):
     idx: int
@@ -256,6 +276,11 @@ class RecordGet(HasOperands):
     def to_string(self, gvn: InstrId) -> str:
         stem = f"{type(self).__name__}<{self.name}> "
         return stem + ", ".join(f"{gvn.name(op)}" for op in self.operands)
+
+
+@dataclasses.dataclass(init=False, eq=False)
+class RecordNumFields(HasOperands):
+    pass
 
 
 Env = Dict[str, Instr]
@@ -484,6 +509,14 @@ class IRFunction:
             return _decl("bool", f"is_list({op(0)})")
         if isinstance(instr, IsEmptyList):
             return _decl("bool", f"{op(0)} == empty_list()")
+        if isinstance(instr, IsRecord):
+            return _decl("bool", f"is_record({op(0)})")
+        if isinstance(instr, RecordNumFields):
+            return _decl("uword", f"record_num_fields({op(0)})")
+        if isinstance(instr, CConst):
+            return _decl(instr.type, instr.value)
+        if isinstance(instr, CEqual):
+            return _decl("bool", f"{op(0)} == {op(1)}")
         if isinstance(instr, Return):
             return f"return {op(0)};\n"
         if isinstance(instr, Jump):
@@ -574,6 +607,35 @@ class Compiler:
             # Too many elements
             is_empty = self.emit(IsEmptyList(the_list))
             self.emit(CondBranch(is_empty, success, fallthrough))
+            return updates
+        if isinstance(pattern, Record):
+            is_record = self.emit(IsRecord(param))
+            updates = {}
+            is_record_block = self.fn.cfg.new_block()
+            self.emit(CondBranch(is_record, is_record_block, fallthrough))
+            self.block = is_record_block
+            for key, pattern_value in pattern.data.items():
+                if isinstance(pattern_value, Spread):
+                    if pattern_value.name:
+                        raise NotImplementedError("named record spread not yet supported")
+                    self.emit(Jump(success))
+                    return updates
+                key_idx = self.record_key(key)
+                record_value = self.emit(RecordGet(param, key_idx))
+                is_null = self.emit(CEqual(record_value, self.emit(CConst("struct object*", "NULL"))))
+                recursive_block = self.fn.cfg.new_block()
+                self.emit(CondBranch(is_null, fallthrough, recursive_block))
+                self.block = recursive_block
+                pattern_success = self.fn.cfg.new_block()
+                # Recursive pattern match
+                updates.update(
+                    self.compile_match_pattern(env, record_value, pattern_value, pattern_success, fallthrough)
+                )
+                self.block = pattern_success
+            # Too many fields
+            num_fields = self.emit(RecordNumFields(param))
+            cmp = self.emit(CEqual(num_fields, self.emit(CConst("uword", str(len(pattern.data))))))
+            self.emit(CondBranch(cmp, success, fallthrough))
             return updates
         raise NotImplementedError(f"pattern {type(pattern)} {pattern}")
 
@@ -854,6 +916,14 @@ class SCCP:
                 elif isinstance(instr, ListFirst):
                     new_type = CTop()
                 elif isinstance(instr, ListRest):
+                    new_type = CTop()
+                elif isinstance(instr, IsRecord):
+                    new_type = CTop()
+                elif isinstance(instr, CConst):
+                    new_type = CTop()
+                elif isinstance(instr, CEqual):
+                    new_type = CTop()
+                elif isinstance(instr, RecordNumFields):
                     new_type = CTop()
                 else:
                     raise NotImplementedError(f"SCCP {instr}")
@@ -1488,6 +1558,194 @@ fn1 {
 }""",
         )
 
+    def test_match_empty_record(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, _parse("| {} -> 1"))
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
+    Jump bb2
+  }
+  bb2 {
+    v2 = IsRecord v1
+    CondBranch v2, bb4, bb1
+  }
+  bb4 {
+    v3 = RecordNumFields v1
+    v4 = CConst<uword; 0>
+    v5 = CEqual v3, v4
+    CondBranch v5, bb3, bb1
+  }
+  bb1 {
+    MatchFail
+  }
+  bb3 {
+    v6 = Const<1>
+    Return v6
+  }
+}""",
+        )
+
+    def test_match_one_item_record(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, _parse("| {a=1} -> 1"))
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
+    Jump bb2
+  }
+  bb2 {
+    v2 = IsRecord v1
+    CondBranch v2, bb4, bb1
+  }
+  bb4 {
+    v3 = RecordGet<Record_a> v1
+    v4 = CConst<struct object*; NULL>
+    v5 = CEqual v3, v4
+    CondBranch v5, bb1, bb5
+  }
+  bb5 {
+    v6 = IsIntEqualWord v3, 1
+    CondBranch v6, bb6, bb1
+  }
+  bb6 {
+    v7 = RecordNumFields v1
+    v8 = CConst<uword; 1>
+    v9 = CEqual v7, v8
+    CondBranch v9, bb3, bb1
+  }
+  bb3 {
+    v10 = Const<1>
+    Return v10
+  }
+  bb1 {
+    MatchFail
+  }
+}""",
+        )
+
+    def test_match_two_item_record(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, _parse("| {a=1, b=2} -> 3"))
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
+    Jump bb2
+  }
+  bb2 {
+    v2 = IsRecord v1
+    CondBranch v2, bb4, bb1
+  }
+  bb4 {
+    v3 = RecordGet<Record_a> v1
+    v4 = CConst<struct object*; NULL>
+    v5 = CEqual v3, v4
+    CondBranch v5, bb1, bb5
+  }
+  bb5 {
+    v6 = IsIntEqualWord v3, 1
+    CondBranch v6, bb6, bb1
+  }
+  bb6 {
+    v7 = RecordGet<Record_b> v1
+    v8 = CConst<struct object*; NULL>
+    v9 = CEqual v7, v8
+    CondBranch v9, bb1, bb7
+  }
+  bb7 {
+    v10 = IsIntEqualWord v7, 2
+    CondBranch v10, bb8, bb1
+  }
+  bb8 {
+    v11 = RecordNumFields v1
+    v12 = CConst<uword; 2>
+    v13 = CEqual v11, v12
+    CondBranch v13, bb3, bb1
+  }
+  bb3 {
+    v14 = Const<3>
+    Return v14
+  }
+  bb1 {
+    MatchFail
+  }
+}""",
+        )
+
+    def test_match_record_spread(self) -> None:
+        compiler = Compiler()
+        compiler.compile_body({}, _parse("| {a=a, ...} -> a"))
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
+    Jump bb2
+  }
+  bb2 {
+    v2 = IsRecord v1
+    CondBranch v2, bb4, bb1
+  }
+  bb4 {
+    v3 = RecordGet<Record_a> v1
+    v4 = CConst<struct object*; NULL>
+    v5 = CEqual v3, v4
+    CondBranch v5, bb1, bb5
+  }
+  bb5 {
+    Jump bb6
+  }
+  bb6 {
+    Jump bb3
+  }
+  bb3 {
+    Return v3
+  }
+  bb1 {
+    MatchFail
+  }
+}""",
+        )
+        CleanCFG(compiler.fns[1]).run()
+        self.assertEqual(
+            compiler.fns[1].to_string(InstrId()),
+            """\
+fn1 {
+  bb0 {
+    v0 = Param<0; $clo>
+    v1 = Param<1; arg_0>
+    v2 = IsRecord v1
+    CondBranch v2, bb4, bb1
+  }
+  bb4 {
+    v3 = RecordGet<Record_a> v1
+    v4 = CConst<struct object*; NULL>
+    v5 = CEqual v3, v4
+    CondBranch v5, bb1, bb5
+  }
+  bb5 {
+    Return v3
+  }
+  bb1 {
+    MatchFail
+  }
+}""",
+        )
+
     def test_apply_fn(self) -> None:
         compiler = Compiler()
         compiler.compile_body({}, _parse("f 1 . f  = x -> x + 1"))
@@ -2044,6 +2302,15 @@ class CompilerEndToEndTests(unittest.TestCase):
 
     def test_record_builder_access(self) -> None:
         self.assertEqual(_run("(f 1 2)@a . f = x -> y -> {a = x, b = y}"), "1\n")
+
+    def test_match_record(self) -> None:
+        self.assertEqual(_run("f {a = 4, b = 5} . f = | {a = 1, b = 2} -> 3 | {a = 4, b = 5} -> 6"), "6\n")
+
+    def test_match_record_too_few_keys(self) -> None:
+        self.assertEqual(_run("f {a = 4, b = 5} . f = | {a = _} -> 3 | {a = _, b = _} -> 6"), "6\n")
+
+    def test_match_record_spread(self) -> None:
+        self.assertEqual(_run("f {a=1, b=2, c=3} . f = | {a=a, ...} -> a"), "1\n")
 
     def test_hole(self) -> None:
         self.assertEqual(_run("()"), "()\n")

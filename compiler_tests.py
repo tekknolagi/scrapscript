@@ -24,6 +24,7 @@ def compile_to_binary(source: str, memory: int, debug: bool) -> str:
         with open(os.path.join(dirname, "cli.c"), "r") as f:
             c_file.write(f.read())
     with tempfile.NamedTemporaryFile(mode="w", suffix=".out", delete=False) as out_file:
+        print(" ".join([*cc, *cflags, "-o", out_file.name, c_file.name]))
         subprocess.run([*cc, *cflags, "-o", out_file.name, c_file.name], check=True)
     return out_file.name
 

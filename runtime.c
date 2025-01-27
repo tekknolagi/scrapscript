@@ -206,8 +206,16 @@ struct object* heap_tag(uintptr_t addr) {
 #undef __attribute__
 #endif
 
-extern char __start_const_heap[];
-extern char __stop_const_heap[];
+extern char __start_const_heap[]
+#ifdef __APPLE__
+__asm("section$start$__DATA$const_heap")
+#endif
+;
+extern char __stop_const_heap[]
+#ifdef __APPLE__
+__asm("section$end$__DATA$const_heap")
+#endif
+;
 
 bool in_const_heap(struct gc_obj* obj) {
   return (uword)obj >= (uword)__start_const_heap &&
@@ -861,7 +869,11 @@ struct object* println(struct object* obj) {
 
 // Put something in the const heap so that __start_const_heap and
 // __stop_const_heap are defined by the linker.
+#ifdef __APPLE__
+#define CONST_HEAP const __attribute__((section("__DATA,const_heap")))
+#else
 #define CONST_HEAP const __attribute__((section("const_heap")))
+#endif
 CONST_HEAP
 __attribute__((used)) struct heap_string private_unused_const_heap = {
     .HEAD.tag = TAG_STRING, .size = 11, .data = "hello world"};

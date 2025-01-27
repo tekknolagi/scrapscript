@@ -798,6 +798,12 @@ class SCCP:
                             new_type = CInt(l + r)
                         case (CInt(_), CInt(_)):
                             new_type = CInt()
+                elif isinstance(instr, IntSub):
+                    match (self.type_of(instr.operands[0]), self.type_of(instr.operands[1])):
+                        case (CInt(int(l)), CInt(int(r))):
+                            new_type = CInt(l - r)
+                        case (CInt(_), CInt(_)):
+                            new_type = CInt()
                 elif isinstance(instr, ListCons):
                     if isinstance(self.type_of(instr.operands[1]), CList):
                         new_type = CList()
@@ -1897,6 +1903,9 @@ class CompilerEndToEndTests(unittest.TestCase):
 
     def test_int_add(self) -> None:
         self.assertEqual(_run("1 + 2"), "3\n")
+
+    def test_int_sub(self) -> None:
+        self.assertEqual(_run("1 - 2"), "-1\n")
 
     def test_fun_id(self) -> None:
         self.assertEqual(_run("a -> a"), "<closure>\n")

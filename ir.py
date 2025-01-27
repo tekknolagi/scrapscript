@@ -1943,6 +1943,7 @@ class CompilerEndToEndTests(unittest.TestCase):
 
     def test_call_match_int(self) -> None:
         self.assertEqual(_run("(| 1 -> 2) 1"), "2\n")
+        self.assertEqual(_run("(| 1 -> 2 | 3 -> 4) 3"), "4\n")
 
     def test_match_list(self) -> None:
         self.assertEqual(_run("f [1, 2] . f = | [1, 2] -> 3 | [4, 5] -> 6"), "3\n")

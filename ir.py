@@ -802,7 +802,15 @@ class CInt(ConstantLattice):
 
 
 @dataclasses.dataclass
-class CBool(ConstantLattice):
+class CCInt(ConstantLattice):
+    value: Optional[int] = None
+
+    def has_value(self) -> bool:
+        return self.value is not None
+
+
+@dataclasses.dataclass
+class CCBool(ConstantLattice):
     value: Optional[bool] = None
 
 
@@ -820,8 +828,8 @@ def union(self: ConstantLattice, other: ConstantLattice) -> ConstantLattice:
         return self
     if isinstance(self, CInt) and isinstance(other, CInt):
         return self if self.value == other.value else CInt()
-    if isinstance(self, CBool) and isinstance(other, CBool):
-        return self if self.value == other.value else CBool()
+    if isinstance(self, CCBool) and isinstance(other, CCBool):
+        return self if self.value == other.value else CCBool()
     return CBottom()
 
 
@@ -863,9 +871,9 @@ class SCCP:
                     pass
                 elif isinstance(instr, CondBranch):
                     match self.type_of(instr.operands[0]):
-                        case CBool(True):
+                        case CCBool(True):
                             block_worklist.append(instr.conseq)
-                        case CBool(False):
+                        case CCBool(False):
                             block_worklist.append(instr.alt)
                         case CBottom():
                             pass
@@ -906,29 +914,29 @@ class SCCP:
                 elif isinstance(instr, IsIntEqualWord):
                     match self.type_of(instr.operands[0]):
                         case CInt(int(i)) if i == instr.expected:
-                            new_type = CBool(True)
+                            new_type = CCBool(True)
                         case _:
-                            new_type = CBool()
+                            new_type = CCBool()
                 elif isinstance(instr, IsList):
                     match self.type_of(instr.operands[0]):
                         case CList():
-                            new_type = CBool(True)
+                            new_type = CCBool(True)
                         case _:
-                            new_type = CBool()
+                            new_type = CCBool()
                 elif isinstance(instr, IsEmptyList):
-                    new_type = CBool()
+                    new_type = CCBool()
                 elif isinstance(instr, ListFirst):
                     new_type = CTop()
                 elif isinstance(instr, ListRest):
                     new_type = CTop()
                 elif isinstance(instr, IsRecord):
-                    new_type = CTop()
+                    new_type = CCBool()
                 elif isinstance(instr, CConst):
                     new_type = CTop()
                 elif isinstance(instr, CEqual):
-                    new_type = CTop()
+                    new_type = CCBool()
                 elif isinstance(instr, RecordNumFields):
-                    new_type = CTop()
+                    new_type = CCInt()
                 else:
                     raise NotImplementedError(f"SCCP {instr}")
                 old_type = self.type_of(instr)

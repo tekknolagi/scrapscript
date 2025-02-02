@@ -80,6 +80,11 @@ class Instr:
 
 
 @dataclasses.dataclass(eq=False)
+class Nop(Instr):
+    pass
+
+
+@dataclasses.dataclass(eq=False)
 class Const(Instr):
     value: Object
 
@@ -378,6 +383,8 @@ class CFG:
             result += f"  {block.name()} {{\n"
             for instr in block.instrs:
                 instr = instr.find()
+                if isinstance(instr, Nop):
+                    continue
                 if isinstance(instr, Control):
                     result += f"    {instr.to_string(gvn)}\n"
                 else:
@@ -540,7 +547,10 @@ class IRFunction:
     def _to_c(self, f: io.StringIO, block: Block, gvn: InstrId) -> None:
         f.write(f"{block.name()}:;\n")
         for instr in block.instrs:
-            f.write(self._instr_to_c(instr.find(), gvn))
+            instr = instr.find()
+            if isinstance(instr, Nop):
+                continue
+            f.write(self._instr_to_c(instr, gvn))
 
 
 class Compiler:
@@ -993,6 +1003,45 @@ class CleanCFG:
         num_blocks = len(self.fn.cfg.blocks)
         self.fn.cfg.blocks = self.fn.cfg.rpo()
         return len(self.fn.cfg.blocks) != num_blocks
+
+
+@dataclasses.dataclass
+class DeadCodeElimination:
+    fn: IRFunction
+
+    def is_critical(self, instr: Instr) -> bool:
+        if isinstance(instr, Const):
+            return False
+        if isinstance(instr, IntAdd):
+            return False
+        # TODO(max): Add more. Track heap effects?
+        return True
+
+    def run(self) -> None:
+        worklist: list[Instr] = []
+        marked: set[Instr] = set()
+        blocks = self.fn.cfg.rpo()
+        # Mark
+        for block in blocks:
+            for instr in block.instrs:
+                instr = instr.find()
+                if self.is_critical(instr):
+                    marked.add(instr)
+                    worklist.append(instr)
+        while worklist:
+            instr = worklist.pop(0).find()
+            if isinstance(instr, HasOperands):
+                for op in instr.operands:
+                    op = op.find()
+                    if op not in marked:
+                        marked.add(op)
+                        worklist.append(op)
+        # Sweep
+        for block in blocks:
+            for instr in block.instrs:
+                instr = instr.find()
+                if instr not in marked:
+                    instr.make_equal_to(Nop())
 
 
 def _parse(source: str) -> Object:
@@ -2144,6 +2193,46 @@ fn0 {
         self.assertEqual(analysis.instr_type[returned], CList())
 
 
+class DeadCodeEliminationTests(unittest.TestCase):
+    def test_remove_const(self) -> None:
+        compiler = Compiler()
+        compiler.emit(Const(1))
+        compiler.emit(Const(2))
+        compiler.emit(Const(3))
+        four = compiler.emit(Const(4))
+        compiler.emit(Return(four))
+        DeadCodeElimination(compiler.fn).run()
+        self.assertEqual(
+            compiler.fn.to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = Const<4>
+    Return v0
+  }
+}""",
+        )
+
+    def test_remove_int_add(self) -> None:
+        compiler = Compiler()
+        one = compiler.emit(Const(1))
+        two = compiler.emit(Const(2))
+        compiler.emit(IntAdd(one, two))
+        four = compiler.emit(Const(4))
+        compiler.emit(Return(four))
+        DeadCodeElimination(compiler.fn).run()
+        self.assertEqual(
+            compiler.fn.to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = Const<4>
+    Return v0
+  }
+}""",
+        )
+
+
 def opt(fn: IRFunction) -> None:
     CleanCFG(fn).run()
     instr_type = SCCP(fn).run()
@@ -2152,6 +2241,7 @@ def opt(fn: IRFunction) -> None:
             match instr_type[instr]:
                 case CInt(int(i)):
                     instr.make_equal_to(Const(Int(i)))
+    DeadCodeElimination(fn).run()
 
 
 class OptTests(unittest.TestCase):
@@ -2164,12 +2254,8 @@ class OptTests(unittest.TestCase):
             """\
 fn0 {
   bb0 {
-    v0 = Const<1>
-    v1 = Const<2>
-    v2 = Const<3>
-    v3 = Const<5>
-    v4 = Const<6>
-    Return v4
+    v0 = Const<6>
+    Return v0
   }
 }""",
         )

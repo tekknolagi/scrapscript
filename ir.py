@@ -853,6 +853,7 @@ class SCCP:
 
         while block_worklist or instr_worklist:
             if instr_worklist and (instr := instr_worklist.pop(0)):
+                instr = instr.find()
                 if isinstance(instr, HasOperands):
                     for operand in instr.operands:
                         if operand not in self.instr_uses:
@@ -872,8 +873,10 @@ class SCCP:
                 elif isinstance(instr, CondBranch):
                     match self.type_of(instr.operands[0]):
                         case CCBool(True):
+                            instr.make_equal_to(Jump(instr.conseq))
                             block_worklist.append(instr.conseq)
                         case CCBool(False):
+                            instr.make_equal_to(Jump(instr.alt))
                             block_worklist.append(instr.alt)
                         case CBottom():
                             pass

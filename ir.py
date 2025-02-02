@@ -887,6 +887,7 @@ class SCCP:
                     match (self.type_of(instr.operands[0]), self.type_of(instr.operands[1])):
                         case (CInt(int(l)), CInt(int(r))):
                             new_type = CInt(l + r)
+                            instr.make_equal_to(Const(Int(l+r)))
                         case (CInt(_), CInt(_)):
                             new_type = CInt()
                 elif isinstance(instr, IntSub):
@@ -2103,6 +2104,21 @@ class SCCPTests(unittest.TestCase):
                 entry.instrs[4]: CInt(6),
                 entry.instrs[5]: CBottom(),
             },
+        )
+
+        self.assertEqual(
+            compiler.fn.to_string(InstrId()),
+            """\
+fn0 {
+  bb0 {
+    v0 = Const<1>
+    v1 = Const<2>
+    v2 = Const<3>
+    v3 = Const<5>
+    v4 = Const<6>
+    Return v4
+  }
+}""",
         )
 
     def test_empty_list(self) -> None:

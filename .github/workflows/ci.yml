@@ -55,18 +55,20 @@ jobs:
       run: sudo apt update
     - name: Install Python
       run: uv python install ${{matrix.PYTHON}}
+    - name: Pin Python
+      run: uv python pin ${{matrix.PYTHON}}
     - name: Install other deps
       run: sudo apt install --yes ${{matrix.CC}} valgrind
     - name: Run compiler tests
-      run: CC=${{matrix.CC}} CFLAGS="${{matrix.USE_STATIC_HEAP}}" uv run python${{matrix.PYTHON}} compiler_tests.py
+      run: CC=${{matrix.CC}} CFLAGS="${{matrix.USE_STATIC_HEAP}}" uv run python compiler_tests.py
     - name: Run compiler tests -DNDEBUG
-      run: CC=${{matrix.CC}} CFLAGS="${{matrix.USE_STATIC_HEAP}} -DNDEBUG" uv run python${{matrix.PYTHON}} compiler_tests.py
+      run: CC=${{matrix.CC}} CFLAGS="${{matrix.USE_STATIC_HEAP}} -DNDEBUG" uv run python compiler_tests.py
     - name: Run compiler tests with ASAN
-      run: CC=${{matrix.CC}} CFLAGS="-fsanitize=address ${{matrix.USE_STATIC_HEAP}}" uv run python${{matrix.PYTHON}} compiler_tests.py
+      run: CC=${{matrix.CC}} CFLAGS="-fsanitize=address ${{matrix.USE_STATIC_HEAP}}" uv run python compiler_tests.py
     - name: Run compiler tests with UBSAN
-      run: CC=${{matrix.CC}} CFLAGS="-fsanitize=undefined ${{matrix.USE_STATIC_HEAP}}" uv run python${{matrix.PYTHON}} compiler_tests.py
+      run: CC=${{matrix.CC}} CFLAGS="-fsanitize=undefined ${{matrix.USE_STATIC_HEAP}}" uv run python compiler_tests.py
     - name: Run compiler tests with Valgrind
-      run: CC=${{matrix.CC}} CFLAGS="${{matrix.USE_STATIC_HEAP}}" USE_VALGRIND=1 uv run python${{matrix.PYTHON}} compiler_tests.py
+      run: CC=${{matrix.CC}} CFLAGS="${{matrix.USE_STATIC_HEAP}}" USE_VALGRIND=1 uv run python compiler_tests.py
   run_unit_tests:
     needs: [run_interpreter_unit_tests, run_compiler_unit_tests]
     # Fake, unnecessary

@@ -14,9 +14,9 @@ fi
 # ignore deleted files (can't be formatted)
 filenames=$(git diff --cached --name-only --diff-filter=d $against | grep '\.py$' | cat)
 # If changed files include scrapscript.py, run tests
-if echo $filenames | grep scrapscript.py
+if echo $filenames | grep scrapscript
 then
-  ./scrapscript.py test
+  python3 ./scrapscript_tests.py
 fi
 
 # If there are any other changed Python files, make sure they lint

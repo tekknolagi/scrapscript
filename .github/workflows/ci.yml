@@ -43,7 +43,7 @@ jobs:
     - name: Install Python
       run: sudo apt install --yes ${{matrix.PYTHON}}
     - name: Run interpreter tests
-      run: ${{matrix.PYTHON}} scrapscript.py test
+      run: ${{matrix.PYTHON}} scrapscript_tests.py
   run_compiler_unit_tests:
     strategy:
       matrix:

@@ -21,7 +21,7 @@ jobs:
       uses: astral-sh/setup-uv@v5
     - name: Install Python
       run: uv python install 3.10
-    - run: uv sync
+    - run: uv sync --only-dev
     - run: uv run ruff check scrapscript.py
     - run: uv run ruff format --check scrapscript.py
     - run: uv run mypy --strict scrapscript.py

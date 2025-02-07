@@ -69,6 +69,22 @@ jobs:
       run: CC=${{matrix.CC}} CFLAGS="-fsanitize=undefined ${{matrix.USE_STATIC_HEAP}}" uv run python compiler_tests.py
     - name: Run compiler tests with Valgrind
       run: CC=${{matrix.CC}} CFLAGS="${{matrix.USE_STATIC_HEAP}}" USE_VALGRIND=1 uv run python compiler_tests.py
+  run_compiler_unit_tests_other_cc:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+    - name: Install Python
+      run: uv python install 3.10
+    - name: Pin Python
+      run: uv python pin 3.010
+    - name: Install slimcc
+      run: git clone --depth 1 https://github.com/fuhsnn/slimcc \
+           pushd slimcc \
+           make test-stage2 -j4
+    - name: Run compiler tests
+      run: CC=slimcc/slimcc uv run python compiler_tests.py
   run_unit_tests:
     needs: [run_interpreter_unit_tests, run_compiler_unit_tests]
     # Fake, unnecessary

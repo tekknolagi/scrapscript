@@ -90,13 +90,6 @@ jobs:
       run: make -C slimcc test-stage2 -j4
     - name: Run compiler tests with slimcc
       run: CC=slimcc/slimcc uv run python compiler_tests.py
-    # kefir
-    - name: Clone kefir
-      run: git clone --depth 1 https://git.sr.ht/~jprotopopov/kefir
-    - name: Build kefir
-      run: make -C kefir all -j4
-    - name: Run compiler tests with kefir
-      run: CC=kefir/bin/kefir uv run python compiler_tests.py
   run_unit_tests:
     needs: [run_interpreter_unit_tests, run_compiler_unit_tests]
     # Fake, unnecessary

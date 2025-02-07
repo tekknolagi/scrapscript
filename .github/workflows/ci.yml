@@ -123,6 +123,7 @@ jobs:
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         target: main
+        file: util/Dockerfile
   deploy:
     runs-on: ubuntu-latest
     if: |

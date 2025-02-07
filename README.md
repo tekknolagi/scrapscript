@@ -25,7 +25,7 @@ python3 scrapscript.py repl
 or with [Cosmopolitan](https://justine.lol/cosmopolitan/index.html):
 
 ```bash
-./build-com
+./util/build-com
 
 # With a file
 ./scrapscript.com eval examples/0_home/factorial.scrap

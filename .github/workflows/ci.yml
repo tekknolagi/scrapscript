@@ -36,8 +36,10 @@ jobs:
       uses: astral-sh/setup-uv@v5
     - name: Install Python
       run: uv python install ${{matrix.PYTHON}}
+    - name: Pin Python
+      run: uv python pin ${{matrix.PYTHON}}
     - name: Run interpreter tests
-      run: uv run python${{matrix.PYTHON}} scrapscript_tests.py
+      run: uv run python scrapscript_tests.py
   run_compiler_unit_tests:
     strategy:
       matrix:

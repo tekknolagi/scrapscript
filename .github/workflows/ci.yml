@@ -96,7 +96,7 @@ jobs:
     - name: Build kefir
       run: make -C kefir all -j4
     - name: Run compiler tests with kefir
-      run: CC=kefir/kefir uv run python compiler_tests.py
+      run: CC=kefir/bin/kefir uv run python compiler_tests.py
   run_unit_tests:
     needs: [run_interpreter_unit_tests, run_compiler_unit_tests]
     # Fake, unnecessary

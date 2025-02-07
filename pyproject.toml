@@ -1,4 +1,4 @@
-[tool.poetry]
+[project]
 authors = [
     "Max Bernstein <python@bernsteinbear.com>",
     "Chris Gregory <christopher.b.gregory@gmail.com>",
@@ -19,29 +19,10 @@ name = "scrapscript"
 readme = "README.md"
 repository = "https://github.com/tekknolagi/scrapscript"
 version = "0.1.1"
-
-[tool.poetry.dependencies]
-python = ">=3.8"
-
-[tool.poetry.group.dev.dependencies]
-mypy = "^1.10.0"
-pylint = "^3.2.0"
-ruff = "^0.5.0"
-
-[project]
-name = "scrapscript"
-version = "0.1.1"
 requires-python = ">=3.8"
 
 [tool.uv]
 dev-dependencies = ["mypy~=1.10.0", "pylint~=3.2.0", "ruff~=0.5.0"]
-
-[tool.poetry.scripts]
-scrap = "scrapscript:main"
-
-[build-system]
-build-backend = "poetry.core.masonry.api"
-requires = ["poetry-core>=1.0.0"]
 
 [tool.mypy]
 disallow_incomplete_defs = true

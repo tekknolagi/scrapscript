@@ -80,8 +80,8 @@ jobs:
     - name: Pin Python
       run: uv python pin 3.010
     - name: Install slimcc
-      run: git clone --depth 1 https://github.com/fuhsnn/slimcc \
-           pushd slimcc \
+      run: git clone --depth 1 https://github.com/fuhsnn/slimcc && \
+           pushd slimcc && \
            make test-stage2 -j4
     - name: Run compiler tests
       run: CC=slimcc/slimcc uv run python compiler_tests.py

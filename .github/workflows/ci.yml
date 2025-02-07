@@ -123,6 +123,7 @@ jobs:
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         target: main
+        file: util/Dockerfile
   deploy:
     runs-on: ubuntu-latest
     if: |
@@ -135,3 +136,5 @@ jobs:
       - run: flyctl deploy --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        with:
+          config: util/fly.toml

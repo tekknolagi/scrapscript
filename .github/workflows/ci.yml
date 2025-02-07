@@ -51,10 +51,10 @@ jobs:
       uses: astral-sh/setup-uv@v5
     - name: Update local package lists
       run: sudo apt update
-    - name: Install deps
-      run:
-        - uv python install ${{matrix.PYTHON}}
-        - sudo apt install --yes ${{matrix.CC}} valgrind
+    - name: Install Python
+      run: uv python install ${{matrix.PYTHON}}
+    - name: Install other deps
+      run: sudo apt install --yes ${{matrix.CC}} valgrind
     - name: Run compiler tests
       run: CC=${{matrix.CC}} CFLAGS="${{matrix.USE_STATIC_HEAP}}" uv run python${{matrix.PYTHON}} compiler_tests.py
     - name: Run compiler tests -DNDEBUG

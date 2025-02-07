@@ -28,6 +28,14 @@ mypy = "^1.10.0"
 pylint = "^3.2.0"
 ruff = "^0.5.0"
 
+[project]
+name = "scrapscript"
+version = "0.1.1"
+requires-python = ">=3.8"
+
+[tool.uv]
+dev-dependencies = ["mypy~=1.10.0", "pylint~=3.2.0", "ruff~=0.5.0"]
+
 [tool.poetry.scripts]
 scrap = "scrapscript:main"
 

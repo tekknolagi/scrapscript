@@ -17,18 +17,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Get deadsnakes repo
-      run: sudo add-apt-repository --yes ppa:deadsnakes/ppa
-    - name: Update local package lists
-      run: sudo apt update
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
     - name: Install Python
-      run: sudo apt install --yes python3.10
-    - run: python3.10 -m pip install --user pipx
-    - run: python3.10 -m pipx install poetry
-    - run: poetry install --with=dev
-    - run: poetry run ruff check scrapscript.py
-    - run: poetry run ruff format --check scrapscript.py
-    - run: poetry run mypy --strict scrapscript.py
+      run: uv python install 3.10
+    - run: uv sync
+    - run: uv run ruff check scrapscript.py
+    - run: uv run ruff format --check scrapscript.py
+    - run: uv run mypy --strict scrapscript.py
   run_interpreter_unit_tests:
     strategy:
       matrix:

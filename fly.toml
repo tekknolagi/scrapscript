@@ -8,6 +8,7 @@ primary_region = "ewr"
 
 [build]
 build-target = "web"
+dockerfile = "util/Dockerfile"
 
 [http_service]
   internal_port = 8000

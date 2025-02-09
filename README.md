@@ -82,13 +82,25 @@ LDFLAGS=-lwasi-emulated-mman \
 ```bash
 python scrapscript_tests.py
 ```
+or
+```bash
+uv run python scrapscript_tests.py
+```
 
 ## Type Checking the Python Sources
 ```bash
+mypy --strict scrapscript.py
+```
+or
+```
 uv run mypy --strict scrapscript.py
 ```
 
 ## Formatting the Python Sources
 ```bash
 ruff format scrapscript.py
+```
+or 
+```bash
+uv run ruff format scrapscript.py
 ```

@@ -80,5 +80,15 @@ LDFLAGS=-lwasi-emulated-mman \
 ## Running Tests
 
 ```bash
-uv run python scrapscript_tests.py
+python scrapscript_tests.py
+```
+
+## Type Checking the Python Sources
+```bash
+mypy --strict scrapscript.py
+```
+
+## Formatting the Python Sources
+```bash
+ruff format scrapscript.py
 ```

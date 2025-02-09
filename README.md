@@ -85,7 +85,7 @@ python scrapscript_tests.py
 
 ## Type Checking the Python Sources
 ```bash
-mypy --strict scrapscript.py
+uv run mypy --strict scrapscript.py
 ```
 
 ## Formatting the Python Sources

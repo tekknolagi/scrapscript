@@ -77,30 +77,32 @@ LDFLAGS=-lwasi-emulated-mman \
 ./scrapscript.py compile some.scrap --compile  # produces a.out
 ```
 
-## Running Tests
+## Development Workflow
+
+### Running Tests
 
 ```bash
 python scrapscript_tests.py
 ```
-or
-```bash
-uv run python scrapscript_tests.py
-```
 
-## Type Checking the Python Sources
+### Type Checking the Python Sources
 ```bash
 mypy --strict scrapscript.py
 ```
-or
-```
-uv run mypy --strict scrapscript.py
-```
 
-## Formatting the Python Sources
+### Formatting the Python Sources
 ```bash
 ruff format scrapscript.py
 ```
-or 
+
+### Checking for Format Errors
 ```bash
-uv run ruff format scrapscript.py
+ruff check scrapscript.py
+```
+
+### Using `uv`
+If you choose to use `uv` to manage development dependencies, you can run any of the previous four commands by prefixing them with `uv run`, e.g.:
+
+```shell
+uv run python scrapscript_tests.py
 ```

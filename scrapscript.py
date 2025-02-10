@@ -15,6 +15,7 @@ import typing
 import urllib.request
 from dataclasses import dataclass
 from enum import auto
+from functools import reduce
 from types import ModuleType
 from typing import Any, Callable, Dict, Generator, Iterator, Mapping, Optional, Set, Tuple, Union
 
@@ -32,7 +33,7 @@ def is_identifier_char(c: str) -> bool:
     return c.isalnum() or c in ("$", "'", "_")
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, order=True, unsafe_hash=True)
 class SourceLocation:
     lineno: int = dataclasses.field(default=-1)
     colno: int = dataclasses.field(default=-1)
@@ -43,6 +44,9 @@ class SourceLocation:
 class SourceExtent:
     start: SourceLocation = dataclasses.field(default_factory=SourceLocation)
     end: SourceLocation = dataclasses.field(default_factory=SourceLocation)
+
+    def coalesce(self, other: Optional[SourceExtent]) -> Optional[SourceExtent]:
+        return SourceExtent(min(self.start, other.start), max(self.end, other.end)) if other else None
 
 
 @dataclass(eq=True)
@@ -491,24 +495,37 @@ gensym_reset()
 def parse_unary(tokens: Peekable, p: float) -> "Object":
     token = next(tokens)
     l: Object
+    new_r: Object
     if isinstance(token, IntLit):
-        return Int(token.value)
+        l = Int(token.value)
+        l.source_extent = token.source_extent
+        return l
     elif isinstance(token, FloatLit):
-        return Float(token.value)
+        l = Float(token.value)
+        l.source_extent = token.source_extent
+        return l
     elif isinstance(token, Name):
         # TODO: Handle kebab case vars
-        return Var(token.value)
+        l = Var(token.value)
+        l.source_extent = token.source_extent
+        return l
     elif isinstance(token, Hash):
-        if isinstance(variant := next(tokens), Name):
+        if isinstance(variant_tag := next(tokens), Name):
             # It needs to be higher than the precedence of the -> operator so that
             # we can match variants in MatchFunction
             # It needs to be higher than the precedence of the && operator so that
             # we can use #true() and #false() in boolean expressions
             # It needs to be higher than the precedence of juxtaposition so that
             # f #true() #false() is parsed as f(TRUE)(FALSE)
-            return Variant(variant.value, parse_binary(tokens, PS[""].pr + 1))
+            variant_payload = parse_binary(tokens, PS[""].pr + 1)
+            variant = Variant(
+                variant_tag.value,
+                variant_payload,
+            )
+            variant.source_extent = variant_tag.source_extent.coalesce(variant_payload.source_extent)
+            return variant
         else:
-            raise UnexpectedTokenError(variant)
+            raise UnexpectedTokenError(variant_tag)
     elif isinstance(token, BytesLit):
         base = token.base
         if base == 85:
@@ -521,68 +538,92 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
             l = Bytes(base64.b16decode(token.value))
         else:
             raise ParseError(f"unexpected base {base!r} in {token!r}")
+        l.source_extent = token.source_extent
         return l
     elif isinstance(token, StringLit):
-        return String(token.value)
+        string = String(token.value)
+        string.source_extent = token.source_extent
+        return string
     elif token == Operator("..."):
         try:
             if isinstance(tokens.peek(), Name):
-                return Spread(next(tokens).value)
+                spread_variable = next(tokens)
+                spread = Spread(spread_variable.value)
+                spread.source_extent = token.source_extent.coalesce(spread_variable.source_extent)
+                return spread
             else:
-                return Spread()
+                spread = Spread()
+                spread.source_extent = token.source_extent
+                return spread
         except StopIteration:
             return Spread()
     elif token == Operator("|"):
+        pipe_source_extent = token.source_extent
         expr = parse_binary(tokens, PS["|"].pr)  # TODO: make this work for larger arities
         if not isinstance(expr, Function):
             raise ParseError(f"expected function in match expression {expr!r}")
-        cases = [MatchCase(expr.arg, expr.body)]
+        match_case = MatchCase(expr.arg, expr.body)
+        match_case.source_extent = pipe_source_extent.coalesce(expr.source_extent)
+        cases = [match_case]
         while True:
             try:
                 if tokens.peek() != Operator("|"):
                     break
             except StopIteration:
                 break
-            next(tokens)
+            pipe_source_extent = next(tokens).source_extent
             expr = parse_binary(tokens, PS["|"].pr)  # TODO: make this work for larger arities
             if not isinstance(expr, Function):
                 raise ParseError(f"expected function in match expression {expr!r}")
-            cases.append(MatchCase(expr.arg, expr.body))
-        return MatchFunction(cases)
+            match_case = MatchCase(expr.arg, expr.body)
+            match_case.source_extent = pipe_source_extent.coalesce(expr.source_extent)
+            cases.append(match_case)
+        cases_source_extents = [case_branch.source_extent for case_branch in cases]
+        match_function = MatchFunction(cases)
+        match_function.source_extent = reduce(lambda c1, c2: c1.coalesce(c2) if c1 else None, cases_source_extents)
+        return match_function
     elif isinstance(token, LeftParen):
+        left_paren_source_extent = token.source_extent
         if isinstance(tokens.peek(), RightParen):
             l = Hole()
+            l.source_extent = left_paren_source_extent.coalesce(next(tokens).source_extent)
         else:
             l = parse(tokens)
-        next(tokens)
+            next(tokens)
         return l
     elif isinstance(token, LeftBracket):
+        list_start_source_extent = token.source_extent
         l = List([])
         token = tokens.peek()
         if isinstance(token, RightBracket):
-            next(tokens)
+            list_end_source_extent = next(tokens).source_extent
         else:
             l.items.append(parse_binary(tokens, 2))
-            while not isinstance(next(tokens), RightBracket):
+            while not isinstance(token := next(tokens), RightBracket):
                 if isinstance(l.items[-1], Spread):
                     raise ParseError("spread must come at end of list match")
                 # TODO: Implement .. operator
                 l.items.append(parse_binary(tokens, 2))
+            list_end_source_extent = token.source_extent
+        l.source_extent = list_start_source_extent.coalesce(list_end_source_extent)
         return l
     elif isinstance(token, LeftBrace):
+        record_start_source_extent = token.source_extent
         l = Record({})
         token = tokens.peek()
         if isinstance(token, RightBrace):
-            next(tokens)
+            record_end_source_extent = next(tokens).source_extent
         else:
             assign = parse_assign(tokens, 2)
             l.data[assign.name.name] = assign.value
-            while not isinstance(next(tokens), RightBrace):
+            while not isinstance(token := next(tokens), RightBrace):
                 if isinstance(assign.value, Spread):
                     raise ParseError("spread must come at end of record match")
                 # TODO: Implement .. operator
                 assign = parse_assign(tokens, 2)
                 l.data[assign.name.name] = assign.value
+            record_end_source_extent = token.source_extent
+        l.source_extent = record_start_source_extent.coalesce(record_end_source_extent)
         return l
     elif token == Operator("-"):
         # Unary minus
@@ -591,19 +632,27 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
         # Precedence was chosen to be higher than function application so that
         # -a b is (-a) b and not -(a b).
         r = parse_binary(tokens, HIGHEST_PREC + 1)
+        source_extent = token.source_extent.coalesce(r.source_extent)
         if isinstance(r, Int):
             assert r.value >= 0, "Tokens should never have negative values"
-            return Int(-r.value)
+            new_r = Int(-r.value)
+            new_r.source_extent = source_extent
+            return new_r
         if isinstance(r, Float):
             assert r.value >= 0, "Tokens should never have negative values"
-            return Float(-r.value)
-        return Binop(BinopKind.SUB, Int(0), r)
+            new_r = Float(-r.value)
+            new_r.source_extent = source_extent
+            return new_r
+        binop = Binop(BinopKind.SUB, Int(0), r)
+        binop.source_extent = source_extent
+        return binop
     else:
         raise UnexpectedTokenError(token)
 
 
 def parse_binary(tokens: Peekable, p: float) -> "Object":
     l: Object = parse_unary(tokens, p)
+    new_l: Object
     while True:
         op: Token
         try:
@@ -617,7 +666,10 @@ def parse_binary(tokens: Peekable, p: float) -> "Object":
             pl, pr = prec.pl, prec.pr
             if pl < p:
                 break
-            l = Apply(l, parse_binary(tokens, pr))
+            arg = parse_binary(tokens, pr)
+            new_l = Apply(l, arg)
+            new_l.source_extent = l.source_extent.coalesce(arg.source_extent) if l.source_extent else None
+            l = new_l
             continue
         prec = PS[op.value]
         pl, pr = prec.pl, prec.pr
@@ -627,31 +679,59 @@ def parse_binary(tokens: Peekable, p: float) -> "Object":
         if op == Operator("="):
             if not isinstance(l, Var):
                 raise ParseError(f"expected variable in assignment {l!r}")
-            l = Assign(l, parse_binary(tokens, pr))
+            value = parse_binary(tokens, pr)
+            new_l = Assign(l, value)
+            new_l.source_extent = l.source_extent.coalesce(value.source_extent) if l.source_extent else None
+            l = new_l
         elif op == Operator("->"):
-            l = Function(l, parse_binary(tokens, pr))
+            body = parse_binary(tokens, pr)
+            new_l = Function(l, body)
+            new_l.source_extent = l.source_extent.coalesce(body.source_extent) if l.source_extent else None
+            l = new_l
         elif op == Operator("|>"):
-            l = Apply(parse_binary(tokens, pr), l)
+            func = parse_binary(tokens, pr)
+            new_l = Apply(func, l)
+            new_l.source_extent = func.source_extent.coalesce(l.source_extent) if func.source_extent else None
+            l = new_l
         elif op == Operator("<|"):
-            l = Apply(l, parse_binary(tokens, pr))
+            arg = parse_binary(tokens, pr)
+            new_l = Apply(l, arg)
+            new_l.source_extent = l.source_extent.coalesce(arg.source_extent) if l.source_extent else None
+            l = new_l
         elif op == Operator(">>"):
             r = parse_binary(tokens, pr)
             varname = gensym()
-            l = Function(Var(varname), Apply(r, Apply(l, Var(varname))))
+            new_l = Function(Var(varname), Apply(r, Apply(l, Var(varname))))
+            new_l.source_extent = l.source_extent.coalesce(r.source_extent) if l.source_extent else None
+            l = new_l
         elif op == Operator("<<"):
             r = parse_binary(tokens, pr)
             varname = gensym()
-            l = Function(Var(varname), Apply(l, Apply(r, Var(varname))))
+            new_l = Function(Var(varname), Apply(l, Apply(r, Var(varname))))
+            new_l.source_extent = l.source_extent.coalesce(r.source_extent) if l.source_extent else None
+            l = new_l
         elif op == Operator("."):
-            l = Where(l, parse_binary(tokens, pr))
+            binding = parse_binary(tokens, pr)
+            new_l = Where(l, binding)
+            new_l.source_extent = l.source_extent.coalesce(binding.source_extent) if l.source_extent else None
+            l = new_l
         elif op == Operator("?"):
-            l = Assert(l, parse_binary(tokens, pr))
+            cond = parse_binary(tokens, pr)
+            new_l = Assert(l, cond)
+            new_l.source_extent = l.source_extent.coalesce(cond.source_extent) if l.source_extent else None
+            l = new_l
         elif op == Operator("@"):
             # TODO: revisit whether to use @ or . for field access
-            l = Access(l, parse_binary(tokens, pr))
+            at = parse_binary(tokens, pr)
+            new_l = Access(l, at)
+            new_l.source_extent = l.source_extent.coalesce(at.source_extent) if l.source_extent else None
+            l = new_l
         else:
             assert isinstance(op, Operator)
-            l = Binop(BinopKind.from_str(op.value), l, parse_binary(tokens, pr))
+            right = parse_binary(tokens, pr)
+            new_l = Binop(BinopKind.from_str(op.value), l, right)
+            new_l.source_extent = l.source_extent.coalesce(right.source_extent) if l.source_extent else None
+            l = new_l
     return l
 
 
@@ -662,43 +742,45 @@ def parse(tokens: Peekable) -> "Object":
         raise UnexpectedEOFError("unexpected end of input")
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Object:
+    source_extent: Optional[SourceExtent] = dataclasses.field(default=None, compare=False, init=False, repr=False)
+
     def __str__(self) -> str:
         return pretty(self)
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Int(Object):
     value: int
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Float(Object):
     value: float
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class String(Object):
     value: str
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Bytes(Object):
     value: bytes
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Var(Object):
     name: str
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Hole(Object):
     pass
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Spread(Object):
     name: Optional[str] = None
 
@@ -784,49 +866,49 @@ class BinopKind(enum.Enum):
         }[binop_kind]
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Binop(Object):
     op: BinopKind
     left: Object
     right: Object
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class List(Object):
     items: typing.List[Object]
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Assign(Object):
     name: Var
     value: Object
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Function(Object):
     arg: Object
     body: Object
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Apply(Object):
     func: Object
     arg: Object
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Where(Object):
     body: Object
     binding: Object
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Assert(Object):
     value: Object
     cond: Object
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class EnvObject(Object):
     env: Env
 
@@ -834,51 +916,51 @@ class EnvObject(Object):
         return f"EnvObject(keys={self.env.keys()})"
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class MatchCase(Object):
     pattern: Object
     body: Object
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class MatchFunction(Object):
     cases: typing.List[MatchCase]
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Relocation(Object):
     name: str
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class NativeFunctionRelocation(Relocation):
     pass
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class NativeFunction(Object):
     name: str
     func: Callable[[Object], Object]
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Closure(Object):
     env: Env
     func: Union[Function, MatchFunction]
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Record(Object):
     data: Dict[str, Object]
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Access(Object):
     obj: Object
     at: Object
 
 
-@dataclass(eq=True, frozen=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=True)
 class Variant(Object):
     tag: str
     value: Object

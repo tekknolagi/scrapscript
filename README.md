@@ -103,6 +103,6 @@ ruff check scrapscript.py
 ### Using `uv`
 If you choose to use `uv` to manage development dependencies, you can run any of the previous four commands by prefixing them with `uv run`, e.g.:
 
-```shell
+```bash
 uv run python scrapscript_tests.py
 ```

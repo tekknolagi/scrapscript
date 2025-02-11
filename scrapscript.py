@@ -495,6 +495,12 @@ def gensym_reset() -> None:
 gensym_reset()
 
 
+def make_source_annotated_object(cls: type, source_extent: Optional[SourceExtent], *args: Any) -> Object:
+    result: Object = cls(*args)
+    result.source_extent = source_extent
+    return result
+
+
 def parse_unary(tokens: Peekable, p: float) -> "Object":
     token = next(tokens)
     l: Object

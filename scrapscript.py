@@ -1,6 +1,5 @@
 #!/usr/bin/env python3.10
 from __future__ import annotations
-import abc
 import argparse
 import base64
 import code
@@ -504,7 +503,6 @@ def make_source_annotated_object(cls: type, source_extent: Optional[SourceExtent
 def parse_unary(tokens: Peekable, p: float) -> "Object":
     token = next(tokens)
     l: Object
-    new_r: Object
     if isinstance(token, IntLit):
         return make_source_annotated_object(Int, token.source_extent, token.value)
     elif isinstance(token, FloatLit):

@@ -823,6 +823,7 @@ class Spread(Object):
 Env = Mapping[str, Object]
 
 
+# TODO(max): Add source extents for BinopKind?
 class BinopKind(enum.Enum):
     ADD = auto()
     SUB = auto()

@@ -1206,8 +1206,7 @@ class ParserTests(unittest.TestCase):
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
         )
         int_lit.source_extent = source_extent
-        int_ast = Int(1)
-        int_ast.source_extent = source_extent
+        int_ast = make_source_annotated_object(Int, source_extent, 1)
         self.assertTrue(parse(Peekable(iter([int_lit]))).source_equals(int_ast))
 
     def test_parse_float_preserves_source_extent(self) -> None:
@@ -1216,8 +1215,7 @@ class ParserTests(unittest.TestCase):
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=3, byteno=2)
         )
         float_lit.source_extent = source_extent
-        float_ast = Float(3.2)
-        float_ast.source_extent = source_extent
+        float_ast = make_source_annotated_object(Float, source_extent, 3.2)
         self.assertTrue(parse(Peekable(iter([float_lit]))).source_equals(float_ast))
 
     def test_parse_string_preserves_source_extent(self) -> None:
@@ -1226,8 +1224,7 @@ class ParserTests(unittest.TestCase):
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=7, byteno=6)
         )
         string_lit.source_extent = source_extent
-        string_ast = String("Hello")
-        string_ast.source_extent = source_extent
+        string_ast = make_source_annotated_object(String, source_extent, "Hello")
         self.assertTrue(parse(Peekable(iter([string_lit]))).source_equals(string_ast))
 
     def test_parse_bytes_preserves_source_extent(self) -> None:
@@ -1236,8 +1233,7 @@ class ParserTests(unittest.TestCase):
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=9, byteno=8)
         )
         bytes_lit.source_extent = source_extent
-        bytes_ast = Bytes(base64.b64decode("QUJD"))
-        bytes_ast.source_extent = source_extent
+        bytes_ast = make_source_annotated_object(Bytes, source_extent, base64.b64decode("QUJD"))
         self.assertTrue(parse(Peekable(iter([bytes_lit]))).source_equals(bytes_ast))
 
     def test_parse_var_preserves_source_extent(self) -> None:
@@ -1246,8 +1242,7 @@ class ParserTests(unittest.TestCase):
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
         )
         var.source_extent = source_extent
-        var_ast = Var("x")
-        var_ast.source_extent = source_extent
+        var_ast = make_source_annotated_object(Var, source_extent, "x")
         self.assertTrue(parse(Peekable(iter([var]))).source_equals(var_ast))
 
     def test_parse_hole_preserves_source_extent(self) -> None:
@@ -1293,14 +1288,17 @@ class ParserTests(unittest.TestCase):
         second_addend.source_extent = SourceExtent(
             start=SourceLocation(lineno=2, colno=5, byteno=4), end=SourceLocation(lineno=2, colno=5, byteno=4)
         )
-        first_addend_ast = Int(1)
-        first_addend_ast.source_extent = first_addend.source_extent
+        first_addend_ast = make_source_annotated_object(Int, first_addend.source_extent, 1)
         operator_ast = BinopKind.ADD
-        second_addend_ast = Int(2)
-        second_addend_ast.source_extent = second_addend.source_extent
-        binop = Binop(operator_ast, first_addend_ast, second_addend_ast)
-        binop.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=2, colno=5, byteno=4)
+        second_addend_ast = make_source_annotated_object(Int, second_addend.source_extent, 2)
+        binop = make_source_annotated_object(
+            Binop,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=2, colno=5, byteno=4)
+            ),
+            operator_ast,
+            first_addend_ast,
+            second_addend_ast,
         )
         self.assertTrue(parse(Peekable(iter([first_addend, operator, second_addend]))).source_equals(binop))
 
@@ -1325,13 +1323,14 @@ class ParserTests(unittest.TestCase):
         right_bracket.source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=6, byteno=5), end=SourceLocation(lineno=1, colno=6, byteno=5)
         )
-        one_ast = Int(1)
-        one_ast.source_extent = one.source_extent
-        two_ast = Int(2)
-        two_ast.source_extent = two.source_extent
-        list_ast = List([one_ast, two_ast])
-        list_ast.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=6, byteno=5)
+        one_ast = make_source_annotated_object(Int, one.source_extent, 1)
+        two_ast = make_source_annotated_object(Int, two.source_extent, 2)
+        list_ast = make_source_annotated_object(
+            List,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=6, byteno=5)
+            ),
+            [one_ast, two_ast],
         )
         self.assertTrue(parse(Peekable(iter([left_bracket, one, comma, two, right_bracket]))).source_equals(list_ast))
 

@@ -1,3 +1,4 @@
+import base64
 import unittest
 import re
 from typing import Optional
@@ -1198,6 +1199,141 @@ class ParserTests(unittest.TestCase):
     def test_apply_with_variant_args(self) -> None:
         ast = parse(tokenize("f #true() #false()"))
         self.assertEqual(ast, Apply(Apply(Var("f"), TRUE), FALSE))
+
+    def test_parse_int_preserves_source_extent(self) -> None:
+        int_lit = IntLit(1)
+        source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+        )
+        int_lit.source_extent = source_extent
+        int_ast = Int(1)
+        int_ast.source_extent = source_extent
+        self.assertTrue(parse(Peekable(iter([int_lit]))).source_equals(int_ast))
+
+    def test_parse_float_preserves_source_extent(self) -> None:
+        float_lit = FloatLit(3.2)
+        source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=3, byteno=2)
+        )
+        float_lit.source_extent = source_extent
+        float_ast = Float(3.2)
+        float_ast.source_extent = source_extent
+        self.assertTrue(parse(Peekable(iter([float_lit]))).source_equals(float_ast))
+
+    def test_parse_string_preserves_source_extent(self) -> None:
+        string_lit = StringLit("Hello")
+        source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=7, byteno=6)
+        )
+        string_lit.source_extent = source_extent
+        string_ast = String("Hello")
+        string_ast.source_extent = source_extent
+        self.assertTrue(parse(Peekable(iter([string_lit]))).source_equals(string_ast))
+
+    def test_parse_bytes_preserves_source_extent(self) -> None:
+        bytes_lit = BytesLit("QUJD", 64)
+        source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=9, byteno=8)
+        )
+        bytes_lit.source_extent = source_extent
+        bytes_ast = Bytes(base64.b64decode("QUJD"))
+        bytes_ast.source_extent = source_extent
+        self.assertTrue(parse(Peekable(iter([bytes_lit]))).source_equals(bytes_ast))
+
+    def test_parse_var_preserves_source_extent(self) -> None:
+        var = Name("x")
+        source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+        )
+        var.source_extent = source_extent
+        var_ast = Var("x")
+        var_ast.source_extent = source_extent
+        self.assertTrue(parse(Peekable(iter([var]))).source_equals(var_ast))
+
+    def test_parse_hole_preserves_source_extent(self) -> None:
+        left_paren = LeftParen()
+        left_paren.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+        )
+        right_paren = RightParen()
+        right_paren.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=2, byteno=1), end=SourceLocation(lineno=1, colno=2, byteno=1)
+        )
+        hole = Hole()
+        hole.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=2, byteno=1)
+        )
+        self.assertTrue(parse(Peekable(iter([left_paren, right_paren]))).source_equals(hole))
+
+    def test_parse_spread_preserves_source_extent(self) -> None:
+        ellipsis = Operator("...")
+        ellipsis.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=3, byteno=2)
+        )
+        name = Name("x")
+        name.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=4, byteno=3), end=SourceLocation(lineno=1, colno=4, byteno=3)
+        )
+        spread = Spread("x")
+        spread.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=4, byteno=3)
+        )
+        self.assertTrue(parse(Peekable(iter([ellipsis, name]))).source_equals(spread))
+
+    def test_parse_binop_preserves_source_extent(self) -> None:
+        first_addend = IntLit(1)
+        first_addend.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+        )
+        operator = Operator("+")
+        operator.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=3, byteno=2), end=SourceLocation(lineno=1, colno=3, byteno=2)
+        )
+        second_addend = IntLit(2)
+        second_addend.source_extent = SourceExtent(
+            start=SourceLocation(lineno=2, colno=5, byteno=4), end=SourceLocation(lineno=2, colno=5, byteno=4)
+        )
+        first_addend_ast = Int(1)
+        first_addend_ast.source_extent = first_addend.source_extent
+        operator_ast = BinopKind.ADD
+        second_addend_ast = Int(2)
+        second_addend_ast.source_extent = second_addend.source_extent
+        binop = Binop(operator_ast, first_addend_ast, second_addend_ast)
+        binop.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=2, colno=5, byteno=4)
+        )
+        self.assertTrue(parse(Peekable(iter([first_addend, operator, second_addend]))).source_equals(binop))
+
+    def test_parse_list_preserves_source_extent(self) -> None:
+        left_bracket = LeftBracket()
+        left_bracket.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+        )
+        one = IntLit(1)
+        one.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=2, byteno=1), end=SourceLocation(lineno=1, colno=2, byteno=1)
+        )
+        comma = Operator(",")
+        comma.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=3, byteno=2), end=SourceLocation(lineno=1, colno=3, byteno=2)
+        )
+        two = IntLit(2)
+        two.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=5, byteno=4), end=SourceLocation(lineno=1, colno=5, byteno=4)
+        )
+        right_bracket = RightBracket()
+        right_bracket.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=6, byteno=5), end=SourceLocation(lineno=1, colno=6, byteno=5)
+        )
+        one_ast = Int(1)
+        one_ast.source_extent = one.source_extent
+        two_ast = Int(2)
+        two_ast.source_extent = two.source_extent
+        list_ast = List([one_ast, two_ast])
+        list_ast.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=6, byteno=5)
+        )
+        self.assertTrue(parse(Peekable(iter([left_bracket, one, comma, two, right_bracket]))).source_equals(list_ast))
 
 
 class MatchTests(unittest.TestCase):

@@ -1254,9 +1254,11 @@ class ParserTests(unittest.TestCase):
         right_paren.source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=2, byteno=1), end=SourceLocation(lineno=1, colno=2, byteno=1)
         )
-        hole = Hole()
-        hole.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=2, byteno=1)
+        hole = make_source_annotated_object(
+            Hole,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=2, byteno=1)
+            ),
         )
         self.assertTrue(parse(Peekable(iter([left_paren, right_paren]))).source_equals(hole))
 
@@ -1269,9 +1271,12 @@ class ParserTests(unittest.TestCase):
         name.source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=4, byteno=3), end=SourceLocation(lineno=1, colno=4, byteno=3)
         )
-        spread = Spread("x")
-        spread.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=4, byteno=3)
+        spread = make_source_annotated_object(
+            Spread,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=4, byteno=3)
+            ),
+            "x",
         )
         self.assertTrue(parse(Peekable(iter([ellipsis, name]))).source_equals(spread))
 

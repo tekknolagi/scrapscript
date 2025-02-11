@@ -496,7 +496,7 @@ gensym_reset()
 
 def make_source_annotated_object(cls: type, source_extent: Optional[SourceExtent], *args: Any) -> Object:
     result: Object = cls(*args)
-    result.source_extent = source_extent
+    object.__setattr__(result, "source_extent", source_extent)
     return result
 
 
@@ -539,7 +539,7 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
             l = Bytes(base64.b16decode(token.value))
         else:
             raise ParseError(f"unexpected base {base!r} in {token!r}")
-        l.source_extent = token.source_extent
+        object.__setattr__(l, "source_extent", token.source_extent)
         return l
     elif isinstance(token, StringLit):
         return make_source_annotated_object(String, token.source_extent, token.value)
@@ -610,7 +610,7 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
                 # TODO: Implement .. operator
                 l.items.append(parse_binary(tokens, 2))
             list_end_source_extent = token.source_extent
-        l.source_extent = list_start_source_extent.coalesce(list_end_source_extent)
+        object.__setattr__(l, "source_extent", list_start_source_extent.coalesce(list_end_source_extent))
         return l
     elif isinstance(token, LeftBrace):
         record_start_source_extent = token.source_extent
@@ -628,7 +628,7 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
                 assign = parse_assign(tokens, 2)
                 l.data[assign.name.name] = assign.value
             record_end_source_extent = token.source_extent
-        l.source_extent = record_start_source_extent.coalesce(record_end_source_extent)
+        object.__setattr__(l, "source_extent", record_start_source_extent.coalesce(record_end_source_extent))
         return l
     elif token == Operator("-"):
         # Unary minus
@@ -750,7 +750,7 @@ def parse(tokens: Peekable) -> "Object":
         raise UnexpectedEOFError("unexpected end of input")
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Object:
     source_extent: Optional[SourceExtent] = dataclasses.field(default=None, compare=False, init=False, repr=False)
 
@@ -762,7 +762,7 @@ class Object:
         pass
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Int(Object):
     value: int
 
@@ -771,7 +771,7 @@ class Int(Object):
         return isinstance(other, Int) and self == other and self.source_extent == other.source_extent
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Float(Object):
     value: float
 
@@ -780,7 +780,7 @@ class Float(Object):
         return isinstance(other, Float) and self == other and self.source_extent == other.source_extent
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class String(Object):
     value: str
 
@@ -789,7 +789,7 @@ class String(Object):
         return isinstance(other, String) and self == other and self.source_extent == other.source_extent
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Bytes(Object):
     value: bytes
 
@@ -798,7 +798,7 @@ class Bytes(Object):
         return isinstance(other, Bytes) and self == other and self.source_extent == other.source_extent
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Var(Object):
     name: str
 
@@ -807,7 +807,7 @@ class Var(Object):
         return isinstance(other, Var) and self == other and self.source_extent == other.source_extent
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Hole(Object):
     pass
 
@@ -816,7 +816,7 @@ class Hole(Object):
         return isinstance(other, Hole) and self.source_extent == other.source_extent
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Spread(Object):
     name: Optional[str] = None
 
@@ -907,7 +907,7 @@ class BinopKind(enum.Enum):
         }[binop_kind]
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Binop(Object):
     op: BinopKind
     left: Object
@@ -924,7 +924,7 @@ class Binop(Object):
         )
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class List(Object):
     items: typing.List[Object]
 
@@ -938,7 +938,7 @@ class List(Object):
         )
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Assign(Object):
     name: Var
     value: Object
@@ -954,7 +954,7 @@ class Assign(Object):
         )
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Function(Object):
     arg: Object
     body: Object
@@ -970,7 +970,7 @@ class Function(Object):
         )
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Apply(Object):
     func: Object
     arg: Object
@@ -986,7 +986,7 @@ class Apply(Object):
         )
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Where(Object):
     body: Object
     binding: Object
@@ -1002,7 +1002,7 @@ class Where(Object):
         )
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Assert(Object):
     value: Object
     cond: Object
@@ -1018,7 +1018,7 @@ class Assert(Object):
         )
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class EnvObject(Object):
     env: Env
 
@@ -1030,7 +1030,7 @@ class EnvObject(Object):
         return f"EnvObject(keys={self.env.keys()})"
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class MatchCase(Object):
     pattern: Object
     body: Object
@@ -1046,7 +1046,7 @@ class MatchCase(Object):
         )
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class MatchFunction(Object):
     cases: typing.List[MatchCase]
 
@@ -1063,7 +1063,7 @@ class MatchFunction(Object):
         )
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Relocation(Object):
     name: str
 
@@ -1072,14 +1072,14 @@ class Relocation(Object):
         return isinstance(other, Relocation) and self == other and self.source_extent == other.source_extent
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class NativeFunctionRelocation(Relocation):
     @override
     def source_equals(self, other: Object) -> bool:
         return isinstance(other, NativeFunctionRelocation) and self.source_extent == other.source_extent
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class NativeFunction(Object):
     name: str
     func: Callable[[Object], Object]
@@ -1089,7 +1089,7 @@ class NativeFunction(Object):
         return isinstance(other, NativeFunction) and self == other and self.source_extent == other.source_extent
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Closure(Object):
     env: Env
     func: Union[Function, MatchFunction]
@@ -1104,7 +1104,7 @@ class Closure(Object):
         )
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Record(Object):
     data: Dict[str, Object]
 
@@ -1120,7 +1120,7 @@ class Record(Object):
         )
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Access(Object):
     obj: Object
     at: Object
@@ -1136,7 +1136,7 @@ class Access(Object):
         )
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Variant(Object):
     tag: str
     value: Object

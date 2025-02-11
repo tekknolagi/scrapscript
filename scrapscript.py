@@ -644,16 +644,13 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
         if isinstance(r, Float):
             assert r.value >= 0, "Tokens should never have negative values"
             return make_source_annotated_object(Float, source_extent, -r.value)
-        binop = Binop(BinopKind.SUB, Int(0), r)
-        binop.source_extent = source_extent
-        return binop
+        return make_source_annotated_object(Binop, source_extent, BinopKind.SUB, Int(0), r)
     else:
         raise UnexpectedTokenError(token)
 
 
 def parse_binary(tokens: Peekable, p: float) -> "Object":
     l: Object = parse_unary(tokens, p)
-    new_l: Object
     while True:
         op: Token
         try:
@@ -668,9 +665,9 @@ def parse_binary(tokens: Peekable, p: float) -> "Object":
             if pl < p:
                 break
             arg = parse_binary(tokens, pr)
-            new_l = Apply(l, arg)
-            new_l.source_extent = l.source_extent.coalesce(arg.source_extent) if l.source_extent else None
-            l = new_l
+            l = make_source_annotated_object(
+                Apply, l.source_extent.coalesce(arg.source_extent) if l.source_extent else None, l, arg
+            )
             continue
         prec = PS[op.value]
         pl, pr = prec.pl, prec.pr

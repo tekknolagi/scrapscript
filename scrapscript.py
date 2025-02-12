@@ -587,9 +587,7 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
         return make_source_annotated_object(
             MatchFunction,
             reduce(
-                lambda source_extent_one, source_extent_two: source_extent_one.coalesce(source_extent_two)
-                if source_extent_one
-                else None,
+                lambda source_extent_one, source_extent_two: join_source_extents(source_extent_one, source_extent_two),
                 cases_source_extents,
             ),
             cases,
@@ -671,9 +669,7 @@ def parse_binary(tokens: Peekable, p: float) -> "Object":
             if pl < p:
                 break
             arg = parse_binary(tokens, pr)
-            l = make_source_annotated_object(
-                Apply, l.source_extent.coalesce(arg.source_extent) if l.source_extent else None, l, arg
-            )
+            l = make_source_annotated_object(Apply, join_source_extents(l.source_extent, arg.source_extent), l, arg)
             continue
         prec = PS[op.value]
         pl, pr = prec.pl, prec.pr
@@ -685,29 +681,25 @@ def parse_binary(tokens: Peekable, p: float) -> "Object":
                 raise ParseError(f"expected variable in assignment {l!r}")
             value = parse_binary(tokens, pr)
             l = make_source_annotated_object(
-                Assign, l.source_extent.coalesce(value.source_extent) if l.source_extent else None, l, value
+                Assign, join_source_extents(l.source_extent, value.source_extent), l, value
             )
         elif op == Operator("->"):
             body = parse_binary(tokens, pr)
             l = make_source_annotated_object(
-                Function, l.source_extent.coalesce(body.source_extent) if l.source_extent else None, l, body
+                Function, join_source_extents(l.source_extent, body.source_extent), l, body
             )
         elif op == Operator("|>"):
             func = parse_binary(tokens, pr)
-            l = make_source_annotated_object(
-                Apply, func.source_extent.coalesce(l.source_extent) if func.source_extent else None, func, l
-            )
+            l = make_source_annotated_object(Apply, join_source_extents(func.source_extent, l.source_extent), func, l)
         elif op == Operator("<|"):
             arg = parse_binary(tokens, pr)
-            l = make_source_annotated_object(
-                Apply, l.source_extent.coalesce(arg.source_extent) if l.source_extent else None, l, arg
-            )
+            l = make_source_annotated_object(Apply, join_source_extents(l.source_extent, arg.source_extent), l, arg)
         elif op == Operator(">>"):
             r = parse_binary(tokens, pr)
             varname = gensym()
             l = make_source_annotated_object(
                 Function,
-                l.source_extent.coalesce(r.source_extent) if l.source_extent else None,
+                join_source_extents(l.source_extent, r.source_extent),
                 Var(varname),
                 Apply(r, Apply(l, Var(varname))),
             )
@@ -716,32 +708,28 @@ def parse_binary(tokens: Peekable, p: float) -> "Object":
             varname = gensym()
             l = make_source_annotated_object(
                 Function,
-                l.source_extent.coalesce(r.source_extent) if l.source_extent else None,
+                join_source_extents(l.source_extent, r.source_extent),
                 Var(varname),
                 Apply(l, Apply(r, Var(varname))),
             )
         elif op == Operator("."):
             binding = parse_binary(tokens, pr)
             l = make_source_annotated_object(
-                Where, l.source_extent.coalesce(binding.source_extent) if l.source_extent else None, l, binding
+                Where, join_source_extents(l.source_extent, binding.source_extent), l, binding
             )
         elif op == Operator("?"):
             cond = parse_binary(tokens, pr)
-            l = make_source_annotated_object(
-                Assert, l.source_extent.coalesce(cond.source_extent) if l.source_extent else None, l, cond
-            )
+            l = make_source_annotated_object(Assert, join_source_extents(l.source_extent, cond.source_extent), l, cond)
         elif op == Operator("@"):
             # TODO: revisit whether to use @ or . for field access
             at = parse_binary(tokens, pr)
-            l = make_source_annotated_object(
-                Access, l.source_extent.coalesce(at.source_extent) if l.source_extent else None, l, at
-            )
+            l = make_source_annotated_object(Access, join_source_extents(l.source_extent, at.source_extent), l, at)
         else:
             assert isinstance(op, Operator)
             right = parse_binary(tokens, pr)
             l = make_source_annotated_object(
                 Binop,
-                l.source_extent.coalesce(right.source_extent) if l.source_extent else None,
+                join_source_extents(l.source_extent, right.source_extent),
                 BinopKind.from_str(op.value),
                 l,
                 right,

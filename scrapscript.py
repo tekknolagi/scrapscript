@@ -51,6 +51,12 @@ class SourceExtent:
         return SourceExtent(min(self.start, other.start), max(self.end, other.end)) if other else None
 
 
+def join_source_extents(
+    source_extent_one: Optional[SourceExtent], source_extent_two: Optional[SourceExtent]
+) -> Optional[SourceExtent]:
+    return source_extent_one.coalesce(source_extent_two) if source_extent_one else None
+
+
 @dataclass(eq=True)
 class Token:
     source_extent: SourceExtent = dataclasses.field(default_factory=SourceExtent, init=False, compare=False)

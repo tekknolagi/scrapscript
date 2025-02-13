@@ -13,13 +13,11 @@ import struct
 import sys
 import typing
 import urllib.request
-from abc import abstractmethod
 from dataclasses import dataclass
 from enum import auto
 from functools import reduce
 from types import ModuleType
 from typing import Any, Callable, Dict, Generator, Iterator, Mapping, Optional, Set, Tuple, Union
-from typing_extensions import override
 
 readline: Optional[ModuleType]
 try:
@@ -751,72 +749,40 @@ class Object:
     def __str__(self) -> str:
         return pretty(self)
 
-    @abstractmethod
-    def source_equals(self, other: Object) -> bool:
-        pass
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Int(Object):
     value: int
-
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return isinstance(other, Int) and self == other and self.source_extent == other.source_extent
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Float(Object):
     value: float
 
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return isinstance(other, Float) and self == other and self.source_extent == other.source_extent
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class String(Object):
     value: str
-
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return isinstance(other, String) and self == other and self.source_extent == other.source_extent
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Bytes(Object):
     value: bytes
 
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return isinstance(other, Bytes) and self == other and self.source_extent == other.source_extent
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Var(Object):
     name: str
-
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return isinstance(other, Var) and self == other and self.source_extent == other.source_extent
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Hole(Object):
     pass
 
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return isinstance(other, Hole) and self.source_extent == other.source_extent
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Spread(Object):
     name: Optional[str] = None
-
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return isinstance(other, Spread) and self == other and self.source_extent == other.source_extent
 
 
 Env = Mapping[str, Object]
@@ -907,29 +873,10 @@ class Binop(Object):
     left: Object
     right: Object
 
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return (
-            isinstance(other, Binop)
-            and self == other
-            and self.source_extent == other.source_extent
-            and self.left.source_equals(other.left)
-            and self.right.source_equals(other.right)
-        )
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class List(Object):
     items: typing.List[Object]
-
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return (
-            isinstance(other, List)
-            and self == other
-            and self.source_extent == other.source_extent
-            and all(item.source_equals(other_item) for item, other_item in zip(self.items, other.items))
-        )
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -937,31 +884,11 @@ class Assign(Object):
     name: Var
     value: Object
 
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return (
-            isinstance(other, Assign)
-            and self == other
-            and self.source_extent == other.source_extent
-            and self.name.source_equals(other.name)
-            and self.value.source_equals(other.value)
-        )
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Function(Object):
     arg: Object
     body: Object
-
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return (
-            isinstance(other, Function)
-            and self == other
-            and self.source_extent == other.source_extent
-            and self.arg.source_equals(other.arg)
-            and self.body.source_equals(other.body)
-        )
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -969,31 +896,11 @@ class Apply(Object):
     func: Object
     arg: Object
 
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return (
-            isinstance(other, Apply)
-            and self == other
-            and self.source_extent == other.source_extent
-            and self.func.source_equals(other.func)
-            and self.arg.source_equals(other.arg)
-        )
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Where(Object):
     body: Object
     binding: Object
-
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return (
-            isinstance(other, Where)
-            and self == other
-            and self.source_extent == other.source_extent
-            and self.body.source_equals(other.body)
-            and self.binding.source_equals(other.binding)
-        )
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -1001,24 +908,10 @@ class Assert(Object):
     value: Object
     cond: Object
 
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return (
-            isinstance(other, Assert)
-            and self == other
-            and self.source_extent == other.source_extent
-            and self.value.source_equals(other.value)
-            and self.cond.source_equals(other.cond)
-        )
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class EnvObject(Object):
     env: Env
-
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return isinstance(other, EnvObject) and self == other and self.source_extent == other.source_extent
 
     def __str__(self) -> str:
         return f"EnvObject(keys={self.env.keys()})"
@@ -1029,48 +922,20 @@ class MatchCase(Object):
     pattern: Object
     body: Object
 
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return (
-            isinstance(other, MatchCase)
-            and self == other
-            and self.source_extent == other.source_extent
-            and self.pattern.source_equals(other.pattern)
-            and self.body.source_equals(other.body)
-        )
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class MatchFunction(Object):
     cases: typing.List[MatchCase]
-
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return (
-            isinstance(other, MatchFunction)
-            and self == other
-            and self.source_extent == other.source_extent
-            and all(
-                match_case.source_equals(other_match_case)
-                for match_case, other_match_case in zip(self.cases, other.cases)
-            )
-        )
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Relocation(Object):
     name: str
 
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return isinstance(other, Relocation) and self == other and self.source_extent == other.source_extent
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class NativeFunctionRelocation(Relocation):
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return isinstance(other, NativeFunctionRelocation) and self.source_extent == other.source_extent
+    pass
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -1078,40 +943,16 @@ class NativeFunction(Object):
     name: str
     func: Callable[[Object], Object]
 
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return isinstance(other, NativeFunction) and self == other and self.source_extent == other.source_extent
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Closure(Object):
     env: Env
     func: Union[Function, MatchFunction]
 
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return (
-            isinstance(other, Closure)
-            and self == other
-            and self.source_extent == other.source_extent
-            and self.func.source_equals(other.func)
-        )
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Record(Object):
     data: Dict[str, Object]
-
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return (
-            isinstance(other, Record)
-            and self == other
-            and self.source_extent == other.source_extent
-            and all(
-                self.data[k1].source_equals(other.data[k2]) for k1, k2 in zip(sorted(self.data), sorted(other.data))
-            )
-        )
 
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
@@ -1119,30 +960,11 @@ class Access(Object):
     obj: Object
     at: Object
 
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return (
-            isinstance(other, Access)
-            and self == other
-            and self.source_extent == other.source_extent
-            and self.obj.source_equals(other.obj)
-            and self.at.source_equals(other.at)
-        )
-
 
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Variant(Object):
     tag: str
     value: Object
-
-    @override
-    def source_equals(self, other: Object) -> bool:
-        return (
-            isinstance(other, Variant)
-            and self == other
-            and self.source_extent == other.source_extent
-            and self.value.source_equals(other.value)
-        )
 
 
 tags = [

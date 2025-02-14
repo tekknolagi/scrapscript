@@ -470,7 +470,7 @@ class UnexpectedEOFError(ParseError):
 def parse_assign(tokens: Peekable, p: float = 0) -> "Assign":
     assign = parse_binary(tokens, p)
     if isinstance(assign, Spread):
-        return Assign(Var("..."), assign)
+        return Assign(RECORD_SPREAD_KEY_PLACEHOLDER, assign)
     if not isinstance(assign, Assign):
         raise ParseError("failed to parse variable assignment in record constructor")
     return assign
@@ -701,6 +701,9 @@ class Hole(Object):
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Spread(Object):
     name: Optional[str] = None
+
+
+RECORD_SPREAD_KEY_PLACEHOLDER = Var("...")
 
 
 Env = Mapping[str, Object]

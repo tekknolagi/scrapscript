@@ -220,40 +220,34 @@ class Compiler:
             self._emit(f"if (!is_list({arg})) {{ goto {fallthrough}; }}")
             updates = {}
             the_list = arg
-            use_spread = False
             for i, pattern_item in enumerate(pattern.items):
                 if isinstance(pattern_item, Spread):
-                    use_spread = True
                     if pattern_item.name:
                         updates[pattern_item.name] = the_list
-                    break
+                    return updates
                 # Not enough elements
                 self._emit(f"if (is_empty_list({the_list})) {{ goto {fallthrough}; }}")
                 list_item = self._mktemp(f"list_first({the_list})")
                 updates.update(self.try_match(env, list_item, pattern_item, fallthrough))
                 the_list = self._mktemp(f"list_rest({the_list})")
-            if not use_spread:
-                # Too many elements
-                self._emit(f"if (!is_empty_list({the_list})) {{ goto {fallthrough}; }}")
+            # Too many elements
+            self._emit(f"if (!is_empty_list({the_list})) {{ goto {fallthrough}; }}")
             return updates
         if isinstance(pattern, Record):
             self._emit(f"if (!is_record({arg})) {{ goto {fallthrough}; }}")
             updates = {}
-            use_spread = False
             for key, pattern_value in pattern.data.items():
                 if isinstance(pattern_value, Spread):
-                    use_spread = True
                     if pattern_value.name:
                         raise NotImplementedError("named record spread not yet supported")
-                    break
+                    return updates
                 key_idx = self.record_key(key)
                 record_value = self._mktemp(f"record_get({arg}, {key_idx})")
                 # TODO(max): If the key is present in the type, don't emit this
                 # check
                 self._emit(f"if ({record_value} == NULL) {{ goto {fallthrough}; }}")
                 updates.update(self.try_match(env, record_value, pattern_value, fallthrough))
-            if not use_spread:
-                self._emit(f"if (record_num_fields({arg}) != {len(pattern.data)}) {{ goto {fallthrough}; }}")
+            self._emit(f"if (record_num_fields({arg}) != {len(pattern.data)}) {{ goto {fallthrough}; }}")
             return updates
         raise NotImplementedError("try_match", pattern)
 

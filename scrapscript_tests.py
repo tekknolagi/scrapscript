@@ -2619,7 +2619,7 @@ class EndToEndTests(EndToEndTestsBase):
             )
         )
 
-    def test_eval_count_bits_function_preserves_source_extents(self) -> None:
+    def test_eval_collatz_function_preserves_source_extents(self) -> None:
         env_object = self._run(
             """
         collatz = count ->

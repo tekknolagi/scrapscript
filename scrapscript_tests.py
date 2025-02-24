@@ -2576,23 +2576,35 @@ class EndToEndTests(EndToEndTestsBase):
         """
         )
 
-        outer_function = env_object.env["count_bits"].func
+        assert isinstance(env_object, EnvObject)
+
+        count_bits_closure = env_object.env["count_bits"]
+
+        assert isinstance(count_bits_closure, Closure)
+
+        outer_function = count_bits_closure.func
         outer_function_source_extent = SourceExtent(
             start=SourceLocation(lineno=2, colno=22, byteno=22),
             end=SourceLocation(lineno=5, colno=24, byteno=241),
         )
 
-        match_function_one = outer_function.body.cases[0]
+        assert isinstance(outer_function, Function)
+
+        inner_function = outer_function.body
+
+        assert isinstance(inner_function, MatchFunction)
+
+        match_function_one = inner_function.cases[0]
         match_function_one_source_extent = SourceExtent(
             start=SourceLocation(lineno=3, colno=11, byteno=42), end=SourceLocation(lineno=3, colno=92, byteno=123)
         )
 
-        match_function_two = outer_function.body.cases[1]
+        match_function_two = inner_function.cases[1]
         match_function_two_source_extent = SourceExtent(
             start=SourceLocation(lineno=4, colno=11, byteno=135), end=SourceLocation(lineno=4, colno=92, byteno=216)
         )
 
-        match_function_three = outer_function.body.cases[2]
+        match_function_three = inner_function.cases[2]
         match_function_three_source_extent = SourceExtent(
             start=SourceLocation(lineno=5, colno=11, byteno=228), end=SourceLocation(lineno=5, colno=24, byteno=241)
         )
@@ -2622,13 +2634,29 @@ class EndToEndTests(EndToEndTestsBase):
         """
         )
 
-        outer_function = env_object.env["collatz"].func
+        assert isinstance(env_object, EnvObject)
+
+        collatz_closure = env_object.env["collatz"]
+
+        assert isinstance(collatz_closure, Closure)
+
+        outer_function = collatz_closure.func
+
+        assert isinstance(outer_function, Function)
+
         outer_function_source_extent = SourceExtent(
             start=SourceLocation(lineno=2, colno=19, byteno=19),
             end=SourceLocation(lineno=5, colno=79, byteno=205),
         )
 
-        apply_ast = outer_function.body.cases[1].body
+        inner_function = outer_function.body
+
+        assert isinstance(inner_function, MatchFunction)
+
+        apply_ast = inner_function.cases[1].body
+
+        assert isinstance(apply_ast, Apply)
+
         arg = apply_ast.arg
         func = apply_ast.func
 

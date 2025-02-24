@@ -1268,6 +1268,9 @@ class ParserTests(unittest.TestCase):
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
         )
         num = IntLit(1)
+        num.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=2, byteno=1), end=SourceLocation(lineno=1, colno=2, byteno=1)
+        )
         right_paren = RightParen()
         right_paren.source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=3, byteno=2), end=SourceLocation(lineno=1, colno=3, byteno=2)

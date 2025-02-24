@@ -596,7 +596,7 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
             l = make_source_annotated_object(Hole, left_paren_source_extent.coalesce(next(tokens).source_extent))
         else:
             l = parse(tokens)
-            next(tokens)
+            object.__setattr__(l, "source_extent", left_paren_source_extent.coalesce(next(tokens).source_extent))
         return l
     elif isinstance(token, LeftBracket):
         list_start_source_extent = token.source_extent

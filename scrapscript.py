@@ -586,7 +586,7 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
         return make_source_annotated_object(
             MatchFunction,
             reduce(
-                lambda source_extent_one, source_extent_two: join_source_extents(source_extent_one, source_extent_two),
+                join_source_extents,
                 cases_source_extents,
             ),
             cases,

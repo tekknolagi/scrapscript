@@ -515,6 +515,7 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
         # TODO: Handle kebab case vars
         return make_source_annotated_object(Var, token.source_extent, token.value)
     elif isinstance(token, Hash):
+        hash_source_extent = token.source_extent
         if isinstance(variant_tag := next(tokens), Name):
             # It needs to be higher than the precedence of the -> operator so that
             # we can match variants in MatchFunction
@@ -525,7 +526,7 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
             variant_payload = parse_binary(tokens, PS[""].pr + 1)
             return make_source_annotated_object(
                 Variant,
-                variant_tag.source_extent.coalesce(variant_payload.source_extent),
+                hash_source_extent.coalesce(variant_payload.source_extent),
                 variant_tag.value,
                 variant_payload,
             )

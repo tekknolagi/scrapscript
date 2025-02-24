@@ -1271,9 +1271,9 @@ class ParserTests(unittest.TestCase):
         num_ast = make_source_annotated_object(
             Int,
             SourceExtent(
-              start=SourceLocation(lineno=1, colno=2, byteno=1), end=SourceLocation(lineno=1, colno=2, byteno=1)
+                start=SourceLocation(lineno=1, colno=2, byteno=1), end=SourceLocation(lineno=1, colno=2, byteno=1)
             ),
-            1
+            1,
         )
         right_paren = RightParen()
         right_paren.source_extent = SourceExtent(
@@ -1284,10 +1284,12 @@ class ParserTests(unittest.TestCase):
             SourceExtent(
                 start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=3, byteno=2)
             ),
-            1
+            1,
         )
-        self.assertTrue(parse(Peekable(iter([left_paren, num, right_paren]))).source_extent == parenthesized_num.source_extent)
-        
+        self.assertTrue(
+            parse(Peekable(iter([left_paren, num, right_paren]))).source_extent == parenthesized_num.source_extent
+        )
+
     def test_parse_spread_preserves_source_extent(self) -> None:
         ellipsis = Operator("...")
         ellipsis.source_extent = SourceExtent(
@@ -2638,34 +2640,17 @@ class EndToEndTests(EndToEndTestsBase):
         func = apply_ast.func
 
         arg_source_extent = SourceExtent(
-            start=SourceLocation(
-                lineno=4,
-                colno=18,
-                byteno=68
-            ),
-            end=SourceLocation(
-                lineno=4,
-                colno=29,
-                byteno=79
-            )
+            start=SourceLocation(lineno=4, colno=18, byteno=68), end=SourceLocation(lineno=4, colno=29, byteno=79)
         )
 
         func_source_extent = SourceExtent(
-            start=SourceLocation(
-                lineno=4,
-                colno=34,
-                byteno=84
-            ),
-            end=SourceLocation(
-                lineno=5,
-                colno=79,
-                byteno=205
-            )
+            start=SourceLocation(lineno=4, colno=34, byteno=84), end=SourceLocation(lineno=5, colno=79, byteno=205)
         )
 
         self.assertTrue(outer_function.source_extent == outer_function_source_extent)
         self.assertTrue(arg.source_extent == arg_source_extent)
         self.assertTrue(func.source_extent == func_source_extent)
+
 
 class ClosureOptimizeTests(unittest.TestCase):
     def test_int(self) -> None:

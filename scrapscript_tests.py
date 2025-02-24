@@ -1,3 +1,4 @@
+import base64
 import unittest
 import re
 from typing import Optional
@@ -1199,6 +1200,175 @@ class ParserTests(unittest.TestCase):
         ast = parse(tokenize("f #true() #false()"))
         self.assertEqual(ast, Apply(Apply(Var("f"), TRUE), FALSE))
 
+    def test_parse_int_preserves_source_extent(self) -> None:
+        int_lit = IntLit(1)
+        source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+        )
+        int_lit.source_extent = source_extent
+        int_ast = make_source_annotated_object(Int, source_extent, 1)
+        self.assertTrue(parse(Peekable(iter([int_lit]))).source_extent == int_ast.source_extent)
+
+    def test_parse_float_preserves_source_extent(self) -> None:
+        float_lit = FloatLit(3.2)
+        source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=3, byteno=2)
+        )
+        float_lit.source_extent = source_extent
+        float_ast = make_source_annotated_object(Float, source_extent, 3.2)
+        self.assertTrue(parse(Peekable(iter([float_lit]))).source_extent == float_ast.source_extent)
+
+    def test_parse_string_preserves_source_extent(self) -> None:
+        string_lit = StringLit("Hello")
+        source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=7, byteno=6)
+        )
+        string_lit.source_extent = source_extent
+        string_ast = make_source_annotated_object(String, source_extent, "Hello")
+        self.assertTrue(parse(Peekable(iter([string_lit]))).source_extent == string_ast.source_extent)
+
+    def test_parse_bytes_preserves_source_extent(self) -> None:
+        bytes_lit = BytesLit("QUJD", 64)
+        source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=9, byteno=8)
+        )
+        bytes_lit.source_extent = source_extent
+        bytes_ast = make_source_annotated_object(Bytes, source_extent, base64.b64decode("QUJD"))
+        self.assertTrue(parse(Peekable(iter([bytes_lit]))).source_extent == bytes_ast.source_extent)
+
+    def test_parse_var_preserves_source_extent(self) -> None:
+        var = Name("x")
+        source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+        )
+        var.source_extent = source_extent
+        var_ast = make_source_annotated_object(Var, source_extent, "x")
+        self.assertTrue(parse(Peekable(iter([var]))).source_extent == var_ast.source_extent)
+
+    def test_parse_hole_preserves_source_extent(self) -> None:
+        left_paren = LeftParen()
+        left_paren.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+        )
+        right_paren = RightParen()
+        right_paren.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=2, byteno=1), end=SourceLocation(lineno=1, colno=2, byteno=1)
+        )
+        hole = make_source_annotated_object(
+            Hole,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=2, byteno=1)
+            ),
+        )
+        self.assertTrue(parse(Peekable(iter([left_paren, right_paren]))).source_extent == hole.source_extent)
+
+    def test_parenthesized_expression_preserves_source_extent(self) -> None:
+        left_paren = LeftParen()
+        left_paren.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+        )
+        int_lit = IntLit(1)
+        int_lit.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=2, byteno=1), end=SourceLocation(lineno=1, colno=2, byteno=1)
+        )
+        right_paren = RightParen()
+        right_paren.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=3, byteno=2), end=SourceLocation(lineno=1, colno=3, byteno=2)
+        )
+        parenthesized_int_lit = make_source_annotated_object(
+            Int,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=3, byteno=2)
+            ),
+            1,
+        )
+        self.assertTrue(
+            parse(Peekable(iter([left_paren, int_lit, right_paren]))).source_extent
+            == parenthesized_int_lit.source_extent
+        )
+
+    def test_parse_spread_preserves_source_extent(self) -> None:
+        ellipsis = Operator("...")
+        ellipsis.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=3, byteno=2)
+        )
+        name = Name("x")
+        name.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=4, byteno=3), end=SourceLocation(lineno=1, colno=4, byteno=3)
+        )
+        spread = make_source_annotated_object(
+            Spread,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=4, byteno=3)
+            ),
+            "x",
+        )
+        self.assertTrue(parse(Peekable(iter([ellipsis, name]))).source_extent == spread.source_extent)
+
+    def test_parse_binop_preserves_source_extent(self) -> None:
+        first_addend = IntLit(1)
+        first_addend.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+        )
+        operator = Operator("+")
+        operator.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=3, byteno=2), end=SourceLocation(lineno=1, colno=3, byteno=2)
+        )
+        second_addend = IntLit(2)
+        second_addend.source_extent = SourceExtent(
+            start=SourceLocation(lineno=2, colno=5, byteno=4), end=SourceLocation(lineno=2, colno=5, byteno=4)
+        )
+        first_addend_ast = make_source_annotated_object(Int, first_addend.source_extent, 1)
+        operator_ast = BinopKind.ADD
+        second_addend_ast = make_source_annotated_object(Int, second_addend.source_extent, 2)
+        binop = make_source_annotated_object(
+            Binop,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=2, colno=5, byteno=4)
+            ),
+            operator_ast,
+            first_addend_ast,
+            second_addend_ast,
+        )
+        self.assertTrue(
+            parse(Peekable(iter([first_addend, operator, second_addend]))).source_extent == binop.source_extent
+        )
+
+    def test_parse_list_preserves_source_extent(self) -> None:
+        left_bracket = LeftBracket()
+        left_bracket.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+        )
+        one = IntLit(1)
+        one.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=2, byteno=1), end=SourceLocation(lineno=1, colno=2, byteno=1)
+        )
+        comma = Operator(",")
+        comma.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=3, byteno=2), end=SourceLocation(lineno=1, colno=3, byteno=2)
+        )
+        two = IntLit(2)
+        two.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=5, byteno=4), end=SourceLocation(lineno=1, colno=5, byteno=4)
+        )
+        right_bracket = RightBracket()
+        right_bracket.source_extent = SourceExtent(
+            start=SourceLocation(lineno=1, colno=6, byteno=5), end=SourceLocation(lineno=1, colno=6, byteno=5)
+        )
+        one_ast = make_source_annotated_object(Int, one.source_extent, 1)
+        two_ast = make_source_annotated_object(Int, two.source_extent, 2)
+        list_ast = make_source_annotated_object(
+            List,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=6, byteno=5)
+            ),
+            [one_ast, two_ast],
+        )
+        self.assertTrue(
+            parse(Peekable(iter([left_bracket, one, comma, two, right_bracket]))).source_extent
+            == list_ast.source_extent
+        )
+
 
 class MatchTests(unittest.TestCase):
     def test_match_hole_with_non_hole_returns_none(self) -> None:
@@ -2399,6 +2569,112 @@ class EndToEndTests(EndToEndTestsBase):
         self.assertEqual(self._run("1 / 2 + 3"), Float(3.5))
         with self.assertRaisesRegex(InferenceError, "int and float"):
             self._run("1 / 2 + 3", check=True)
+
+    def test_eval_count_bits_function_preserves_source_extents(self) -> None:
+        env_object = self._run(
+            """
+        count_bits = counts ->
+          | [1, ...bits] -> count_bits { zeros = counts@zeros, ones = 1 + counts@ones } bits
+          | [0, ...bits] -> count_bits { zeros = 1 + counts@zeros, ones = counts@ones } bits
+          | [] -> counts
+        """
+        )
+
+        assert isinstance(env_object, EnvObject)
+
+        count_bits_closure = env_object.env["count_bits"]
+
+        assert isinstance(count_bits_closure, Closure)
+
+        outer_function = count_bits_closure.func
+        outer_function_source_extent = SourceExtent(
+            start=SourceLocation(lineno=2, colno=22, byteno=22),
+            end=SourceLocation(lineno=5, colno=24, byteno=241),
+        )
+
+        assert isinstance(outer_function, Function)
+
+        inner_function = outer_function.body
+
+        assert isinstance(inner_function, MatchFunction)
+
+        match_function_one = inner_function.cases[0]
+        match_function_one_source_extent = SourceExtent(
+            start=SourceLocation(lineno=3, colno=11, byteno=42), end=SourceLocation(lineno=3, colno=92, byteno=123)
+        )
+
+        match_function_two = inner_function.cases[1]
+        match_function_two_source_extent = SourceExtent(
+            start=SourceLocation(lineno=4, colno=11, byteno=135), end=SourceLocation(lineno=4, colno=92, byteno=216)
+        )
+
+        match_function_three = inner_function.cases[2]
+        match_function_three_source_extent = SourceExtent(
+            start=SourceLocation(lineno=5, colno=11, byteno=228), end=SourceLocation(lineno=5, colno=24, byteno=241)
+        )
+
+        match_functions = [match_function_one, match_function_two, match_function_three]
+        match_function_source_extents = [
+            match_function_one_source_extent,
+            match_function_two_source_extent,
+            match_function_three_source_extent,
+        ]
+
+        self.assertTrue(outer_function.source_extent == outer_function_source_extent)
+        self.assertTrue(
+            all(
+                match_function.source_extent == source_extent
+                for match_function, source_extent in zip(match_functions, match_function_source_extents)
+            )
+        )
+
+    def test_eval_collatz_function_preserves_source_extents(self) -> None:
+        env_object = self._run(
+            """
+        collatz = count ->
+          | 1 -> count
+          | n -> (n % 2 == 0) |> | #true () -> collatz (count + 1) (n // 2)
+                                 | #false () -> collatz (count + 1) (3 * n + 1)
+        """
+        )
+
+        assert isinstance(env_object, EnvObject)
+
+        collatz_closure = env_object.env["collatz"]
+
+        assert isinstance(collatz_closure, Closure)
+
+        outer_function = collatz_closure.func
+
+        assert isinstance(outer_function, Function)
+
+        outer_function_source_extent = SourceExtent(
+            start=SourceLocation(lineno=2, colno=19, byteno=19),
+            end=SourceLocation(lineno=5, colno=79, byteno=205),
+        )
+
+        inner_function = outer_function.body
+
+        assert isinstance(inner_function, MatchFunction)
+
+        apply_ast = inner_function.cases[1].body
+
+        assert isinstance(apply_ast, Apply)
+
+        arg = apply_ast.arg
+        func = apply_ast.func
+
+        arg_source_extent = SourceExtent(
+            start=SourceLocation(lineno=4, colno=18, byteno=68), end=SourceLocation(lineno=4, colno=29, byteno=79)
+        )
+
+        func_source_extent = SourceExtent(
+            start=SourceLocation(lineno=4, colno=34, byteno=84), end=SourceLocation(lineno=5, colno=79, byteno=205)
+        )
+
+        self.assertTrue(outer_function.source_extent == outer_function_source_extent)
+        self.assertTrue(arg.source_extent == arg_source_extent)
+        self.assertTrue(func.source_extent == func_source_extent)
 
 
 class ClosureOptimizeTests(unittest.TestCase):

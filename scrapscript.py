@@ -480,7 +480,7 @@ class UnexpectedEOFError(ParseError):
 def parse_assign(tokens: Peekable, p: float = 0) -> "Assign":
     assign = parse_binary(tokens, p)
     if isinstance(assign, Spread):
-        return Assign(Var("..."), assign)
+        return Assign(RECORD_SPREAD_KEY_PLACEHOLDER, assign)
     if not isinstance(assign, Assign):
         raise ParseError("failed to parse variable assignment in record constructor")
     return assign
@@ -784,6 +784,9 @@ class Hole(Object):
 @dataclass(eq=True, frozen=True, unsafe_hash=True)
 class Spread(Object):
     name: Optional[str] = None
+
+
+RECORD_SPREAD_KEY_PLACEHOLDER = Var("...")
 
 
 Env = Mapping[str, Object]
@@ -1440,16 +1443,14 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
         if not isinstance(obj, Record):
             return None
         result: Env = {}
-        use_spread = False
         seen_keys: set[str] = set()
         for key, pattern_item in pattern.data.items():
             if isinstance(pattern_item, Spread):
-                use_spread = True
                 if pattern_item.name is not None:
                     assert isinstance(result, dict)  # for .update()
                     rest_keys = set(obj.data.keys()) - seen_keys
                     result.update({pattern_item.name: Record({key: obj.data[key] for key in rest_keys})})
-                break
+                return result
             seen_keys.add(key)
             obj_item = obj.data.get(key)
             if obj_item is None:
@@ -1459,21 +1460,19 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
                 return None
             assert isinstance(result, dict)  # for .update()
             result.update(part)
-        if not use_spread and len(pattern.data) != len(obj.data):
+        if len(pattern.data) != len(obj.data):
             return None
         return result
     if isinstance(pattern, List):
         if not isinstance(obj, List):
             return None
         result: Env = {}  # type: ignore
-        use_spread = False
         for i, pattern_item in enumerate(pattern.items):
             if isinstance(pattern_item, Spread):
-                use_spread = True
                 if pattern_item.name is not None:
                     assert isinstance(result, dict)  # for .update()
                     result.update({pattern_item.name: List(obj.items[i:])})
-                break
+                return result
             if i >= len(obj.items):
                 return None
             obj_item = obj.items[i]
@@ -1482,7 +1481,7 @@ def match(obj: Object, pattern: Object) -> Optional[Env]:
                 return None
             assert isinstance(result, dict)  # for .update()
             result.update(part)
-        if not use_spread and len(pattern.items) != len(obj.items):
+        if len(pattern.items) != len(obj.items):
             return None
         return result
     raise NotImplementedError(f"match not implemented for {type(pattern).__name__}")

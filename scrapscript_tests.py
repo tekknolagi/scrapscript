@@ -1267,15 +1267,15 @@ class ParserTests(unittest.TestCase):
         left_paren.source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
         )
-        num = IntLit(1)
-        num.source_extent = SourceExtent(
+        int_lit = IntLit(1)
+        int_lit.source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=2, byteno=1), end=SourceLocation(lineno=1, colno=2, byteno=1)
         )
         right_paren = RightParen()
         right_paren.source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=3, byteno=2), end=SourceLocation(lineno=1, colno=3, byteno=2)
         )
-        parenthesized_num = make_source_annotated_object(
+        parenthesized_int_lit = make_source_annotated_object(
             Int,
             SourceExtent(
                 start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=3, byteno=2)
@@ -1283,7 +1283,8 @@ class ParserTests(unittest.TestCase):
             1,
         )
         self.assertTrue(
-            parse(Peekable(iter([left_paren, num, right_paren]))).source_extent == parenthesized_num.source_extent
+            parse(Peekable(iter([left_paren, int_lit, right_paren]))).source_extent
+            == parenthesized_int_lit.source_extent
         )
 
     def test_parse_spread_preserves_source_extent(self) -> None:

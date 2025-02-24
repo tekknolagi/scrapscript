@@ -2571,6 +2571,101 @@ class EndToEndTests(EndToEndTestsBase):
         with self.assertRaisesRegex(InferenceError, "int and float"):
             self._run("1 / 2 + 3", check=True)
 
+    def test_eval_count_bits_function_preserves_source_extents(self) -> None:
+        env_object = self._run(
+            """
+        count_bits = counts ->
+          | [1, ...bits] -> count_bits { zeros = counts@zeros, ones = 1 + counts@ones } bits
+          | [0, ...bits] -> count_bits { zeros = 1 + counts@zeros, ones = counts@ones } bits
+          | [] -> counts
+        """
+        )
+
+        outer_function = env_object.env["count_bits"].func
+        outer_function_source_extent = SourceExtent(
+            start=SourceLocation(lineno=2, colno=22, byteno=22),
+            end=SourceLocation(lineno=5, colno=24, byteno=241),
+        )
+
+        match_function_one = outer_function.body.cases[0]
+        match_function_one_source_extent = SourceExtent(
+            start=SourceLocation(lineno=3, colno=11, byteno=42), end=SourceLocation(lineno=3, colno=92, byteno=123)
+        )
+
+        match_function_two = outer_function.body.cases[1]
+        match_function_two_source_extent = SourceExtent(
+            start=SourceLocation(lineno=4, colno=11, byteno=135), end=SourceLocation(lineno=4, colno=92, byteno=216)
+        )
+
+        match_function_three = outer_function.body.cases[2]
+        match_function_three_source_extent = SourceExtent(
+            start=SourceLocation(lineno=5, colno=11, byteno=228), end=SourceLocation(lineno=5, colno=24, byteno=241)
+        )
+
+        match_functions = [match_function_one, match_function_two, match_function_three]
+        match_function_source_extents = [
+            match_function_one_source_extent,
+            match_function_two_source_extent,
+            match_function_three_source_extent,
+        ]
+
+        self.assertTrue(outer_function.source_extent == outer_function_source_extent)
+        self.assertTrue(
+            all(
+                match_function.source_extent == source_extent
+                for match_function, source_extent in zip(match_functions, match_function_source_extents)
+            )
+        )
+
+    def test_eval_count_bits_function_preserves_source_extents(self) -> None:
+        env_object = self._run(
+            """
+        collatz = count ->
+          | 1 -> count
+          | n -> (n % 2 == 0) |> | #true () -> collatz (count + 1) (n // 2)
+                                 | #false () -> collatz (count + 1) (3 * n + 1)
+        """
+        )
+
+        outer_function = env_object.env["collatz"].func
+        outer_function_source_extent = SourceExtent(
+            start=SourceLocation(lineno=2, colno=19, byteno=19),
+            end=SourceLocation(lineno=5, colno=79, byteno=205),
+        )
+
+        apply_ast = outer_function.body.cases[1].body
+        arg = apply_ast.arg
+        func = apply_ast.func
+
+        arg_source_extent = SourceExtent(
+            start=SourceLocation(
+                lineno=4,
+                colno=18,
+                byteno=68
+            ),
+            end=SourceLocation(
+                lineno=4,
+                colno=29,
+                byteno=79
+            )
+        )
+
+        func_source_extent = SourceExtent(
+            start=SourceLocation(
+                lineno=4,
+                colno=34,
+                byteno=84
+            ),
+            end=SourceLocation(
+                lineno=5,
+                colno=79,
+                byteno=205
+            )
+        )
+
+        self.assertTrue(outer_function.source_extent == outer_function_source_extent)
+        self.assertTrue(arg.source_extent == arg_source_extent)
+        self.assertTrue(func.source_extent == func_source_extent)
 
 class ClosureOptimizeTests(unittest.TestCase):
     def test_int(self) -> None:

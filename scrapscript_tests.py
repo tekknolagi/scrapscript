@@ -1200,53 +1200,52 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(ast, Apply(Apply(Var("f"), TRUE), FALSE))
 
     def test_parse_int_preserves_source_extent(self) -> None:
-        int_lit = IntLit(1)
         source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
         )
-        int_lit.source_extent = source_extent
+        int_lit = make_source_annotated_token(IntLit, source_extent, 1)
         self.assertTrue(parse(Peekable(iter([int_lit]))).source_extent == source_extent)
 
     def test_parse_float_preserves_source_extent(self) -> None:
-        float_lit = FloatLit(3.2)
         source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=3, byteno=2)
         )
-        float_lit.source_extent = source_extent
+        float_lit = make_source_annotated_token(FloatLit, source_extent, 3.2)
         self.assertTrue(parse(Peekable(iter([float_lit]))).source_extent == source_extent)
 
     def test_parse_string_preserves_source_extent(self) -> None:
-        string_lit = StringLit("Hello")
         source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=7, byteno=6)
         )
-        string_lit.source_extent = source_extent
+        string_lit = make_source_annotated_token(StringLit, source_extent, "Hello")
         self.assertTrue(parse(Peekable(iter([string_lit]))).source_extent == source_extent)
 
     def test_parse_bytes_preserves_source_extent(self) -> None:
-        bytes_lit = BytesLit("QUJD", 64)
         source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=9, byteno=8)
         )
-        bytes_lit.source_extent = source_extent
+        bytes_lit = make_source_annotated_token(BytesLit, source_extent, "QUJD", 64)
         self.assertTrue(parse(Peekable(iter([bytes_lit]))).source_extent == source_extent)
 
     def test_parse_var_preserves_source_extent(self) -> None:
-        var = Name("x")
         source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
         )
-        var.source_extent = source_extent
+        var = make_source_annotated_token(Name, source_extent, "x")
         self.assertTrue(parse(Peekable(iter([var]))).source_extent == source_extent)
 
     def test_parse_hole_preserves_source_extent(self) -> None:
-        left_paren = LeftParen()
-        left_paren.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+        left_paren = make_source_annotated_token(
+            LeftParen,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+            ),
         )
-        right_paren = RightParen()
-        right_paren.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=2, byteno=1), end=SourceLocation(lineno=1, colno=2, byteno=1)
+        right_paren = make_source_annotated_token(
+            RightParen,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=2, byteno=1), end=SourceLocation(lineno=1, colno=2, byteno=1)
+            ),
         )
         hole_source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=2, byteno=1)
@@ -1254,17 +1253,24 @@ class ParserTests(unittest.TestCase):
         self.assertTrue(parse(Peekable(iter([left_paren, right_paren]))).source_extent == hole_source_extent)
 
     def test_parenthesized_expression_preserves_source_extent(self) -> None:
-        left_paren = LeftParen()
-        left_paren.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+        left_paren = make_source_annotated_token(
+            LeftParen,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+            ),
         )
-        int_lit = IntLit(1)
-        int_lit.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=2, byteno=1), end=SourceLocation(lineno=1, colno=2, byteno=1)
+        int_lit = make_source_annotated_token(
+            IntLit,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=2, byteno=1), end=SourceLocation(lineno=1, colno=2, byteno=1)
+            ),
+            1,
         )
-        right_paren = RightParen()
-        right_paren.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=3, byteno=2), end=SourceLocation(lineno=1, colno=3, byteno=2)
+        right_paren = make_source_annotated_token(
+            RightParen,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=3, byteno=2), end=SourceLocation(lineno=1, colno=3, byteno=2)
+            ),
         )
         parenthesized_int_lit_source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=3, byteno=2)
@@ -1275,13 +1281,19 @@ class ParserTests(unittest.TestCase):
         )
 
     def test_parse_spread_preserves_source_extent(self) -> None:
-        ellipsis = Operator("...")
-        ellipsis.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=3, byteno=2)
+        ellipsis = make_source_annotated_token(
+            Operator,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=3, byteno=2)
+            ),
+            "...",
         )
-        name = Name("x")
-        name.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=4, byteno=3), end=SourceLocation(lineno=1, colno=4, byteno=3)
+        name = make_source_annotated_token(
+            Name,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=4, byteno=3), end=SourceLocation(lineno=1, colno=4, byteno=3)
+            ),
+            "x",
         )
         spread_source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=4, byteno=3)
@@ -1289,17 +1301,26 @@ class ParserTests(unittest.TestCase):
         self.assertTrue(parse(Peekable(iter([ellipsis, name]))).source_extent == spread_source_extent)
 
     def test_parse_binop_preserves_source_extent(self) -> None:
-        first_addend = IntLit(1)
-        first_addend.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+        first_addend = make_source_annotated_token(
+            IntLit,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+            ),
+            1,
         )
-        operator = Operator("+")
-        operator.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=3, byteno=2), end=SourceLocation(lineno=1, colno=3, byteno=2)
+        operator = make_source_annotated_token(
+            Operator,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=3, byteno=2), end=SourceLocation(lineno=1, colno=3, byteno=2)
+            ),
+            "+",
         )
-        second_addend = IntLit(2)
-        second_addend.source_extent = SourceExtent(
-            start=SourceLocation(lineno=2, colno=5, byteno=4), end=SourceLocation(lineno=2, colno=5, byteno=4)
+        second_addend = make_source_annotated_token(
+            IntLit,
+            SourceExtent(
+                start=SourceLocation(lineno=2, colno=5, byteno=4), end=SourceLocation(lineno=2, colno=5, byteno=4)
+            ),
+            2,
         )
         binop_source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=2, colno=5, byteno=4)
@@ -1309,25 +1330,38 @@ class ParserTests(unittest.TestCase):
         )
 
     def test_parse_list_preserves_source_extent(self) -> None:
-        left_bracket = LeftBracket()
-        left_bracket.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+        left_bracket = make_source_annotated_token(
+            LeftBracket,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
+            ),
         )
-        one = IntLit(1)
-        one.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=2, byteno=1), end=SourceLocation(lineno=1, colno=2, byteno=1)
+        one = make_source_annotated_token(
+            IntLit,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=2, byteno=1), end=SourceLocation(lineno=1, colno=2, byteno=1)
+            ),
+            1,
         )
-        comma = Operator(",")
-        comma.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=3, byteno=2), end=SourceLocation(lineno=1, colno=3, byteno=2)
+        comma = make_source_annotated_token(
+            Operator,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=3, byteno=2), end=SourceLocation(lineno=1, colno=3, byteno=2)
+            ),
+            ",",
         )
-        two = IntLit(2)
-        two.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=5, byteno=4), end=SourceLocation(lineno=1, colno=5, byteno=4)
+        two = make_source_annotated_token(
+            IntLit,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=5, byteno=4), end=SourceLocation(lineno=1, colno=5, byteno=4)
+            ),
+            2,
         )
-        right_bracket = RightBracket()
-        right_bracket.source_extent = SourceExtent(
-            start=SourceLocation(lineno=1, colno=6, byteno=5), end=SourceLocation(lineno=1, colno=6, byteno=5)
+        right_bracket = make_source_annotated_token(
+            RightBracket,
+            SourceExtent(
+                start=SourceLocation(lineno=1, colno=6, byteno=5), end=SourceLocation(lineno=1, colno=6, byteno=5)
+            ),
         )
         list_source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=6, byteno=5)

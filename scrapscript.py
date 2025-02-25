@@ -212,19 +212,7 @@ class Lexer:
         return self.text[self.idx]
 
     def make_token(self, cls: type, *args: Any) -> Token:
-        result: Token = cls(*args)
-
-        # Set start of token's source extent
-        result.source_extent.start.lineno = self.current_token_source_extent.start.lineno
-        result.source_extent.start.colno = self.current_token_source_extent.start.colno
-        result.source_extent.start.byteno = self.current_token_source_extent.start.byteno
-
-        # Set end of token's source extent
-        result.source_extent.end.colno = self.current_token_source_extent.end.colno
-        result.source_extent.end.lineno = self.current_token_source_extent.end.lineno
-        result.source_extent.end.byteno = self.current_token_source_extent.end.byteno
-
-        return result
+        return make_source_annotated_token(cls, copy.deepcopy(self.current_token_source_extent), *args)
 
     def read_tokens(self) -> Generator[Token, None, None]:
         while (token := self.read_token()) and not isinstance(token, EOF):

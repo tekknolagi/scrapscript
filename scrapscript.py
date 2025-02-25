@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import base64
 import code
+import copy
 import dataclasses
 import enum
 import functools
@@ -349,6 +350,12 @@ class Lexer:
             buf += self.read_char()
         base, _, value = buf.rpartition("'")
         return self.make_token(BytesLit, value, int(base) if base else 64)
+
+
+def make_source_annotated_token(cls: type, source_extent: SourceExtent, *args: Any) -> Token:
+    result: Token = cls(*args)
+    result.source_extent = source_extent
+    return result
 
 
 PEEK_EMPTY = object()

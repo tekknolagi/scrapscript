@@ -15,7 +15,6 @@ import typing
 import urllib.request
 from dataclasses import dataclass
 from enum import auto
-from functools import reduce
 from types import ModuleType
 from typing import Any, Callable, Dict, Generator, Iterator, Mapping, Optional, Set, Tuple, Union
 
@@ -568,6 +567,7 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
             MatchCase, pipe_source_extent.coalesce(expr.source_extent), expr.arg, expr.body
         )
         cases = [match_case]
+        match_function_source_extent = match_case.source_extent
         while True:
             try:
                 if tokens.peek() != Operator("|"):
@@ -582,13 +582,10 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
                 MatchCase, pipe_source_extent.coalesce(expr.source_extent), expr.arg, expr.body
             )
             cases.append(match_case)
-        cases_source_extents = [case_branch.source_extent for case_branch in cases]
+            match_function_source_extent = join_source_extents(match_function_source_extent, match_case.source_extent)
         return make_source_annotated_object(
             MatchFunction,
-            reduce(
-                join_source_extents,
-                cases_source_extents,
-            ),
+            match_function_source_extent,
             cases,
         )
     elif isinstance(token, LeftParen):

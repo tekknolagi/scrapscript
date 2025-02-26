@@ -1204,35 +1204,35 @@ class ParserTests(unittest.TestCase):
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
         )
         int_lit = make_source_annotated_token(IntLit, source_extent, 1)
-        self.assertTrue(parse(Peekable(iter([int_lit]))).source_extent == source_extent)
+        self.assertEqual(parse(Peekable(iter([int_lit]))).source_extent, source_extent)
 
     def test_parse_float_preserves_source_extent(self) -> None:
         source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=3, byteno=2)
         )
         float_lit = make_source_annotated_token(FloatLit, source_extent, 3.2)
-        self.assertTrue(parse(Peekable(iter([float_lit]))).source_extent == source_extent)
+        self.assertEqual(parse(Peekable(iter([float_lit]))).source_extent, source_extent)
 
     def test_parse_string_preserves_source_extent(self) -> None:
         source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=7, byteno=6)
         )
         string_lit = make_source_annotated_token(StringLit, source_extent, "Hello")
-        self.assertTrue(parse(Peekable(iter([string_lit]))).source_extent == source_extent)
+        self.assertEqual(parse(Peekable(iter([string_lit]))).source_extent, source_extent)
 
     def test_parse_bytes_preserves_source_extent(self) -> None:
         source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=9, byteno=8)
         )
         bytes_lit = make_source_annotated_token(BytesLit, source_extent, "QUJD", 64)
-        self.assertTrue(parse(Peekable(iter([bytes_lit]))).source_extent == source_extent)
+        self.assertEqual(parse(Peekable(iter([bytes_lit]))).source_extent, source_extent)
 
     def test_parse_var_preserves_source_extent(self) -> None:
         source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=1, byteno=0)
         )
         var = make_source_annotated_token(Name, source_extent, "x")
-        self.assertTrue(parse(Peekable(iter([var]))).source_extent == source_extent)
+        self.assertEqual(parse(Peekable(iter([var]))).source_extent, source_extent)
 
     def test_parse_hole_preserves_source_extent(self) -> None:
         left_paren = make_source_annotated_token(
@@ -1250,7 +1250,7 @@ class ParserTests(unittest.TestCase):
         hole_source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=2, byteno=1)
         )
-        self.assertTrue(parse(Peekable(iter([left_paren, right_paren]))).source_extent == hole_source_extent)
+        self.assertEqual(parse(Peekable(iter([left_paren, right_paren]))).source_extent, hole_source_extent)
 
     def test_parenthesized_expression_preserves_source_extent(self) -> None:
         left_paren = make_source_annotated_token(
@@ -1275,9 +1275,8 @@ class ParserTests(unittest.TestCase):
         parenthesized_int_lit_source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=3, byteno=2)
         )
-        self.assertTrue(
-            parse(Peekable(iter([left_paren, int_lit, right_paren]))).source_extent
-            == parenthesized_int_lit_source_extent
+        self.assertEqual(
+            parse(Peekable(iter([left_paren, int_lit, right_paren]))).source_extent, parenthesized_int_lit_source_extent
         )
 
     def test_parse_spread_preserves_source_extent(self) -> None:
@@ -1298,7 +1297,7 @@ class ParserTests(unittest.TestCase):
         spread_source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=4, byteno=3)
         )
-        self.assertTrue(parse(Peekable(iter([ellipsis, name]))).source_extent == spread_source_extent)
+        self.assertEqual(parse(Peekable(iter([ellipsis, name]))).source_extent, spread_source_extent)
 
     def test_parse_binop_preserves_source_extent(self) -> None:
         first_addend = make_source_annotated_token(
@@ -1325,8 +1324,8 @@ class ParserTests(unittest.TestCase):
         binop_source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=2, colno=5, byteno=4)
         )
-        self.assertTrue(
-            parse(Peekable(iter([first_addend, operator, second_addend]))).source_extent == binop_source_extent
+        self.assertEqual(
+            parse(Peekable(iter([first_addend, operator, second_addend]))).source_extent, binop_source_extent
         )
 
     def test_parse_list_preserves_source_extent(self) -> None:
@@ -1366,8 +1365,8 @@ class ParserTests(unittest.TestCase):
         list_source_extent = SourceExtent(
             start=SourceLocation(lineno=1, colno=1, byteno=0), end=SourceLocation(lineno=1, colno=6, byteno=5)
         )
-        self.assertTrue(
-            parse(Peekable(iter([left_bracket, one, comma, two, right_bracket]))).source_extent == list_source_extent
+        self.assertEqual(
+            parse(Peekable(iter([left_bracket, one, comma, two, right_bracket]))).source_extent, list_source_extent
         )
 
 
@@ -2621,7 +2620,7 @@ class EndToEndTests(EndToEndTestsBase):
             match_function_three_source_extent,
         ]
 
-        self.assertTrue(outer_function.source_extent == outer_function_source_extent)
+        self.assertEqual(outer_function.source_extent, outer_function_source_extent)
         self.assertTrue(
             all(
                 match_function.source_extent == source_extent
@@ -2673,9 +2672,9 @@ class EndToEndTests(EndToEndTestsBase):
             start=SourceLocation(lineno=4, colno=34, byteno=84), end=SourceLocation(lineno=5, colno=79, byteno=205)
         )
 
-        self.assertTrue(outer_function.source_extent == outer_function_source_extent)
-        self.assertTrue(arg.source_extent == arg_source_extent)
-        self.assertTrue(func.source_extent == func_source_extent)
+        self.assertEqual(outer_function.source_extent, outer_function_source_extent)
+        self.assertEqual(arg.source_extent, arg_source_extent)
+        self.assertEqual(func.source_extent, func_source_extent)
 
 
 class ClosureOptimizeTests(unittest.TestCase):

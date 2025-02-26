@@ -59,6 +59,10 @@ def join_source_extents(
 class Token:
     source_extent: SourceExtent = dataclasses.field(default_factory=SourceExtent, init=False, compare=False)
 
+    def with_source(self, source_extent: SourceExtent) -> Token:
+        self.source_extent = source_extent
+        return self
+
 
 @dataclass(eq=True)
 class IntLit(Token):

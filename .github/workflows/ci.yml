@@ -69,6 +69,8 @@ jobs:
       run: CC=${{matrix.CC}} CFLAGS="-fsanitize=undefined ${{matrix.USE_STATIC_HEAP}}" uv run python compiler_tests.py
     - name: Run compiler tests with Valgrind
       run: CC=${{matrix.CC}} CFLAGS="${{matrix.USE_STATIC_HEAP}}" USE_VALGRIND=1 uv run python compiler_tests.py
+    - name: Run IR tests (remove when merged)
+      run: CC=${{matrix.CC}} CFLAGS="${{matrix.USE_STATIC_HEAP}}" uv run python ir.py
   run_compiler_unit_tests_other_cc:
     runs-on: ubuntu-latest
     steps:

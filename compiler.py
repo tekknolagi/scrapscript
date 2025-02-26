@@ -228,6 +228,7 @@ class Compiler:
                 # Not enough elements
                 self._emit(f"if (is_empty_list({the_list})) {{ goto {fallthrough}; }}")
                 list_item = self._mktemp(f"list_first({the_list})")
+                # Recursive pattern match
                 updates.update(self.try_match(env, list_item, pattern_item, fallthrough))
                 the_list = self._mktemp(f"list_rest({the_list})")
             # Too many elements
@@ -490,7 +491,6 @@ def compile_to_string(program: Object, debug: bool) -> str:
     dirname = os.path.dirname(__file__)
     with open(os.path.join(dirname, "runtime.c"), "r") as runtime:
         print(runtime.read(), file=f)
-    print("#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct object*, name, exp)", file=f)
     if compiler.record_keys:
         print("const char* record_keys[] = {", file=f)
         for key in compiler.record_keys:

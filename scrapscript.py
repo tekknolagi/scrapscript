@@ -216,7 +216,8 @@ class Lexer:
         return self.text[self.idx]
 
     def make_token(self, cls: type, *args: Any) -> Token:
-        return make_source_annotated_token(cls, copy.deepcopy(self.current_token_source_extent), *args)
+        result: Token = cls(*args)
+        return result.with_source(copy.deepcopy(self.current_token_source_extent))
 
     def read_tokens(self) -> Generator[Token, None, None]:
         while (token := self.read_token()) and not isinstance(token, EOF):

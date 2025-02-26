@@ -345,12 +345,6 @@ class Lexer:
         return self.make_token(BytesLit, value, int(base) if base else 64)
 
 
-def make_source_annotated_token(cls: type, source_extent: SourceExtent, *args: Any) -> Token:
-    result: Token = cls(*args)
-    result.source_extent = source_extent
-    return result
-
-
 PEEK_EMPTY = object()
 
 

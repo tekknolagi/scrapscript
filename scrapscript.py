@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import base64
 import code
+import copy
 import dataclasses
 import enum
 import functools
@@ -15,7 +16,6 @@ import typing
 import urllib.request
 from dataclasses import dataclass
 from enum import auto
-from functools import reduce
 from types import ModuleType
 from typing import Any, Callable, Dict, Generator, Iterator, Mapping, Optional, Set, Tuple, Union
 
@@ -58,6 +58,10 @@ def join_source_extents(
 @dataclass(eq=True)
 class Token:
     source_extent: SourceExtent = dataclasses.field(default_factory=SourceExtent, init=False, compare=False)
+
+    def with_source(self, source_extent: SourceExtent) -> Token:
+        self.source_extent = source_extent
+        return self
 
 
 @dataclass(eq=True)
@@ -213,18 +217,7 @@ class Lexer:
 
     def make_token(self, cls: type, *args: Any) -> Token:
         result: Token = cls(*args)
-
-        # Set start of token's source extent
-        result.source_extent.start.lineno = self.current_token_source_extent.start.lineno
-        result.source_extent.start.colno = self.current_token_source_extent.start.colno
-        result.source_extent.start.byteno = self.current_token_source_extent.start.byteno
-
-        # Set end of token's source extent
-        result.source_extent.end.colno = self.current_token_source_extent.end.colno
-        result.source_extent.end.lineno = self.current_token_source_extent.end.lineno
-        result.source_extent.end.byteno = self.current_token_source_extent.end.byteno
-
-        return result
+        return result.with_source(copy.deepcopy(self.current_token_source_extent))
 
     def read_tokens(self) -> Generator[Token, None, None]:
         while (token := self.read_token()) and not isinstance(token, EOF):
@@ -568,6 +561,7 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
             MatchCase, pipe_source_extent.coalesce(expr.source_extent), expr.arg, expr.body
         )
         cases = [match_case]
+        match_function_source_extent = match_case.source_extent
         while True:
             try:
                 if tokens.peek() != Operator("|"):
@@ -582,13 +576,10 @@ def parse_unary(tokens: Peekable, p: float) -> "Object":
                 MatchCase, pipe_source_extent.coalesce(expr.source_extent), expr.arg, expr.body
             )
             cases.append(match_case)
-        cases_source_extents = [case_branch.source_extent for case_branch in cases]
+            match_function_source_extent = join_source_extents(match_function_source_extent, match_case.source_extent)
         return make_source_annotated_object(
             MatchFunction,
-            reduce(
-                join_source_extents,
-                cases_source_extents,
-            ),
+            match_function_source_extent,
             cases,
         )
     elif isinstance(token, LeftParen):

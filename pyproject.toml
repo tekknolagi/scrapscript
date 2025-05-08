@@ -1,7 +1,7 @@
 [project]
 authors = [
-    "Max Bernstein <python@bernsteinbear.com>",
-    "Chris Gregory <christopher.b.gregory@gmail.com>",
+    { name = "Max Bernstein", email = "python@bernsteinbear.com" },
+    { name = "Chris Gregory", email = "christopher.b.gregory@gmail.com" },
 ]
 classifiers = [
     "Intended Audience :: Developers",
@@ -17,12 +17,14 @@ keywords = ["scrapscript", "interpreter"]
 license = "MIT"
 name = "scrapscript"
 readme = "README.md"
-repository = "https://github.com/tekknolagi/scrapscript"
 version = "0.1.1"
 requires-python = ">=3.8"
 
+[project.urls]
+repository = "https://github.com/tekknolagi/scrapscript"
+
 [tool.uv]
-dev-dependencies = ["mypy~=1.10.0", "pylint~=3.2.0", "ruff~=0.5.0"]
+dev-dependencies = ["mypy~=1.10.0", "pylint~=3.2.0", "ruff~=0.5.0", "pytest~=8.0.0"]
 
 [tool.mypy]
 disallow_incomplete_defs = true
@@ -52,3 +54,8 @@ line-length = 120
 
 [tool.ruff.lint]
 ignore = ["E741"]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = ["*_tests.py"]
+addopts = "-v --tb=short"

@@ -53,6 +53,3 @@ dmypy.json
 
 # Scrapscript
 .scrap-history
-
-# VS Code
-.vscode/

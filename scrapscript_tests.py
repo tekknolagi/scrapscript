@@ -1,6 +1,12 @@
 import unittest
 import re
+import io
+import sys
+import argparse
 from typing import Optional
+from contextlib import contextmanager
+import os
+import unittest.mock
 
 # ruff: noqa: F405
 # ruff: noqa: F403
@@ -4050,6 +4056,171 @@ class PrettyPrintTests(unittest.TestCase):
         obj = Variant("x", Function(Var("a"), Var("b")))
         self.assertEqual(pretty(obj), "#x (a -> b)")
 
+
+@contextmanager
+def captured_output():
+    new_out, new_err = io.StringIO(), io.StringIO()
+    old_out, old_err = sys.stdout, sys.stderr
+    try:
+        sys.stdout, sys.stderr = new_out, new_err
+        yield sys.stdout, sys.stderr
+    finally:
+        sys.stdout, sys.stderr = old_out, old_err
+
+@contextmanager
+def captured_binary_output():
+    new_out = io.BytesIO()
+    old_out = sys.stdout
+    try:
+        sys.stdout = type('', (), {'buffer': new_out})()
+        yield new_out
+    finally:
+        sys.stdout = old_out
+
+class CLITests(unittest.TestCase):
+    def setUp(self):
+        self.stdin = io.StringIO("42")
+
+    def test_eval_command(self):
+        with captured_output() as (out, err):
+            args = argparse.Namespace(debug=False, input=self.stdin)
+            eval_command(args)
+        self.assertEqual(out.getvalue().strip(), "42")
+
+    def test_flat_command_parse(self):
+        with captured_binary_output() as out:
+            args = argparse.Namespace(debug=False, mode="parse", input=self.stdin)
+            flat_command(args)
+            serialized_data = out.getvalue()
+            ast = deserialize(serialized_data)
+            self.assertEqual(pretty(ast), "42")
+
+    def test_flat_command_print(self):
+        with captured_output() as (out, err):
+            # Create a serialized Int(42) object
+            serializer = Serializer()
+            serializer.serialize(Int(42))
+            args = argparse.Namespace(debug=False, mode="print", input=io.BytesIO(serializer.output))
+            flat_command(args)
+            self.assertEqual(out.getvalue().strip(), "42")
+
+    def test_pipe_command(self):
+        with captured_output() as (out, err):
+            args = argparse.Namespace(debug=False, command="x -> x + 1", input=self.stdin)
+            pipe_command(args)
+        self.assertEqual(out.getvalue().strip(), "43")
+
+    def test_type_command(self):
+        with captured_output() as (out, err):
+            args = argparse.Namespace(debug=False, input=self.stdin)
+            type_command(args)
+        self.assertEqual(out.getvalue().strip(), "int")
+
+    def test_format_command(self):
+        input_text = "x->x+1"
+        with captured_output() as (out, err):
+            args = argparse.Namespace(input=io.StringIO(input_text), debug=False)
+            format_command(args)
+        self.assertEqual(out.getvalue().strip(), "x -> x + 1")
+
+    @unittest.mock.patch('readline.read_history_file')
+    @unittest.mock.patch('readline.write_history_file')
+    def test_repl_command(self, mock_write_history, mock_read_history):
+        with captured_output() as (out, err):
+            args = argparse.Namespace(debug=False)
+            # Mock sys.stdin to provide input and EOF
+            original_stdin = sys.stdin
+            sys.stdin = io.StringIO("42\n\x04")  # 42 followed by EOF (Ctrl+D)
+            try:
+                repl_command(args)
+            finally:
+                sys.stdin = original_stdin
+        self.assertIn("42", out.getvalue())
+
+    def test_eval_command_invalid_syntax(self):
+        with captured_output() as (out, err):
+            args = argparse.Namespace(debug=False, input=io.StringIO("invalid syntax"))
+            with self.assertRaises(Exception):
+                eval_command(args)
+
+    def test_flat_command_invalid_syntax(self):
+        with captured_output() as (out, err):
+            args = argparse.Namespace(debug=False, mode="parse", input=io.StringIO("invalid syntax"))
+            with self.assertRaises(Exception):
+                flat_command(args)
+
+    def test_pipe_command_invalid_syntax(self):
+        with captured_output() as (out, err):
+            args = argparse.Namespace(debug=False, command="x -> x + 1", input=io.StringIO("invalid syntax"))
+            with self.assertRaises(Exception):
+                pipe_command(args)
+
+    def test_type_command_invalid_syntax(self):
+        with captured_output() as (out, err):
+            args = argparse.Namespace(debug=False, input=io.StringIO("invalid syntax"))
+            with self.assertRaises(Exception):
+                type_command(args)
+
+    def test_format_command_invalid_syntax(self):
+        with captured_output() as (out, err):
+            args = argparse.Namespace(input=io.StringIO("invalid syntax"), debug=False)
+            with self.assertRaisesRegex(Exception, "Invalid syntax:"):
+                format_command(args)
+
+    def test_compile_command(self):
+        with captured_output() as (out, err):
+            args = argparse.Namespace(
+                file="test.scrap",
+                output="output.c",
+                format=False,
+                compile=False,
+                memory=None,
+                run=False,
+                debug=False,
+                check=False,
+                platform=os.path.join(os.path.dirname(__file__), "cli.c")
+            )
+            # Create a temporary test file
+            with open("test.scrap", "w") as f:
+                f.write("42")
+            try:
+                compile_command(args)
+                # Check if output.c was created
+                self.assertTrue(os.path.exists("output.c"))
+            finally:
+                # Clean up
+                if os.path.exists("test.scrap"):
+                    os.remove("test.scrap")
+                if os.path.exists("output.c"):
+                    os.remove("output.c")
+
+    def test_compile_command_invalid_file(self):
+        with captured_output() as (out, err):
+            args = argparse.Namespace(
+                file="nonexistent.scrap",
+                output="output.c",
+                format=False,
+                compile=False,
+                memory=None,
+                run=False,
+                debug=False,
+                check=False,
+                platform=os.path.join(os.path.dirname(__file__), "cli.c")
+            )
+            with self.assertRaises(FileNotFoundError):
+                compile_command(args)
+
+    def test_format_command_invalid_syntax(self):
+        with captured_output() as (out, err):
+            args = argparse.Namespace(input=io.StringIO("(1 2"), debug=False)  # Unmatched parenthesis
+            with self.assertRaisesRegex(Exception, "Invalid syntax:"):
+                format_command(args)
+
+    def test_pipe_command_invalid_command(self):
+        with captured_output() as (out, err):
+            args = argparse.Namespace(debug=False, command="invalid ->", input=self.stdin)
+            with self.assertRaises(Exception):
+                pipe_command(args)
 
 if __name__ == "__main__":
     unittest.main()

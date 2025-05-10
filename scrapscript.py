@@ -2533,6 +2533,7 @@ def main() -> None:
     pipe.set_defaults(func=pipe_command)
     pipe.add_argument("command", help="Expression to apply to the input program")
     pipe.add_argument("input", nargs="?", type=argparse.FileType("r"), default=sys.stdin)
+    pipe.add_argument("--debug", action="store_true")
 
     type_ = subparsers.add_parser("type")
     type_.set_defaults(func=type_command)
@@ -2556,10 +2557,12 @@ def main() -> None:
     flat.set_defaults(func=flat_command)
     flat.add_argument("mode", choices=["parse", "print"])
     flat.add_argument("input", nargs="?", type=argparse.FileType("r"), default=sys.stdin)
+    flat.add_argument("--debug", action="store_true")
 
     format_ = subparsers.add_parser("format")
     format_.set_defaults(func=format_command)
     format_.add_argument("input", nargs="?", type=argparse.FileType("r"), default=sys.stdin)
+    format_.add_argument("--debug", action="store_true")
 
     args = parser.parse_args()
     if not args.command:

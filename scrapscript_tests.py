@@ -4051,5 +4051,47 @@ class PrettyPrintTests(unittest.TestCase):
         self.assertEqual(pretty(obj), "#x (a -> b)")
 
 
+class ServerCommandTests(unittest.TestCase):
+    def setUp(self) -> None:
+        import threading, time, os, socket, argparse
+        from scrapscript import server_command
+
+        # Find a random available port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            self.port = s.getsockname()[1]
+
+        args = argparse.Namespace(
+            directory=os.path.abspath(os.path.join(os.path.dirname(__file__), "examples")),
+            host="127.0.0.1",
+            port=self.port,
+        )
+
+        self.server_thread = threading.Thread(target=server_command, args=(args,))
+        self.server_thread.daemon = True
+        self.server_thread.start()
+
+        time.sleep(0.1)
+
+    def test_server_serves_scrap_by_path(self) -> None:
+        import urllib.request
+
+        response = urllib.request.urlopen(f"http://localhost:{self.port}/0_home/factorial")
+        self.assertEqual(response.status, 200)
+
+    def test_server_serves_scrap_by_hash(self) -> None:
+        import urllib.request
+
+        response = urllib.request.urlopen(f"http://localhost:{self.port}/$781cdc5a4f9855a2a60321d2eea56685")
+        self.assertEqual(response.status, 200)
+
+    def test_server_fails_missing_scrap(self) -> None:
+        import urllib.request
+
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(f"http://localhost:{self.port}/foo")
+        self.assertEqual(cm.exception.code, 404)
+
+
 if __name__ == "__main__":
     unittest.main()

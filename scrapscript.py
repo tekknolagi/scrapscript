@@ -2486,6 +2486,7 @@ def server_command(args: argparse.Namespace) -> None:
     import http.server
     import socketserver
     import hashlib
+    import re
 
     dir = os.path.abspath(args.directory)
     if not os.path.isdir(dir):
@@ -2495,7 +2496,7 @@ def server_command(args: argparse.Namespace) -> None:
     scraps = {}
     for root, _, files in os.walk(dir):
         for file in files:
-            if file.endswith(".scrap"):
+            if re.match(r"^[a-zA-Z0-9-]+\.scrap$", file):
                 file_path = os.path.join(root, file)
                 rel_path = os.path.relpath(file_path, dir)
                 rel_path_without_ext = os.path.splitext(rel_path)[0]
@@ -2520,7 +2521,7 @@ def server_command(args: argparse.Namespace) -> None:
             if scrap is not None:
                 self.send_response(200)
                 self.send_header("Content-Type", "application/scrap; charset=binary")
-                self.send_header("Content-Disposition", f'attachment; filename="{path}.scrap"')
+                self.send_header("Content-Disposition", f'attachment; filename={json.dumps(f"{path}.scrap")}')
                 self.send_header("Content-Length", str(len(scrap)))
                 self.end_headers()
                 self.wfile.write(scrap)
@@ -2584,7 +2585,7 @@ def main() -> None:
 
     yard_server = yard_subparsers.add_parser("server")
     yard_server.set_defaults(func=server_command)
-    yard_server.add_argument("directory", type=str, help="Directory to serve")
+    yard_server.add_argument("directory", type=str, default=".", help="Directory to serve")
     yard_server.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind to")
     yard_server.add_argument("--port", type=int, default=8080, help="Port to listen on")
     yard_server.add_argument("--debug", action="store_true")

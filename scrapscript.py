@@ -2516,13 +2516,14 @@ def server_command(args: argparse.Namespace) -> None:
     class ScrapHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         def do_GET(self) -> None:
             path = self.path.lstrip("/")
-            if path in scraps:
+            scrap = scraps.get(path)
+            if scrap is not None:
                 self.send_response(200)
                 self.send_header("Content-Type", "application/scrap; charset=binary")
                 self.send_header("Content-Disposition", f'attachment; filename="{path}.scrap"')
-                self.send_header("Content-Length", str(len(scraps[path])))
+                self.send_header("Content-Length", str(len(scrap)))
                 self.end_headers()
-                self.wfile.write(scraps[path])
+                self.wfile.write(scrap)
             else:
                 self.send_response(404)
                 self.send_header("Content-Type", "text/plain")

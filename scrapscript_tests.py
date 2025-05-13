@@ -1,6 +1,7 @@
 import unittest
 import re
 from typing import Optional
+import urllib.request
 
 # ruff: noqa: F405
 # ruff: noqa: F403
@@ -4052,10 +4053,12 @@ class PrettyPrintTests(unittest.TestCase):
 
 
 class ServerCommandTests(unittest.TestCase):
-    import urllib.request
-
     def setUp(self) -> None:
-        import threading, time, os, socket, argparse
+        import threading
+        import time
+        import os
+        import socket
+        import argparse
         from scrapscript import server_command
 
         # Find a random available port
@@ -4076,7 +4079,7 @@ class ServerCommandTests(unittest.TestCase):
         # Wait for the server to start
         while True:
             try:
-                with socket.create_connection((self.host, self.port), timeout=0.1) as s: 
+                with socket.create_connection((self.host, self.port), timeout=0.1) as s:
                     break
             except Exception:
                 time.sleep(0.01)

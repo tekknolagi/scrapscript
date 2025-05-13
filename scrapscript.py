@@ -2486,7 +2486,6 @@ def server_command(args: argparse.Namespace) -> None:
     import http.server
     import socketserver
     import hashlib
-    import os.path
 
     dir = os.path.abspath(args.directory)
     if not os.path.isdir(dir):

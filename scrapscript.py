@@ -2486,7 +2486,6 @@ def server_command(args: argparse.Namespace) -> None:
     import http.server
     import socketserver
     import hashlib
-    import re
 
     dir = os.path.abspath(args.directory)
     if not os.path.isdir(dir):
@@ -2496,23 +2495,25 @@ def server_command(args: argparse.Namespace) -> None:
     scraps = {}
     for root, _, files in os.walk(dir):
         for file in files:
-            if re.match(r"^[a-zA-Z0-9-]+\.scrap$", file):
-                file_path = os.path.join(root, file)
-                rel_path = os.path.relpath(file_path, dir)
-                rel_path_without_ext = os.path.splitext(rel_path)[0]
-                with open(file_path, "r") as f:
-                    try:
-                        program = parse(tokenize(f.read()))
-                        serializer = Serializer()
-                        serializer.serialize(program)
-                        serialized = bytes(serializer.output)
-                        scraps[rel_path_without_ext] = serialized
-                        logger.debug(f"Loaded {rel_path_without_ext}")
-                        file_hash = hashlib.md5(serialized).hexdigest()
-                        scraps[f"${file_hash}"] = serialized
-                        logger.debug(f"Loaded {rel_path_without_ext} as ${file_hash}")
-                    except Exception as e:
-                        logger.error(f"Error processing {file_path}: {e}")
+            file_path = os.path.join(root, file)
+            rel_path = os.path.relpath(file_path, dir)
+            if file.startswith("$"):
+                logger.debug(f"Skipping {rel_path}")
+                continue
+            rel_path_without_ext = os.path.splitext(rel_path)[0]
+            with open(file_path, "r") as f:
+                try:
+                    program = parse(tokenize(f.read()))
+                    serializer = Serializer()
+                    serializer.serialize(program)
+                    serialized = bytes(serializer.output)
+                    scraps[rel_path_without_ext] = serialized
+                    logger.debug(f"Loaded {rel_path_without_ext}")
+                    file_hash = hashlib.md5(serialized).hexdigest()
+                    scraps[f"${file_hash}"] = serialized
+                    logger.debug(f"Loaded {rel_path_without_ext} as ${file_hash}")
+                except Exception as e:
+                    logger.error(f"Error processing {file_path}: {e}")
 
     class ScrapHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         def do_GET(self) -> None:

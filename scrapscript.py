@@ -2541,7 +2541,6 @@ def server_command(args: argparse.Namespace) -> None:
                 self.end_headers()
                 self.wfile.write(b"File not found")
 
-    os.chdir(dir)
     handler = ScrapHTTPRequestHandler
     with socketserver.TCPServer((args.host, args.port), handler) as httpd:
         logger.info(f"Serving {dir} at http://{args.host}:{args.port}")

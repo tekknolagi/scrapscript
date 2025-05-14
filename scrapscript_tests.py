@@ -4067,7 +4067,7 @@ class ServerCommandTests(unittest.TestCase):
             self.host, self.port = s.getsockname()
 
         args = argparse.Namespace(
-            directory=os.path.abspath(os.path.join(os.path.dirname(__file__), "examples")),
+            directory=os.path.join(os.path.dirname(__file__), "examples"),
             host=self.host,
             port=self.port,
         )

@@ -2589,6 +2589,7 @@ def main() -> None:
     flat.set_defaults(func=flat_command)
 
     yard = subparsers.add_parser("yard")
+    yard.set_defaults(func=lambda _: yard.print_help())
     yard_subparsers = yard.add_subparsers(dest="yard_command")
 
     yard_server = yard_subparsers.add_parser("server")

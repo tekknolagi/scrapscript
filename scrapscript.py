@@ -2347,7 +2347,7 @@ def eval_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
-    program = args.program_file.read()
+    program = args.input.read()
     tokens = tokenize(program)
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
@@ -2356,30 +2356,17 @@ def eval_command(args: argparse.Namespace) -> None:
     print(pretty(result))
 
 
-def check_command(args: argparse.Namespace) -> None:
+def type_command(args: argparse.Namespace) -> None:
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
-    program = args.program_file.read()
+    program = args.input.read()
     tokens = tokenize(program)
     logger.debug("Tokens: %s", tokens)
     ast = parse(tokens)
     logger.debug("AST: %s", ast)
     result = infer_type(ast, OP_ENV)
-    result = minimize(result)
-    print(result)
-
-
-def apply_command(args: argparse.Namespace) -> None:
-    if args.debug:
-        logging.basicConfig(level=logging.DEBUG)
-
-    tokens = tokenize(args.program)
-    logger.debug("Tokens: %s", tokens)
-    ast = parse(tokens)
-    logger.debug("AST: %s", ast)
-    result = eval_exp(boot_env(), ast)
-    print(pretty(result))
+    print(str(result))  # Use str() instead of pretty() since we're dealing with types
 
 
 def repl_command(args: argparse.Namespace) -> None:
@@ -2476,11 +2463,58 @@ def compile_command(args: argparse.Namespace) -> None:
 
 
 def flat_command(args: argparse.Namespace) -> None:
-    prog = parse(tokenize(sys.stdin.read()))
-    serializer = Serializer()
-    serializer.serialize(prog)
-    sys.stdout.buffer.write(serializer.output)
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
 
+    if args.mode == "parse":
+        # Read input, parse it, and serialize it
+        program = args.input.read()
+        tokens = tokenize(program)
+        ast = parse(tokens)
+        serializer = Serializer()
+        serializer.serialize(ast)
+        sys.stdout.buffer.write(serializer.output)
+    elif args.mode == "print":
+        # Read serialized input, deserialize it, and pretty print it
+        if hasattr(args.input, 'buffer'):
+            serialized_data = args.input.buffer.read()
+        else:
+            serialized_data = args.input.read()
+        deserializer = Deserializer(serialized_data)
+        ast = deserializer.parse()
+        print(pretty(ast))
+    else:
+        raise ValueError(f"Unknown mode: {args.mode}")
+
+
+def format_command(args: argparse.Namespace) -> None:
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+
+    program = args.input.read()
+    try:
+        tokens = tokenize(program)
+        ast = parse(tokens)
+        print(pretty(ast))
+    except (ParseError, UnexpectedTokenError, InvalidTokenError, UnexpectedEOFError) as e:
+        raise Exception(f"Invalid syntax: {e}")
+
+def pipe_command(args: argparse.Namespace) -> None:
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+
+    # Parse the input program
+    program = args.input.read()
+    tokens = tokenize(program)
+    ast = parse(tokens)
+    
+    # Parse the pipe expression
+    pipe_tokens = tokenize(args.command)
+    pipe_expr = parse(pipe_tokens)
+    
+    # Apply the pipe expression to the input program
+    result = eval_exp(boot_env(), Apply(pipe_expr, ast))
+    print(pretty(result))
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="scrapscript")
@@ -2492,18 +2526,19 @@ def main() -> None:
 
     eval_ = subparsers.add_parser("eval")
     eval_.set_defaults(func=eval_command)
-    eval_.add_argument("program_file", type=argparse.FileType("r"))
+    eval_.add_argument("input", nargs="?", type=argparse.FileType("r"), default=sys.stdin)
     eval_.add_argument("--debug", action="store_true")
 
-    check = subparsers.add_parser("check")
-    check.set_defaults(func=check_command)
-    check.add_argument("program_file", type=argparse.FileType("r"))
-    check.add_argument("--debug", action="store_true")
+    pipe = subparsers.add_parser("pipe")
+    pipe.set_defaults(func=pipe_command)
+    pipe.add_argument("command", help="Expression to apply to the input program")
+    pipe.add_argument("input", nargs="?", type=argparse.FileType("r"), default=sys.stdin)
+    pipe.add_argument("--debug", action="store_true")
 
-    apply = subparsers.add_parser("apply")
-    apply.set_defaults(func=apply_command)
-    apply.add_argument("program")
-    apply.add_argument("--debug", action="store_true")
+    type_ = subparsers.add_parser("type")
+    type_.set_defaults(func=type_command)
+    type_.add_argument("input", nargs="?", type=argparse.FileType("r"), default=sys.stdin)
+    type_.add_argument("--debug", action="store_true")
 
     comp = subparsers.add_parser("compile")
     comp.set_defaults(func=compile_command)
@@ -2520,6 +2555,14 @@ def main() -> None:
 
     flat = subparsers.add_parser("flat")
     flat.set_defaults(func=flat_command)
+    flat.add_argument("mode", choices=["parse", "print"])
+    flat.add_argument("input", nargs="?", type=argparse.FileType("r"), default=sys.stdin)
+    flat.add_argument("--debug", action="store_true")
+
+    format_ = subparsers.add_parser("format")
+    format_.set_defaults(func=format_command)
+    format_.add_argument("input", nargs="?", type=argparse.FileType("r"), default=sys.stdin)
+    format_.add_argument("--debug", action="store_true")
 
     args = parser.parse_args()
     if not args.command:

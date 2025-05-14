@@ -13,10 +13,10 @@ We support python3.8+.
 
 ```bash
 # With a file
-python3 scrapscript.py eval examples/0_home/factorial.scrap
+python3 scrapscript.py eval < examples/0_home/factorial.scrap
 
 # With a string literal
-python3 scrapscript.py apply "1 + 2"
+python3 scrapscript.py eval <<< '1 + 2'
 
 # With a REPL
 python3 scrapscript.py repl
@@ -28,10 +28,10 @@ or with [Cosmopolitan](https://justine.lol/cosmopolitan/index.html):
 ./util/build-com
 
 # With a file
-./scrapscript.com eval examples/0_home/factorial.scrap
+./scrapscript.com eval < examples/0_home/factorial.scrap
 
 # With a string literal
-./scrapscript.com apply "1 + 2"
+./scrapscript.com eval <<< '1 + 2'
 
 # With a REPL
 ./scrapscript.com repl
@@ -44,10 +44,10 @@ or with Docker:
 
 ```bash
 # With a file (mount your local directory)
-docker run --mount type=bind,source="$(pwd)",target=/mnt -i -t ghcr.io/tekknolagi/scrapscript:trunk eval /mnt/examples/0_home/factorial.scrap
+docker run --mount type=bind,source="$(pwd)",target=/mnt -i -t ghcr.io/tekknolagi/scrapscript:trunk eval < /mnt/examples/0_home/factorial.scrap
 
 # With a string literal
-docker run -i -t ghcr.io/tekknolagi/scrapscript:trunk apply "1 + 2"
+docker run -i -t ghcr.io/tekknolagi/scrapscript:trunk eval <<< '1 + 2'
 
 # With a REPL
 docker run -i -t ghcr.io/tekknolagi/scrapscript:trunk repl

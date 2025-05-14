@@ -86,8 +86,10 @@ jobs:
     # slimcc
     - name: Clone slimcc
       run: git clone --depth 1 https://github.com/fuhsnn/slimcc
+    - name: Copy platform
+      run: cp slimcc/platform/linux-glibc-generic.c slimcc/platform.c
     - name: Build slimcc
-      run: make -C slimcc test-stage2 -j4
+      run: make -C slimcc slimcc -j4
     - name: Run compiler tests with slimcc
       run: CC=slimcc/slimcc uv run python compiler_tests.py
   run_unit_tests:

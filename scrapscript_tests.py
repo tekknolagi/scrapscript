@@ -1,6 +1,7 @@
 import unittest
 import re
 from typing import Optional
+import urllib.request
 
 # ruff: noqa: F405
 # ruff: noqa: F403
@@ -4049,6 +4050,56 @@ class PrettyPrintTests(unittest.TestCase):
 
         obj = Variant("x", Function(Var("a"), Var("b")))
         self.assertEqual(pretty(obj), "#x (a -> b)")
+
+
+class ServerCommandTests(unittest.TestCase):
+    def setUp(self) -> None:
+        import threading
+        import time
+        import os
+        import socket
+        import argparse
+        from scrapscript import server_command
+
+        # Find a random available port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            self.host, self.port = s.getsockname()
+
+        args = argparse.Namespace(
+            directory=os.path.join(os.path.dirname(__file__), "examples"),
+            host=self.host,
+            port=self.port,
+        )
+
+        self.server_thread = threading.Thread(target=server_command, args=(args,))
+        self.server_thread.daemon = True
+        self.server_thread.start()
+
+        # Wait for the server to start
+        while True:
+            try:
+                with socket.create_connection((self.host, self.port), timeout=0.1) as s:
+                    break
+            except (ConnectionRefusedError, socket.timeout):
+                time.sleep(0.01)
+
+    def tearDown(self) -> None:
+        quit_request = urllib.request.Request(f"http://{self.host}:{self.port}/", method="QUIT")
+        urllib.request.urlopen(quit_request)
+
+    def test_server_serves_scrap_by_path(self) -> None:
+        response = urllib.request.urlopen(f"http://{self.host}:{self.port}/0_home/factorial")
+        self.assertEqual(response.status, 200)
+
+    def test_server_serves_scrap_by_hash(self) -> None:
+        response = urllib.request.urlopen(f"http://{self.host}:{self.port}/$09242a8dfec0ed32eb9ddd5452f0082998712d35306fec2042bad8ac5b6e9580")
+        self.assertEqual(response.status, 200)
+
+    def test_server_fails_missing_scrap(self) -> None:
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(f"http://{self.host}:{self.port}/foo")
+        self.assertEqual(cm.exception.code, 404)
 
 
 if __name__ == "__main__":

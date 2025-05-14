@@ -2482,6 +2482,72 @@ def flat_command(args: argparse.Namespace) -> None:
     sys.stdout.buffer.write(serializer.output)
 
 
+def server_command(args: argparse.Namespace) -> None:
+    import http.server
+    import socketserver
+    import hashlib
+
+    dir = os.path.abspath(args.directory)
+    if not os.path.isdir(dir):
+        print(f"Error: {dir} is not a valid directory")
+        sys.exit(1)
+
+    scraps = {}
+    for root, _, files in os.walk(dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            rel_path = os.path.relpath(file_path, dir)
+            if file.startswith("$"):
+                logger.debug(f"Skipping {rel_path}")
+                continue
+            rel_path_without_ext = os.path.splitext(rel_path)[0]
+            with open(file_path, "r") as f:
+                try:
+                    program = parse(tokenize(f.read()))
+                    serializer = Serializer()
+                    serializer.serialize(program)
+                    serialized = bytes(serializer.output)
+                    scraps[rel_path_without_ext] = serialized
+                    logger.debug(f"Loaded {rel_path_without_ext}")
+                    file_hash = hashlib.sha256(serialized).hexdigest()
+                    scraps[f"${file_hash}"] = serialized
+                    logger.debug(f"Loaded {rel_path_without_ext} as ${file_hash}")
+                except Exception as e:
+                    logger.error(f"Error processing {file_path}: {e}")
+
+    keep_serving = True
+
+    class ScrapHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+        def do_QUIT(self) -> None:
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"Quitting")
+            nonlocal keep_serving
+            keep_serving = False
+
+        def do_GET(self) -> None:
+            path = self.path.lstrip("/")
+            scrap = scraps.get(path)
+            if scrap is not None:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/scrap; charset=binary")
+                self.send_header("Content-Disposition", f'attachment; filename={json.dumps(f"{path}.scrap")}')
+                self.send_header("Content-Length", str(len(scrap)))
+                self.end_headers()
+                self.wfile.write(scrap)
+            else:
+                self.send_response(404)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"File not found")
+
+    handler = ScrapHTTPRequestHandler
+    with socketserver.TCPServer((args.host, args.port), handler) as httpd:
+        logger.info(f"Serving {dir} at http://{args.host}:{args.port}")
+        while keep_serving:
+            httpd.handle_request()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="scrapscript")
     subparsers = parser.add_subparsers(dest="command")
@@ -2520,6 +2586,16 @@ def main() -> None:
 
     flat = subparsers.add_parser("flat")
     flat.set_defaults(func=flat_command)
+
+    yard = subparsers.add_parser("yard")
+    yard.set_defaults(func=lambda _: yard.print_help())
+    yard_subparsers = yard.add_subparsers(dest="yard_command")
+
+    yard_server = yard_subparsers.add_parser("server")
+    yard_server.set_defaults(func=server_command)
+    yard_server.add_argument("directory", type=str, nargs="?", default=".", help="Directory to serve")
+    yard_server.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind to")
+    yard_server.add_argument("--port", type=int, default=8080, help="Port to listen on")
 
     args = parser.parse_args()
     if not args.command:

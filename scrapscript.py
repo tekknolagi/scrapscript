@@ -2594,7 +2594,7 @@ def main() -> None:
 
     yard_server = yard_subparsers.add_parser("server")
     yard_server.set_defaults(func=server_command)
-    yard_server.add_argument("directory", type=str, default=".", help="Directory to serve")
+    yard_server.add_argument("directory", type=str, nargs="?", default=".", help="Directory to serve")
     yard_server.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind to")
     yard_server.add_argument("--port", type=int, default=8080, help="Port to listen on")
 

@@ -4093,7 +4093,7 @@ class ServerCommandTests(unittest.TestCase):
         self.assertEqual(response.status, 200)
 
     def test_server_serves_scrap_by_hash(self) -> None:
-        response = urllib.request.urlopen(f"http://{self.host}:{self.port}/$781cdc5a4f9855a2a60321d2eea56685")
+        response = urllib.request.urlopen(f"http://{self.host}:{self.port}/$09242a8dfec0ed32eb9ddd5452f0082998712d35306fec2042bad8ac5b6e9580")
         self.assertEqual(response.status, 200)
 
     def test_server_fails_missing_scrap(self) -> None:

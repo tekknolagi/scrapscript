@@ -2509,7 +2509,7 @@ def server_command(args: argparse.Namespace) -> None:
                     serialized = bytes(serializer.output)
                     scraps[rel_path_without_ext] = serialized
                     logger.debug(f"Loaded {rel_path_without_ext}")
-                    file_hash = hashlib.md5(serialized).hexdigest()
+                    file_hash = hashlib.sha256(serialized).hexdigest()
                     scraps[f"${file_hash}"] = serialized
                     logger.debug(f"Loaded {rel_path_without_ext} as ${file_hash}")
                 except Exception as e:

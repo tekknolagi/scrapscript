@@ -4081,7 +4081,7 @@ class ServerCommandTests(unittest.TestCase):
             try:
                 with socket.create_connection((self.host, self.port), timeout=0.1) as s:
                     break
-            except Exception:
+            except (ConnectionRefusedError, socket.timeout):
                 time.sleep(0.01)
 
     def test_server_serves_scrap_by_path(self) -> None:

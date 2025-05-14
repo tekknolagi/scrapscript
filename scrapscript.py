@@ -2515,7 +2515,16 @@ def server_command(args: argparse.Namespace) -> None:
                 except Exception as e:
                     logger.error(f"Error processing {file_path}: {e}")
 
+    keep_serving = True
+
     class ScrapHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+        def do_QUIT(self) -> None:
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"Quitting")
+            nonlocal keep_serving
+            keep_serving = False
+
         def do_GET(self) -> None:
             path = self.path.lstrip("/")
             scrap = scraps.get(path)
@@ -2536,10 +2545,8 @@ def server_command(args: argparse.Namespace) -> None:
     handler = ScrapHTTPRequestHandler
     with socketserver.TCPServer((args.host, args.port), handler) as httpd:
         logger.info(f"Serving {dir} at http://{args.host}:{args.port}")
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            httpd.server_close()
+        while keep_serving:
+            httpd.handle_request()
 
 
 def main() -> None:

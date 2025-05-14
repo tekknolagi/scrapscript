@@ -4084,6 +4084,10 @@ class ServerCommandTests(unittest.TestCase):
             except (ConnectionRefusedError, socket.timeout):
                 time.sleep(0.01)
 
+    def tearDown(self) -> None:
+        quit_request = urllib.request.Request(f"http://{self.host}:{self.port}/", method="QUIT")
+        urllib.request.urlopen(quit_request)
+
     def test_server_serves_scrap_by_path(self) -> None:
         response = urllib.request.urlopen(f"http://{self.host}:{self.port}/0_home/factorial")
         self.assertEqual(response.status, 200)

@@ -985,7 +985,7 @@ tags = [
     TYPE_SPREAD := b"S",
     TYPE_NAMED_SPREAD := b"R",
     TYPE_TRUE := b"T",
-    TYPE_FALSE := b"F"
+    TYPE_FALSE := b"F",
 ]
 FLAG_REF = 0x80
 
@@ -2543,7 +2543,7 @@ def server_command(args: argparse.Namespace) -> None:
             if scrap is not None:
                 self.send_response(200)
                 self.send_header("Content-Type", "application/scrap; charset=binary")
-                self.send_header("Content-Disposition", f'attachment; filename={json.dumps(f"{path}.scrap")}')
+                self.send_header("Content-Disposition", f"attachment; filename={json.dumps(f'{path}.scrap')}")
                 self.send_header("Content-Length", str(len(scrap)))
                 self.end_headers()
                 self.wfile.write(scrap)

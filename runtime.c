@@ -680,17 +680,19 @@ void variant_set(struct object* variant, struct object* value) {
   as_variant(variant)->value = value;
 }
 
-#define MAX_HANDLES 4096
-
 struct handle_scope {
   struct object*** base;
 };
 
-static struct object** handle_stack[MAX_HANDLES];
+#ifndef HANDLE_STACK_SIZE
+#define HANDLE_STACK_SIZE 4096
+#endif
+
+static struct object** handle_stack[HANDLE_STACK_SIZE];
 static struct object*** handles = handle_stack;
 #ifndef NDEBUG
 // Only used to check for handle stack overflow.
-static struct object*** handles_end = &handle_stack[MAX_HANDLES];
+static struct object*** handles_end = &handle_stack[HANDLE_STACK_SIZE];
 #endif
 
 void pop_handles(void* local_handles) {

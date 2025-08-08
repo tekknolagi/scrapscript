@@ -2478,6 +2478,8 @@ def compile_command(args: argparse.Namespace) -> None:
         cflags = discover_cflags(cc, args.debug)
         if args.memory:
             cflags += [f"-DMEMORY_SIZE={args.memory}"]
+        if args.handle_stack_size:
+            cflags += [f"-DHANDLE_STACK_SIZE={args.handle_stack_size}"]
         ldflags = env_get_split("LDFLAGS")
         subprocess.run([*cc, "-o", "a.out", *cflags, args.output, *ldflags], check=True)
 
@@ -2590,6 +2592,7 @@ def main() -> None:
     comp.add_argument("--format", action="store_true")
     comp.add_argument("--compile", action="store_true")
     comp.add_argument("--memory", type=int)
+    comp.add_argument("--handle-stack-size", type=int)
     comp.add_argument("--run", action="store_true")
     comp.add_argument("--debug", action="store_true", default=False)
     comp.add_argument("--check", action="store_true", default=False)

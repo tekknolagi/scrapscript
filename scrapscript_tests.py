@@ -3778,6 +3778,22 @@ class SerializerTests(unittest.TestCase):
     def test_spread(self) -> None:
         self.assertEqual(self._serialize(Spread()), TYPE_SPREAD)
         self.assertEqual(self._serialize(Spread("rest")), TYPE_NAMED_SPREAD + b"\x08rest")
+    
+    def test_true_variant(self) -> None:
+        obj = Variant("true", Hole())
+        self.assertEqual(self._serialize(obj), TYPE_TRUE)
+
+    def test_false_variant(self) -> None:
+        obj = Variant("false", Hole())
+        self.assertEqual(self._serialize(obj), TYPE_FALSE)
+
+    def test_true_variant_with_non_hole_uses_regular_variant(self) -> None:
+        obj = Variant("true", Int(123))
+        self.assertEqual(self._serialize(obj), TYPE_VARIANT + b"\x08truei\xf6\x01")
+
+    def test_false_variant_with_non_hole_uses_regular_variant(self) -> None:
+        obj = Variant("false", Int(123))
+        self.assertEqual(self._serialize(obj), TYPE_VARIANT + b"\x0afalsei\xf6\x01")
 
 
 class RoundTripSerializationTests(unittest.TestCase):

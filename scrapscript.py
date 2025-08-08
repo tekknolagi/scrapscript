@@ -984,6 +984,8 @@ tags = [
     TYPE_ACCESS := b"@",
     TYPE_SPREAD := b"S",
     TYPE_NAMED_SPREAD := b"R",
+    TYPE_TRUE := b"T",
+    TYPE_FALSE := b"F",
 ]
 FLAG_REF = 0x80
 
@@ -1091,6 +1093,10 @@ class Serializer:
                 self.serialize(item)
             return
         if isinstance(obj, Variant):
+            if obj.tag == "true" and isinstance(obj.value, Hole):
+                return self.emit(TYPE_TRUE)
+            if obj.tag == "false" and isinstance(obj.value, Hole):
+                return self.emit(TYPE_FALSE)
             # TODO(max): Determine if this should be a ref
             self.emit(TYPE_VARIANT)
             # TODO(max): String pool (via refs) for strings longer than some length?
@@ -1329,6 +1335,12 @@ class Deserializer:
             return Spread()
         if ty == TYPE_NAMED_SPREAD:
             return Spread(self._string())
+        if ty == TYPE_TRUE:
+            assert not is_ref
+            return Variant("true", Hole())
+        if ty == TYPE_FALSE:
+            assert not is_ref
+            return Variant("false", Hole())
         raise NotImplementedError(bytes(ty))
 
 
@@ -2531,7 +2543,7 @@ def server_command(args: argparse.Namespace) -> None:
             if scrap is not None:
                 self.send_response(200)
                 self.send_header("Content-Type", "application/scrap; charset=binary")
-                self.send_header("Content-Disposition", f'attachment; filename={json.dumps(f"{path}.scrap")}')
+                self.send_header("Content-Disposition", f"attachment; filename={json.dumps(f'{path}.scrap')}")
                 self.send_header("Content-Length", str(len(scrap)))
                 self.end_headers()
                 self.wfile.write(scrap)

@@ -222,6 +222,20 @@ bool in_const_heap(struct gc_obj* obj) {
          (uword)obj < (uword)__stop_const_heap;
 }
 
+static struct object* transport(struct gc_obj* from, struct gc_heap* heap) {
+  assert(!in_const_heap(from));
+  struct gc_obj* to = is_forwarded(from) ? forwarded(from) : copy(heap, from);
+  return heap_tag((uintptr_t)to);
+}
+
+void visit_root(struct object** pointer, struct gc_heap* heap) {
+  if (!is_heap_object(*pointer)) {
+    return;
+  }
+  struct gc_obj* from = as_heap_object(*pointer);
+  *pointer = transport(from, heap);
+}
+
 void visit_field(struct object** pointer, struct gc_heap* heap) {
   if (!is_heap_object(*pointer)) {
     return;
@@ -230,8 +244,7 @@ void visit_field(struct object** pointer, struct gc_heap* heap) {
   if (in_const_heap(from)) {
     return;
   }
-  struct gc_obj* to = is_forwarded(from) ? forwarded(from) : copy(heap, from);
-  *pointer = heap_tag((uintptr_t)to);
+  *pointer = transport(from, heap);
 }
 
 static bool in_heap(struct gc_heap* heap, struct gc_obj* obj) {
@@ -270,7 +283,7 @@ static NEVER_INLINE void heap_verify(struct gc_heap* heap) {
 void collect_no_verify(struct gc_heap* heap) {
   flip(heap);
   uintptr_t scan = heap->hp;
-  trace_roots(heap, visit_field);
+  trace_roots(heap, visit_root);
   while (scan < heap->hp) {
     struct gc_obj* obj = (struct gc_obj*)scan;
     size_t size = heap_object_size(obj);
@@ -703,8 +716,19 @@ void pop_handles(void* local_handles) {
   struct handle_scope local_handles __attribute__((__cleanup__(pop_handles))); \
   local_handles.base = handles;
 #define GC_PROTECT(x)                                                          \
-  assert(handles != handles_end);                                              \
-  (*handles++) = (struct object**)(&x)
+  do {                                                                         \
+    /* TODO(max): Determine if it's worth it to have this fast path or if it's \
+     * just cluttering the code and should be done in a more advanced          \
+     * compiler. */                                                            \
+    if (!is_heap_object(x)) {                                                  \
+      break;                                                                   \
+    }                                                                          \
+    if (in_const_heap(as_heap_object(x))) {                                    \
+      break;                                                                   \
+    }                                                                          \
+    assert(handles != handles_end);                                            \
+    (*handles++) = (struct object**)(&x);                                      \
+  } while (0)
 #define GC_HANDLE(type, name, val)                                             \
   type name = val;                                                             \
   GC_PROTECT(name)

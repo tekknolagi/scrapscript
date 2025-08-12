@@ -1537,7 +1537,9 @@ def free_in(exp: Object) -> Set[str]:
     if isinstance(exp, Closure):
         # TODO(max): Should this remove the set of keys in the closure env?
         return free_in(exp.func)
-    raise NotImplementedError(("free_in", type(exp)))
+    # :'(
+    return set()
+    # raise NotImplementedError(("free_in", type(exp)))
 
 
 def improve_closure(closure: Closure) -> Closure:

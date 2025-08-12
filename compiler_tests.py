@@ -42,6 +42,28 @@ class CompilerEndToEndTests(unittest.TestCase):
     def test_int(self) -> None:
         self.assertEqual(self._run("1"), "1\n")
 
+    def test_int_small_int_max(self) -> None:
+        self.assertEqual(self._run("4611686018427387903"), "4611686018427387903\n")
+
+    def test_int_small_int_min(self) -> None:
+        self.assertEqual(self._run("-4611686018427387904"), "-4611686018427387904\n")
+
+    def test_int_small_int_too_small(self) -> None:
+        with self.assertRaisesRegex(NotImplementedError, "negative largeint"):
+            self._run("-4611686018427387905")
+
+    def test_int_add_to_large_int(self) -> None:
+        self.assertEqual(self._run("4611686018427387903 + 1"), "largeint64(0x4000000000000000)\n")
+        self.assertEqual(self._run("4611686018427387904"), "largeint64(0x4000000000000000)\n")
+
+    def test_int_add_to_large_int_two_digits(self) -> None:
+        program = "4611686018427387903 + 4611686018427387903 + 4611686018427387903 + 4611686018427387903 + 4611686018427387903 + 4611686018427387903 + 4611686018427387903"
+        self.assertEqual(hex(eval(program)), "0x1bffffffffffffff9")
+        self.assertEqual(self._run(program), "largeint64(0x1, 0xbffffffffffffff9)\n")
+
+    def test_literal_positive_large_int(self) -> None:
+        self.assertEqual(self._run("340282366920938463463374607431768211456"), "largeint64(0x1, 0x0, 0x0)\n")
+
     def test_small_string(self) -> None:
         self.assertEqual(self._run('"hello"'), '"hello"\n')
 

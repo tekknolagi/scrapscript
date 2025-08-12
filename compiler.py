@@ -298,7 +298,11 @@ class Compiler:
             return True
         return False
 
+    def _make_tag(self, tag: str, size_bytes: str) -> str:
+        return f"((({size_bytes}) << kBitsPerByte) | {tag})"
+
     def _const_obj(self, type: str, tag: str, contents: str) -> str:
+        # TODO(max): Emulate make_tag here to encode size
         result = self.gensym(f"const_{type}")
         self.const_heap.append(f"CONST_HEAP struct {type} {result} = {{.HEAD.tag={tag}, {contents} }};")
         return f"ptrto({result})"
@@ -322,8 +326,20 @@ class Compiler:
         if isinstance(exp, Hole):
             return "hole()"
         if isinstance(exp, Int):
-            # TODO(max): Bignum
-            return f"_mksmallint({exp.value})"
+            if -0x4000000000000000 <= exp.value <= 0x3FFFFFFFFFFFFFFF:
+                return f"_mksmallint({exp.value}ULL)"
+            # Divide number into 64-bit digits
+            if exp.value < 0:
+                # TODO(max): Handle negative largeint
+                raise NotImplementedError(f"negative largeint64({exp.value})")
+            value = exp.value
+            digits = []
+            while value:
+                digits.append(value & 0xFFFFFFFFFFFFFFFF)
+                value >>= 64
+            tag = self._make_tag("TAG_LARGEINT", f"sizeof(struct large_int)+{len(digits)}ULL*kLargeIntDigitSize")
+            parts = ", ".join(f"{digit}ULL" for digit in digits)
+            return self._const_obj("large_int", tag, f".digits={{ {parts} }}")
         if isinstance(exp, List):
             items = [self._emit_const(item) for item in exp.items]
             result = "empty_list()"
@@ -463,6 +479,7 @@ def compile_to_string(program: Object, debug: bool) -> str:
         ("uword", "kPrimaryTagMask", "(1ULL << kPrimaryTagBits) - 1"),
         ("uword", "kImmediateTagMask", "(1ULL << kImmediateTagBits) - 1"),
         ("uword", "kWordSize", "sizeof(word)"),
+        ("uword", "kLargeIntDigitSize", "sizeof(large_int_digit)"),
         ("uword", "kMaxSmallStringLength", "kWordSize - 1"),
         ("uword", "kBitsPerByte", 8),
         # Up to the five least significant bits are used to tag the object's layout.
@@ -490,7 +507,6 @@ def compile_to_string(program: Object, debug: bool) -> str:
     dirname = os.path.dirname(__file__)
     with open(os.path.join(dirname, "runtime.c"), "r") as runtime:
         print(runtime.read(), file=f)
-    print("#define OBJECT_HANDLE(name, exp) GC_HANDLE(struct object*, name, exp)", file=f)
     if compiler.record_keys:
         print("const char* record_keys[] = {", file=f)
         for key in compiler.record_keys:
